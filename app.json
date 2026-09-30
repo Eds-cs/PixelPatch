@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "PixelPatch",
+    "slug": "pixelpatch-dev",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "pixelpatch",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pixelpatch.app"
+    },
+    "android": {
+      "package": "com.pixelpatch.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#2563eb",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "PixelPatch",
+      "themeColor": "#2563eb",
+      "backgroundColor": "#ffffff",
+      "description": "Repair service platform for electronic devices. Find trusted technicians near you."
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PixelPatch uses your photos so you can attach pictures of a device to a repair request."
+        }
+      ],
+      "expo-build-properties",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5d61e21d-44f5-436b-bbde-640363e0393d"
+      }
+    },
+    "owner": "pl4ye"
+  }
+}
