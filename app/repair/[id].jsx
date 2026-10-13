@@ -17,30 +17,18 @@ import { Ionicons } from "@expo/vector-icons";
 import Button from "../../components/Button";
 import TextField from "../../components/TextField";
 import Modal from "../../components/Modal";
+import {
+  AssessmentSection,
+  formatRepairDate,
+  isValidRepairDate,
+  QuotationSection,
+  RepairRow as Row,
+  RepairSection as Section,
+} from "../../components/RepairSummary";
 import api from "../../lib/api";
 import { useFetch } from "../../lib/useFetch";
 import { openCheckout, pollPaymentStatus, isTerminal } from "../../lib/payments";
 import { COLORS } from "../../constants/theme";
-
-function Section({ title, children }) {
-  return (
-    <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-      <Text className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
-}
-
-function Row({ label, value }) {
-  return (
-    <View className="flex-row justify-between py-1.5">
-      <Text className="text-sm text-gray-500">{label}</Text>
-      <Text className="flex-1 text-right text-sm font-medium text-gray-900">{value ?? "—"}</Text>
-    </View>
-  );
-}
 
 const confirm = (title, message, onConfirm) => {
   if (Platform.OS === "web") {
@@ -145,7 +133,8 @@ export default function RepairDetail() {
 
   const repair = data?.repair ?? {};
   const quotation = repair.quotation;
-  const canApprove = quotation && !repair.client_approved;
+  const hasCompletionDate = isValidRepairDate(quotation?.estimated_completion_date);
+  const canApprove = quotation && hasCompletionDate && !repair.client_approved;
   const canCancel = ["pending", "accepted"].includes(repair.status);
   // The server rejects reviews unless status is exactly "COMPLETED"; compare
   // case-insensitively since other endpoints report status in lower case.
@@ -172,29 +161,28 @@ export default function RepairDetail() {
         <Row label="Status" value={String(repair.status ?? "").replace(/_/g, " ")} />
         <Row label="Decision" value={repair.decision} />
         <Row label="Payment" value={String(repair.payment_status ?? "").replace(/_/g, " ")} />
-        <Row label="Requested" value={repair.created_at} />
+        <Row label="Preferred date" value={formatRepairDate(repair.preferred_date)} />
+        <Row label="Requested" value={formatRepairDate(repair.created_at)} />
+        <Row label="Device received" value={repair.is_received ? "Received" : "Not yet received"} />
+        {repair.is_received ? (
+          <>
+            <Row label="Received via" value={repair.received_method} />
+            <Row label="Received at" value={formatRepairDate(repair.received_at)} />
+          </>
+        ) : null}
       </Section>
 
       {repair.assessment ? (
-        <Section title="Assessment">
-          <Text className="text-sm text-gray-700">
-            {repair.assessment.findings || repair.assessment.notes || "No notes provided."}
-          </Text>
-        </Section>
+        <AssessmentSection assessment={repair.assessment} />
       ) : null}
 
       {quotation ? (
-        <Section title="Quotation">
-          {(quotation.services ?? []).map((s, i) => (
-            <Row key={`s${i}`} label={s.name ?? "Service"} value={`₱${s.price ?? s.base_price ?? "—"}`} />
-          ))}
-          {(quotation.parts ?? []).map((p, i) => (
-            <Row key={`p${i}`} label={p.name ?? "Part"} value={`₱${p.price ?? "—"}`} />
-          ))}
-          <View className="mt-2 border-t border-gray-100 pt-2">
-            <Row label="Total" value={quotation.total_amount ? `₱${quotation.total_amount}` : "—"} />
-          </View>
-        </Section>
+        <QuotationSection quotation={quotation} />
+      ) : null}
+      {quotation && !hasCompletionDate ? (
+        <Text className="mb-3 text-sm text-amber-700">
+          The shop needs to add an estimated completion date before you can approve this quotation.
+        </Text>
       ) : null}
 
       {repair.assigned_employee ? (
@@ -215,7 +203,7 @@ export default function RepairDetail() {
             value={repair.payment.amount ? `₱${repair.payment.amount}` : null}
           />
           <Row label="Status" value={repair.payment.status} />
-          <Row label="Paid at" value={repair.payment.paid_at} />
+          <Row label="Paid at" value={formatRepairDate(repair.payment.paid_at)} />
 
           {paymentNote ? (
             <Text className="mt-3 text-sm text-gray-600">{paymentNote}</Text>
@@ -249,6 +237,7 @@ export default function RepairDetail() {
               {repair.review.feedback || repair.review.comment}
             </Text>
           ) : null}
+          <Row label="Reviewed at" value={formatRepairDate(repair.review.created_at)} />
         </Section>
       ) : canReview ? (
         <Button title="Leave a review" className="mb-3" onPress={() => setReviewOpen(true)} />

@@ -1,9 +1,12 @@
 // server/routes/repairRoutes.js
 import express from "express";
 import { authRequired } from "../middleware/authMiddleware.js";
+import { businessShopRequired } from "../middleware/businessShopMiddleware.js";
 import {
   getRepairsForShop,
   getRepairById,
+  getRepairServices,
+  addRepairServices,
   rejectRepair,
   confirmRepair,
   getAssessmentByRequest,
@@ -11,6 +14,7 @@ import {
   createQuotation,
   getQuotationByRequest,
   updateQuotation,
+  setQuotationCompletionDate,
   startRepair,
   getRepairInProgress,
   markRepairCompleted,
@@ -18,44 +22,48 @@ import {
 } from "../controllers/repairController.js";
 console.log("🔥 repairRoutes loaded");
 const router = express.Router();
+router.use(authRequired, businessShopRequired);
 
 // GET single repair (details page)
-router.get("/details/:id", authRequired, getRepairById);
+router.get("/details/:id", getRepairById);
+router.get("/:id/services", getRepairServices);
+router.post("/:id/services", addRepairServices);
 
 // POST reject repair
-router.post("/reject/:id", authRequired, rejectRepair);
+router.post("/reject/:id", rejectRepair);
 
 // POST confirm repair
-router.post("/confirm/:id", authRequired, confirmRepair);
+router.post("/confirm/:id", confirmRepair);
 
 // POST create assessment for a repair request
-router.post("/:id/assessment", authRequired, saveAssessment);
+router.post("/:id/assessment", saveAssessment);
 
 // GET assessment by repair request ID
-router.get("/:id/assessment", authRequired, getAssessmentByRequest);
+router.get("/:id/assessment", getAssessmentByRequest);
 
 // Create quotation
-router.post("/:id/quotation", authRequired, createQuotation);
+router.post("/:id/quotation", createQuotation);
 
 // Update quotation
-router.put("/:id/quotation", authRequired, updateQuotation);
+router.put("/:id/quotation", updateQuotation);
+router.put("/:id/quotation/completion", setQuotationCompletionDate);
 
 // Get quotation by request
-router.get("/:id/quotation", authRequired, getQuotationByRequest);
+router.get("/:id/quotation", getQuotationByRequest);
 
 // GET all repairs for a shop
-router.get("/:shopId", authRequired, getRepairsForShop);
+router.get("/:shopId", getRepairsForShop);
 
 // POST start repair
-router.post("/:id/start", authRequired, startRepair);
+router.post("/:id/start", startRepair);
 
 // GET repair in progress (business)
-router.get("/:id/in-progress", authRequired, getRepairInProgress);
+router.get("/:id/in-progress", getRepairInProgress);
 
-router.post("/:id/complete", authRequired, markRepairCompleted);
+router.post("/:id/complete", markRepairCompleted);
 
 // View completed repair (invoice)
-router.get("/:id/completed", authRequired, getCompletedRepair);
+router.get("/:id/completed", getCompletedRepair);
 
 
 export default router;

@@ -24,11 +24,12 @@ const DECISION_STYLES = {
 };
 
 function DecisionBadge({ decision }) {
-  const [bg, fg] = DECISION_STYLES[decision] ?? ["bg-gray-200", "text-gray-700"];
+  const normalizedDecision = String(decision ?? "").toLowerCase();
+  const [bg, fg] = DECISION_STYLES[normalizedDecision] ?? ["bg-gray-200", "text-gray-700"];
   return (
     <View className={`rounded-full px-2.5 py-1 ${bg}`}>
       <Text className={`text-xs font-semibold capitalize ${fg}`}>
-        {String(decision ?? "unknown").replace(/_/g, " ")}
+        {normalizedDecision || "unknown"}
       </Text>
     </View>
   );
@@ -46,7 +47,9 @@ export default function BusinessRepairs() {
 
   const filtered = useMemo(() => {
     const list = data ?? [];
-    return filter === "all" ? list : list.filter((r) => r.decisionStatus === filter);
+    return filter === "all"
+      ? list
+      : list.filter((repair) => String(repair.decisionStatus ?? "").toLowerCase() === filter);
   }, [data, filter]);
 
   if (shopLoading) {

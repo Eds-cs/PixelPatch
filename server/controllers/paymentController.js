@@ -1,6 +1,7 @@
 // server/controllers/paymentController.js
 import axios from "axios";
 import db from "../config/db.js";
+import { isValidDateOnly } from "../utils/dateValidation.js";
 
 const XENDIT_INVOICE_URL = "https://api.xendit.co/v2/invoices";
 
@@ -57,8 +58,10 @@ export const generatePaymentLink = (req, res) => {
         sr.client_id,
         sr.shop_id,
         sr.decision,
+        sr.client_approved,
         rq.id AS quotation_id,
-        rq.status AS quotation_status
+        rq.status AS quotation_status,
+        rq.estimated_completion_time
       FROM service_requests sr
       JOIN request_quotations rq
         ON rq.request_id = sr.id
@@ -91,10 +94,20 @@ export const generatePaymentLink = (req, res) => {
         });
       }
 
+      if (Number(data.client_approved) !== 1) {
+        return res.status(400).json({ message: "The client must approve the quotation before payment" });
+      }
+
       if (data.quotation_status !== "PENDING") {
         console.log("❌ Quotation not PENDING:", data.quotation_status);
         return res.status(400).json({
           message: "Quotation is not payable"
+        });
+      }
+
+      if (!isValidDateOnly(data.estimated_completion_time)) {
+        return res.status(400).json({
+          message: "The quotation needs an estimated completion date before payment"
         });
       }
 
@@ -238,7 +251,7 @@ export const generatePaymentLink = (req, res) => {
                             const xenditRes = await axios.post(
                             XENDIT_INVOICE_URL,
                             {
-                                external_id: `repair_request_${request_id}_${Date.now()}`,
+                                external_id: `repair_request_${request_id}_${paymentId}_${Date.now()}`,
                                 amount,
                                 description: `Repair payment for request #${request_id}`,
                                 success_redirect_url: process.env.XENDIT_SUCCESS_URL,
@@ -274,33 +287,20 @@ export const generatePaymentLink = (req, res) => {
                           }
                         );
                       } catch (apiErr) {
-                            console.error("❌ Xendit API error FULL DUMP");
-
-                            console.error("Name:", apiErr.name);
-                            console.error("Message:", apiErr.message);
-                            console.error("Code:", apiErr.code);
-
-                            if (apiErr.response) {
-                                console.error("Status:", apiErr.response.status);
-                                console.error("Headers:", apiErr.response.headers);
-                                console.error("Data:", apiErr.response.data);
-                            }
-
-                            if (apiErr.request) {
-                                console.error("Request sent but no response received");
-                            }
-
-                            console.error("Xendit request failed:", {
-                                url: apiErr.config?.url,
-                                method: apiErr.config?.method,
-                              status: apiErr.response?.status
+                            const gatewayCode = String(
+                              apiErr.response?.data?.error_code || apiErr.code || "XENDIT_ERROR"
+                            ).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "XENDIT_ERROR";
+                            console.error("Xendit invoice request failed:", {
+                              status: apiErr.response?.status,
+                              code: gatewayCode,
                             });
 
                             db.query(
                               `UPDATE payments SET status = 'FAILED' WHERE id = ?`,
                               [paymentId],
-                              () => res.status(500).json({
-                                message: "Xendit invoice creation failed"
+                              (updateError) => res.status(502).json({
+                                message: `Xendit invoice creation failed (${gatewayCode})`,
+                                ...(updateError ? { code: "PAYMENT_STATE_UPDATE_FAILED" } : {}),
                               })
                             );
                         }

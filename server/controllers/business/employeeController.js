@@ -113,6 +113,9 @@ export const assignEmployeeToRequest = (req, res) => {
     // 1️⃣ Verify request belongs to shop
     db.query(
       `SELECT id
+              , decision
+              , payment_status
+              , status
        FROM service_requests
        WHERE id = ? AND shop_id = ?`,
       [id, shopId],
@@ -124,6 +127,16 @@ export const assignEmployeeToRequest = (req, res) => {
 
         if (requestRows.length === 0) {
           return res.status(403).json({ message: "Unauthorized request" });
+        }
+
+        if (
+          requestRows[0].decision !== "ACCEPTED" ||
+          requestRows[0].payment_status !== "PAID" ||
+          ["IN_PROGRESS", "COMPLETED"].includes(requestRows[0].status)
+        ) {
+          return res.status(409).json({
+            message: "A technician can be assigned after the client has paid and before repair starts"
+          });
         }
 
         // 2️⃣ Verify employee belongs to shop

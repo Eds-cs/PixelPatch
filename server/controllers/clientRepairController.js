@@ -1,4 +1,5 @@
 import db from "../config/db.js";
+import { isValidDateOnly } from "../utils/dateValidation.js";
 
 /* ======================================================
    GET CLIENT REPAIRS (LIST)
@@ -102,6 +103,7 @@ export const getClientRepairById = async (req, res) => {
         id,
         estimated_cost,
         estimated_completion_time,
+        DATE_FORMAT(estimated_completion_time, '%Y-%m-%d') AS estimated_completion_date,
         status
       FROM request_quotations
       WHERE request_id = ?
@@ -111,6 +113,7 @@ export const getClientRepairById = async (req, res) => {
 
     let services = [];
     let parts = [];
+    let warranty = null;
 
     if (quotation) {
       /* Quoted services */
@@ -140,6 +143,15 @@ export const getClientRepairById = async (req, res) => {
         `,
         [quotation.id]
       );
+
+      const [[warrantyRow]] = await db.promise().query(
+        `SELECT is_warranty_covered, warranty_value, warranty_unit
+         FROM request_quotation_warranties
+         WHERE request_quotation_id = ?
+         LIMIT 1`,
+        [quotation.id]
+      );
+      warranty = warrantyRow ?? null;
     }
 
     /* ======================================================
@@ -252,6 +264,7 @@ export const getClientRepairById = async (req, res) => {
               ...quotation,
               services,
               parts,
+              warranty,
             }
           : null,
 
@@ -281,10 +294,14 @@ export const approveQuotation = async (req, res) => {
     const [[repair]] = await db.promise().query(
       `
       SELECT
-        decision,
-        client_approved
-      FROM service_requests
-      WHERE id = ? AND client_id = ?
+        sr.decision,
+        sr.client_approved,
+        rq.id AS quotation_id,
+        rq.status AS quotation_status,
+        DATE_FORMAT(rq.estimated_completion_time, '%Y-%m-%d') AS estimated_completion_date
+      FROM service_requests sr
+      LEFT JOIN request_quotations rq ON rq.request_id = sr.id
+      WHERE sr.id = ? AND sr.client_id = ?
       `,
       [requestId, clientId]
     );
@@ -300,13 +317,23 @@ export const approveQuotation = async (req, res) => {
       });
     }
 
+    if (
+      !repair.quotation_id ||
+      repair.quotation_status !== "PENDING" ||
+      !isValidDateOnly(repair.estimated_completion_date)
+    ) {
+      return res.status(409).json({
+        message: "The quotation needs a valid estimated completion date before it can be approved",
+      });
+    }
+
     await db.promise().query(
       `
       UPDATE service_requests
       SET client_approved = 1, updated_at = NOW()
-      WHERE id = ?
+      WHERE id = ? AND client_id = ?
       `,
-      [requestId]
+      [requestId, clientId]
     );
 
     return res.json({ message: "Quotation approved" });

@@ -1,5 +1,6 @@
 // server/controllers/repairController.js
 import db from "../config/db.js";
+import { isValidDateOnly } from "../utils/dateValidation.js";
 
 /* ----------------------------------------------------------
    Helper: Promise wrapper for db.query()
@@ -17,12 +18,7 @@ function query(sql, params = []) {
    Resolve shop_id for logged-in business
 ----------------------------------------------------------- */
 async function resolveShopIdForUser(req) {
-
-  // If shopId explicitly in params, allow it
-  if (req.params.shopId) {
-    console.log("🔧 Using shopId from params:", req.params.shopId);
-    return req.params.shopId;
-  }
+  if (req.shopId) return req.shopId;
 
   const userId = req.user?.id;
   if (!userId) {
@@ -141,6 +137,9 @@ export const getRepairById = async (req, res) => {
           sr.rejection_reason, 
           sr.delivery_method,
           sr.preferred_date,
+          sr.is_received,
+          sr.received_at,
+          sr.received_method,
           sr.payment_status,
 
           p.payment_link,
@@ -193,6 +192,9 @@ export const getRepairById = async (req, res) => {
       rejectionReason: row.rejection_reason,
       deliveryMethod: row.delivery_method,
       preferredDate: row.preferred_date,
+      isReceived: Boolean(row.is_received),
+      receivedAt: row.received_at,
+      receivedMethod: row.received_method,
       pickupAddress: row.pickupAddress || null,
       services: row.services ? row.services.split(", ") : [],
       paymentStatus: row.payment_status,
@@ -210,6 +212,94 @@ export const getRepairById = async (req, res) => {
       success: false,
       message: "Server error",
     });
+  }
+};
+
+export const getRepairServices = async (req, res) => {
+  try {
+    const rows = await query(
+      `SELECT ss.id, ss.name, ss.category, ss.base_price,
+              EXISTS (
+                SELECT 1 FROM service_request_items selected_item
+                WHERE selected_item.request_id = sr.id AND selected_item.service_id = ss.id
+              ) AS selected
+       FROM service_requests sr
+       JOIN shop_services ss ON ss.shop_id = sr.shop_id
+       WHERE sr.id = ? AND sr.shop_id = ?
+       ORDER BY ss.name ASC`,
+      [req.params.id, req.shopId]
+    );
+
+    return res.json({ services: rows });
+  } catch (error) {
+    console.error("Error fetching repair services:", error);
+    return res.status(500).json({ message: "Unable to fetch repair services" });
+  }
+};
+
+export const addRepairServices = async (req, res) => {
+  const rawServiceIds = req.body?.serviceIds;
+  if (!Array.isArray(rawServiceIds) || rawServiceIds.length === 0) {
+    return res.status(400).json({ message: "Choose at least one service" });
+  }
+
+  const serviceIds = [...new Set(rawServiceIds.map(Number))];
+  if (serviceIds.some((serviceId) => !Number.isSafeInteger(serviceId) || serviceId <= 0)) {
+    return res.status(400).json({ message: "Invalid service selection" });
+  }
+
+  try {
+    const [requestRows, availableRows, existingRows] = await Promise.all([
+      query(
+        `SELECT sr.decision, sr.status, sr.payment_status, rq.id AS quotation_id
+         FROM service_requests sr
+         LEFT JOIN request_quotations rq ON rq.request_id = sr.id
+         WHERE sr.id = ? AND sr.shop_id = ?
+         LIMIT 1`,
+        [req.params.id, req.shopId]
+      ),
+      query(
+        `SELECT id FROM shop_services WHERE shop_id = ? AND id IN (${serviceIds.map(() => "?").join(",")})`,
+        [req.shopId, ...serviceIds]
+      ),
+      query(
+        `SELECT service_id FROM service_request_items WHERE request_id = ?`,
+        [req.params.id]
+      ),
+    ]);
+
+    if (requestRows.length === 0) {
+      return res.status(404).json({ message: "Repair not found" });
+    }
+
+    const repair = requestRows[0];
+    if (
+      repair.decision !== "ACCEPTED" ||
+      repair.status === "IN_PROGRESS" ||
+      repair.status === "COMPLETED" ||
+      repair.payment_status !== "PENDING" ||
+      repair.quotation_id
+    ) {
+      return res.status(409).json({ message: "Services can only be added before quotation and payment" });
+    }
+
+    if (availableRows.length !== serviceIds.length) {
+      return res.status(400).json({ message: "One or more services are not offered by this shop" });
+    }
+
+    const existingIds = new Set(existingRows.map((row) => Number(row.service_id)));
+    const newIds = serviceIds.filter((serviceId) => !existingIds.has(serviceId));
+    for (const serviceId of newIds) {
+      await query(
+        `INSERT INTO service_request_items (request_id, service_id) VALUES (?, ?)`,
+        [req.params.id, serviceId]
+      );
+    }
+
+    return res.json({ success: true, added: newIds.length });
+  } catch (error) {
+    console.error("Error adding repair services:", error);
+    return res.status(500).json({ message: "Unable to add services to this repair" });
   }
 };
 
@@ -531,6 +621,10 @@ export const createQuotation = async (req, res) => {
       warranty
     } = req.body;
 
+    if (!isValidDateOnly(estimatedCompletionTime)) {
+      return res.status(400).json({ message: "A valid estimated completion date is required" });
+    }
+
     const shopId = await resolveShopIdForUser(req);
     if (!shopId) {
       return res.status(404).json({
@@ -680,11 +774,13 @@ export const getQuotationByRequest = async (req, res) => {
     const { id } = req.params;
 
     const quotationRows = await query(
-      `SELECT *
-       FROM request_quotations
-       WHERE request_id = ?
+      `SELECT rq.*,
+              DATE_FORMAT(rq.estimated_completion_time, '%Y-%m-%d') AS estimated_completion_date
+       FROM request_quotations rq
+       JOIN service_requests sr ON sr.id = rq.request_id
+       WHERE rq.request_id = ? AND sr.shop_id = ?
        LIMIT 1`,
-      [id]
+      [id, req.shopId]
     );
 
     if (quotationRows.length === 0) {
@@ -738,6 +834,10 @@ export const updateQuotation = async (req, res) => {
       parts = [],
       warranty
     } = req.body;
+
+    if (!isValidDateOnly(estimatedCompletionTime)) {
+      return res.status(400).json({ message: "A valid estimated completion date is required" });
+    }
 
     const shopId = await resolveShopIdForUser(req);
     if (!shopId) {
@@ -866,6 +966,44 @@ export const updateQuotation = async (req, res) => {
   }
 };
 
+export const setQuotationCompletionDate = async (req, res) => {
+  const completionDate = req.body?.estimatedCompletionTime;
+  if (!isValidDateOnly(completionDate)) {
+    return res.status(400).json({ message: "A valid estimated completion date is required" });
+  }
+
+  try {
+    const shopId = await resolveShopIdForUser(req);
+    if (!shopId) {
+      return res.status(404).json({ success: false, message: "Shop not found" });
+    }
+
+    const result = await query(
+      `UPDATE request_quotations rq
+       JOIN service_requests sr ON sr.id = rq.request_id
+       SET rq.estimated_completion_time = ?, rq.updated_at = NOW()
+       WHERE rq.request_id = ?
+         AND sr.shop_id = ?
+         AND sr.decision = 'ACCEPTED'
+         AND sr.payment_status = 'PENDING'
+         AND rq.status = 'PENDING'`,
+      [completionDate, req.params.id, shopId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Pending quotation not found or no longer editable",
+      });
+    }
+
+    return res.json({ success: true, message: "Estimated completion date saved" });
+  } catch (error) {
+    console.error("Error saving quotation completion date:", error);
+    return res.status(500).json({ message: "Unable to save completion date" });
+  }
+};
+
 
 export const  startRepair = (req, res) => {
   const user = req.user;
@@ -892,11 +1030,11 @@ export const  startRepair = (req, res) => {
       decision,
       payment_status
     FROM service_requests
-    WHERE id = ?
+    WHERE id = ? AND shop_id = ?
     LIMIT 1
   `;
 
-  db.query(requestSql, [requestId], (err, rows) => {
+  db.query(requestSql, [requestId, req.shopId], (err, rows) => {
     if (err) {
       console.error("❌ Request lookup error:", err);
       return res.status(500).json({ message: "DB error" });
@@ -948,10 +1086,10 @@ export const  startRepair = (req, res) => {
       const startSql = `
         UPDATE service_requests
         SET status = 'IN_PROGRESS', updated_at = NOW()
-        WHERE id = ?
+        WHERE id = ? AND shop_id = ?
       `;
 
-      db.query(startSql, [requestId], (err3) => {
+      db.query(startSql, [requestId, req.shopId], (err3) => {
         if (err3) {
           console.error("❌ Failed to start repair:", err3);
           return res.status(500).json({ message: "DB error" });
@@ -1058,14 +1196,14 @@ export const getRepairInProgress = (req, res) => {
     LEFT JOIN request_quotation_parts rqp
       ON rqp.request_quotation_id = rq.id
 
-    WHERE sr.id = ?
+    WHERE sr.id = ? AND sr.shop_id = ?
       AND sr.status IN ('IN_PROGRESS', 'COMPLETED')
 
     GROUP BY sr.id
     LIMIT 1
   `;
 
-  db.query(sql, [requestId], (err, rows) => {
+  db.query(sql, [requestId, req.shopId], (err, rows) => {
     if (err) {
       console.error("❌ getRepairInProgress error:", err);
       return res.status(500).json({ message: "DB error" });
@@ -1175,11 +1313,11 @@ export const markRepairCompleted = (req, res) => {
   const sql = `
     SELECT status, payment_status
     FROM service_requests
-    WHERE id = ?
+    WHERE id = ? AND shop_id = ?
     LIMIT 1
   `;
 
-  db.query(sql, [requestId], (err, rows) => {
+  db.query(sql, [requestId, req.shopId], (err, rows) => {
     if (err) {
       console.error(err);
       return res.status(500).json({ message: "DB error" });
@@ -1206,10 +1344,10 @@ export const markRepairCompleted = (req, res) => {
     const updateSql = `
       UPDATE service_requests
       SET status = 'COMPLETED', updated_at = NOW(), completed_at = NOW()
-      WHERE id = ?
+      WHERE id = ? AND shop_id = ?
     `;
 
-    db.query(updateSql, [requestId], (err2) => {
+    db.query(updateSql, [requestId, req.shopId], (err2) => {
       if (err2) {
         console.error(err2);
         return res.status(500).json({ message: "Update failed" });
@@ -1263,12 +1401,12 @@ export const getCompletedRepair = (req, res) => {
     JOIN request_quotations rq ON rq.request_id = sr.id
     JOIN payments p ON p.request_id = sr.id
 
-    WHERE sr.id = ?
+    WHERE sr.id = ? AND sr.shop_id = ?
       AND sr.status = 'COMPLETED'
     LIMIT 1
   `;
 
-  db.query(requestSql, [requestId], (err, rows) => {
+  db.query(requestSql, [requestId, req.shopId], (err, rows) => {
     if (err) {
       console.error("❌ Completed repair lookup error:", err);
       return res.status(500).json({ message: "DB error" });
