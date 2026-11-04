@@ -1,6 +1,40 @@
 import { Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 const PESO = "₱";
+
+const REPAIR_STATUS_STYLES = {
+  pending: ["bg-amber-100", "text-amber-800", "Pending"],
+  review: ["bg-blue-100", "text-blue-800", "In review"],
+  accepted: ["bg-blue-100", "text-blue-800", "Accepted"],
+  in_progress: ["bg-indigo-100", "text-indigo-800", "In progress"],
+  completed: ["bg-emerald-100", "text-emerald-800", "Completed"],
+  rejected: ["bg-red-100", "text-red-800", "Rejected"],
+};
+
+export function getRepairDisplayStatus(status, decision) {
+  const normalizedDecision = String(decision ?? "").toLowerCase();
+  if (normalizedDecision === "rejected") return "rejected";
+
+  const normalizedStatus = String(status ?? "").toLowerCase();
+  if (normalizedStatus && normalizedStatus !== "unknown") return normalizedStatus;
+  return normalizedDecision || "unknown";
+}
+
+export function RepairStatusBadge({ status, decision }) {
+  const key = getRepairDisplayStatus(status, decision);
+  const [background, foreground, label] = REPAIR_STATUS_STYLES[key] ?? [
+    "bg-gray-200",
+    "text-gray-700",
+    key.replace(/_/g, " "),
+  ];
+
+  return (
+    <View className={`rounded-full px-2.5 py-1 ${background}`}>
+      <Text className={`text-xs font-semibold ${foreground}`}>{label}</Text>
+    </View>
+  );
+}
 
 export function isValidRepairDate(value) {
   if (typeof value !== "string" || !/^(\d{4})-(\d{2})-(\d{2})$/.test(value)) return false;
@@ -113,5 +147,39 @@ export function QuotationSection({ quotation }) {
         <RepairRow label="Total" value={formatPeso(total)} />
       </View>
     </RepairSection>
+  );
+}
+
+export function getRepairLocation({ deliveryMethod, serviceAddress, shopAddress }) {
+  const method = String(deliveryMethod ?? "").toUpperCase();
+  if (method === "DROPOFF") {
+    return {
+      label: "Drop-off location",
+      value: shopAddress || "Shop address unavailable",
+    };
+  }
+  if (method === "ONSITE") {
+    return {
+      label: "Service address",
+      value: serviceAddress || "Address not available",
+    };
+  }
+  return {
+    label: "Pickup address",
+    value: serviceAddress || "Address not available",
+  };
+}
+
+export function RepairRejectionNotice({ reason }) {
+  return (
+    <View className="mb-4 flex-row rounded-xl border border-red-200 bg-red-50 p-4">
+      <Ionicons name="close-circle" size={22} color="#b91c1c" />
+      <View className="ml-3 flex-1">
+        <Text className="text-base font-bold text-red-800">Repair request rejected</Text>
+        <Text className="mt-1 text-sm text-red-700">
+          {reason || "The shop is unable to accept this repair request."}
+        </Text>
+      </View>
+    </View>
   );
 }

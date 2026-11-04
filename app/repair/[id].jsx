@@ -20,8 +20,10 @@ import Modal from "../../components/Modal";
 import {
   AssessmentSection,
   formatRepairDate,
+  getRepairLocation,
   isValidRepairDate,
   QuotationSection,
+  RepairRejectionNotice,
   RepairRow as Row,
   RepairSection as Section,
 } from "../../components/RepairSummary";
@@ -133,9 +135,15 @@ export default function RepairDetail() {
 
   const repair = data?.repair ?? {};
   const quotation = repair.quotation;
+  const isRejected = String(repair.decision ?? "").toUpperCase() === "REJECTED";
+  const repairLocation = getRepairLocation({
+    deliveryMethod: repair.delivery_method,
+    serviceAddress: repair.service_address,
+    shopAddress: repair.shop_address,
+  });
   const hasCompletionDate = isValidRepairDate(quotation?.estimated_completion_date);
-  const canApprove = quotation && hasCompletionDate && !repair.client_approved;
-  const canCancel = ["pending", "accepted"].includes(repair.status);
+  const canApprove = !isRejected && quotation && hasCompletionDate && !repair.client_approved;
+  const canCancel = !isRejected && ["pending", "accepted"].includes(String(repair.status ?? "").toLowerCase());
   // The server rejects reviews unless status is exactly "COMPLETED"; compare
   // case-insensitively since other endpoints report status in lower case.
   const canReview = String(repair.status ?? "").toUpperCase() === "COMPLETED";
@@ -150,6 +158,8 @@ export default function RepairDetail() {
     >
       <Stack.Screen options={{ title: `Repair #${id}`, headerShown: true }} />
 
+      {isRejected ? <RepairRejectionNotice reason={repair.rejection_reason} /> : null}
+
       <Section title="Device">
         <Row label="Device" value={repair.device_name} />
         <Row label="Brand" value={repair.device_brand} />
@@ -158,9 +168,15 @@ export default function RepairDetail() {
 
       <Section title="Request">
         <Row label="Shop" value={repair.shop_name} />
-        <Row label="Status" value={String(repair.status ?? "").replace(/_/g, " ")} />
-        <Row label="Decision" value={repair.decision} />
-        <Row label="Payment" value={String(repair.payment_status ?? "").replace(/_/g, " ")} />
+        <Row
+          label="Status"
+          value={isRejected ? "REJECTED" : String(repair.status ?? "").replace(/_/g, " ")}
+        />
+        <Row label="Decision" value={isRejected ? "REJECTED" : repair.decision} />
+        <Row label={repairLocation.label} value={repairLocation.value} />
+        {!isRejected ? (
+          <Row label="Payment" value={String(repair.payment_status ?? "").replace(/_/g, " ")} />
+        ) : null}
         <Row label="Preferred date" value={formatRepairDate(repair.preferred_date)} />
         <Row label="Requested" value={formatRepairDate(repair.created_at)} />
         <Row label="Device received" value={repair.is_received ? "Received" : "Not yet received"} />
@@ -172,20 +188,20 @@ export default function RepairDetail() {
         ) : null}
       </Section>
 
-      {repair.assessment ? (
+      {!isRejected && repair.assessment ? (
         <AssessmentSection assessment={repair.assessment} />
       ) : null}
 
-      {quotation ? (
+      {!isRejected && quotation ? (
         <QuotationSection quotation={quotation} />
       ) : null}
-      {quotation && !hasCompletionDate ? (
+      {!isRejected && quotation && !hasCompletionDate ? (
         <Text className="mb-3 text-sm text-amber-700">
           The shop needs to add an estimated completion date before you can approve this quotation.
         </Text>
       ) : null}
 
-      {repair.assigned_employee ? (
+      {!isRejected && repair.assigned_employee ? (
         <Section title="Technician">
           <Row
             label="Assigned to"
@@ -196,7 +212,7 @@ export default function RepairDetail() {
         </Section>
       ) : null}
 
-      {repair.payment ? (
+      {repair.payment && !isRejected ? (
         <Section title="Payment">
           <Row
             label="Amount"
@@ -220,7 +236,7 @@ export default function RepairDetail() {
         </Section>
       ) : null}
 
-      {repair.review ? (
+      {!isRejected && repair.review ? (
         <Section title="Your review">
           <View className="flex-row">
             {[1, 2, 3, 4, 5].map((n) => (
@@ -239,7 +255,7 @@ export default function RepairDetail() {
           ) : null}
           <Row label="Reviewed at" value={formatRepairDate(repair.review.created_at)} />
         </Section>
-      ) : canReview ? (
+      ) : !isRejected && canReview ? (
         <Button title="Leave a review" className="mb-3" onPress={() => setReviewOpen(true)} />
       ) : null}
 

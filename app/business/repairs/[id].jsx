@@ -23,8 +23,10 @@ import Modal from "../../../components/Modal";
 import {
   AssessmentSection,
   formatRepairDate,
+  getRepairLocation,
   isValidRepairDate,
   QuotationSection,
+  RepairRejectionNotice,
   RepairRow as Row,
   RepairSection as Section,
 } from "../../../components/RepairSummary";
@@ -162,7 +164,13 @@ export default function BusinessRepairDetail() {
   const status = repair.status;
   const normalizedDecision = String(decision ?? "").toUpperCase();
   const normalizedStatus = String(status ?? "").toUpperCase();
+  const isRejected = normalizedDecision === "REJECTED";
   const paymentStatus = String(repair.paymentStatus ?? "").toUpperCase();
+  const repairLocation = getRepairLocation({
+    deliveryMethod: repair.deliveryMethod,
+    serviceAddress: repair.pickupAddress,
+    shopAddress: repair.shopAddress,
+  });
 
   const canDecide = normalizedDecision === "PENDING";
   const canAssess = normalizedDecision === "ACCEPTED" && !assessment;
@@ -200,14 +208,16 @@ export default function BusinessRepairDetail() {
     >
       <Stack.Screen options={{ title: `Repair #${id}` }} />
 
+      {isRejected ? <RepairRejectionNotice reason={repair.rejectionReason} /> : null}
+
       <Section title="Request">
         <Row label="Client" value={repair.client} />
         <Row label="Device" value={repair.deviceType} />
         <Row label="Decision" value={normalizedDecision} />
-        <Row label="Status" value={normalizedStatus.replace(/_/g, " ")} />
+        <Row label="Status" value={isRejected ? "REJECTED" : normalizedStatus.replace(/_/g, " ")} />
         <Row label="Delivery" value={repair.deliveryMethod} />
+        <Row label={repairLocation.label} value={repairLocation.value} />
         <Row label="Preferred date" value={formatRepairDate(repair.preferredDate)} />
-        <Row label="Pickup address" value={repair.pickupAddress} />
         <Row label="Device received" value={repair.isReceived ? "Received" : "Not yet received"} />
         {repair.isReceived ? (
           <>
@@ -215,10 +225,12 @@ export default function BusinessRepairDetail() {
             <Row label="Received at" value={formatRepairDate(repair.receivedAt)} />
           </>
         ) : null}
-        <Row label="Payment" value={String(repair.paymentStatus ?? "").replace(/_/g, " ")} />
+        {!isRejected ? (
+          <Row label="Payment" value={String(repair.paymentStatus ?? "").replace(/_/g, " ")} />
+        ) : null}
       </Section>
 
-      {canDecide || canAssess || canQuote || canSetCompletionDate || canStart || canComplete ? (
+      {!isRejected && (canDecide || canAssess || canQuote || canSetCompletionDate || canStart || canComplete) ? (
         <Section title="Available actions">
           {canDecide ? (
             <View className="flex-row gap-3">
@@ -332,21 +344,15 @@ export default function BusinessRepairDetail() {
         </Section>
       ) : null}
 
-      {repair.rejectionReason ? (
-        <Section title="Rejection reason">
-          <Text className="text-sm text-red-700">{repair.rejectionReason}</Text>
-        </Section>
-      ) : null}
-
-      {assessment ? (
+      {!isRejected && assessment ? (
         <AssessmentSection assessment={assessment} />
       ) : null}
 
-      {quotation ? (
+      {!isRejected && quotation ? (
         <QuotationSection quotation={quotation} />
       ) : null}
 
-      <Section title="Assigned technician">
+      {!isRejected ? <Section title="Assigned technician">
           {assignment ? (
             <View className="flex-row items-center justify-between">
               <Text className="flex-1 pr-3 text-sm text-gray-900">
@@ -381,9 +387,9 @@ export default function BusinessRepairDetail() {
               Assign a technician after the client has paid.
             </Text>
           ) : null}
-      </Section>
+      </Section> : null}
 
-      {quotation ? (
+      {!isRejected && quotation ? (
         <Section title="Payment">
           <Row label="Status" value={String(repair.paymentStatus ?? "").replace(/_/g, " ")} />
           <Row label="Checkout link" value={repair.paymentLink ? "Generated" : "Not generated"} />

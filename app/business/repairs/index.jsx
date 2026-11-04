@@ -5,35 +5,18 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import AsyncList from "../../../components/AsyncList";
+import { formatRepairDate, RepairStatusBadge } from "../../../components/RepairSummary";
 import { useFetch } from "../../../lib/useFetch";
 import { useShop } from "../../../lib/shop";
 import { COLORS } from "../../../constants/theme";
 
-// service_requests.decision
+// Decision filter; the card's primary badge shows the shared repair status.
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
   { key: "accepted", label: "Accepted" },
   { key: "rejected", label: "Rejected" },
 ];
-
-const DECISION_STYLES = {
-  pending: ["bg-amber-100", "text-amber-800"],
-  accepted: ["bg-blue-100", "text-blue-800"],
-  rejected: ["bg-red-100", "text-red-800"],
-};
-
-function DecisionBadge({ decision }) {
-  const normalizedDecision = String(decision ?? "").toLowerCase();
-  const [bg, fg] = DECISION_STYLES[normalizedDecision] ?? ["bg-gray-200", "text-gray-700"];
-  return (
-    <View className={`rounded-full px-2.5 py-1 ${bg}`}>
-      <Text className={`text-xs font-semibold capitalize ${fg}`}>
-        {normalizedDecision || "unknown"}
-      </Text>
-    </View>
-  );
-}
 
 export default function BusinessRepairs() {
   const router = useRouter();
@@ -110,7 +93,7 @@ export default function BusinessRepairs() {
               <Text className="text-base font-semibold text-gray-900">{item.deviceType}</Text>
               <Text className="mt-0.5 text-sm text-gray-500">{item.client}</Text>
             </View>
-            <DecisionBadge decision={item.decisionStatus} />
+            <RepairStatusBadge status={item.status} decision={item.decisionStatus} />
           </View>
 
           {item.issue_description ? (
@@ -123,7 +106,19 @@ export default function BusinessRepairs() {
             <Text className="mt-2 text-xs text-blue-600">{item.services}</Text>
           ) : null}
 
-          <Text className="mt-2 text-xs text-gray-400">Request #{item.id}</Text>
+          <View className="mt-2 flex-row items-center justify-between">
+            <Text className="text-xs text-gray-400">
+              Request #{item.id} · {formatRepairDate(item.created_at)}
+            </Text>
+            {String(item.decisionStatus ?? "").toUpperCase() !== "REJECTED" && item.payment_status ? (
+              <Text className="text-xs font-medium text-gray-600">
+                Payment: {String(item.payment_status).replace(/_/g, " ").toLowerCase()}
+              </Text>
+            ) : null}
+          </View>
+          <Text className="mt-1 text-xs text-gray-500">
+            Decision: {String(item.decisionStatus ?? "unknown").toLowerCase()}
+          </Text>
         </Pressable>
       )}
     />

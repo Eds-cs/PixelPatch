@@ -64,10 +64,16 @@ export const getClientRepairById = async (req, res) => {
         d.serial_number,
         d.model_number,
 
-        s.name   AS shop_name
+        s.name   AS shop_name,
+        CONCAT_WS(', ', client_address.street, client_address.barangay,
+          client_address.city, client_address.province, client_address.postal_code) AS service_address,
+        CONCAT_WS(', ', shop_address.street, shop_address.barangay,
+          shop_address.city, shop_address.province, shop_address.postal_code) AS shop_address
       FROM service_requests sr
       JOIN devices d ON d.id = sr.device_id
       JOIN shops s   ON s.id = sr.shop_id
+      LEFT JOIN addresses client_address ON client_address.id = sr.pickup_address_id
+      LEFT JOIN addresses shop_address ON shop_address.id = s.address_id
       WHERE sr.id = ? AND sr.client_id = ?
       `,
       [requestId, clientId]

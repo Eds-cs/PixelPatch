@@ -3,29 +3,8 @@ import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import AsyncList from "../../components/AsyncList";
+import { formatRepairDate, RepairStatusBadge } from "../../components/RepairSummary";
 import { useFetch } from "../../lib/useFetch";
-
-// service_requests.status values, mapped to badge colours.
-const STATUS_STYLES = {
-  pending: "bg-amber-100 text-amber-800",
-  accepted: "bg-blue-100 text-blue-800",
-  in_progress: "bg-indigo-100 text-indigo-800",
-  done: "bg-emerald-100 text-emerald-800",
-  completed: "bg-emerald-100 text-emerald-800",
-  rejected: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-200 text-gray-700",
-};
-
-function StatusBadge({ status }) {
-  const label = String(status ?? "unknown").replace(/_/g, " ");
-  const style = STATUS_STYLES[status] ?? "bg-gray-200 text-gray-700";
-  const [bg, fg] = style.split(" ");
-  return (
-    <View className={`rounded-full px-2.5 py-1 ${bg}`}>
-      <Text className={`text-xs font-semibold capitalize ${fg}`}>{label}</Text>
-    </View>
-  );
-}
 
 export default function Repairs() {
   const router = useRouter();
@@ -56,17 +35,24 @@ export default function Repairs() {
               </Text>
               <Text className="mt-0.5 text-sm text-gray-500">{item.shop_name}</Text>
             </View>
-            <StatusBadge status={item.status} />
+            <RepairStatusBadge status={item.status} decision={item.decision} />
           </View>
 
           <View className="mt-3 flex-row items-center justify-between">
-            <Text className="text-xs text-gray-500">#{item.id} · {item.created_at}</Text>
-            {item.payment_status ? (
-              <Text className="text-xs font-medium capitalize text-gray-600">
-                {String(item.payment_status).replace(/_/g, " ")}
+            <Text className="text-xs text-gray-500">
+              #{item.id} · {formatRepairDate(item.created_at)}
+            </Text>
+            {String(item.decision ?? "").toUpperCase() !== "REJECTED" && item.payment_status ? (
+              <Text className="text-xs font-medium text-gray-600">
+                Payment: {String(item.payment_status).replace(/_/g, " ").toLowerCase()}
               </Text>
             ) : null}
           </View>
+          {item.decision ? (
+            <Text className="mt-2 text-xs text-gray-500">
+              Decision: {String(item.decision).toLowerCase()}
+            </Text>
+          ) : null}
         </Pressable>
       )}
     />

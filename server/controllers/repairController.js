@@ -73,6 +73,9 @@ export const getRepairsForShop = async (req, res) => {
         d.name AS deviceType,
         sr.issue_description,
         sr.decision AS decisionStatus,
+        sr.status,
+        sr.payment_status,
+        DATE_FORMAT(sr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
 
         /* Fallback for old MySQL: return comma-separated service list */
         COALESCE(GROUP_CONCAT(ss.name SEPARATOR ', '), '') AS services
@@ -85,7 +88,8 @@ export const getRepairsForShop = async (req, res) => {
       LEFT JOIN shop_services ss ON ss.id = sri.service_id
 
       WHERE sr.shop_id = ?
-      GROUP BY sr.id, u.first_name, d.name, sr.issue_description, sr.decision
+      GROUP BY sr.id, u.first_name, d.name, sr.issue_description,
+        sr.decision, sr.status, sr.payment_status, sr.created_at
       ORDER BY sr.id DESC
     `;
 
@@ -151,8 +155,17 @@ export const getRepairById = async (req, res) => {
             a.street,
             a.barangay,
             a.city,
-            a.province
+            a.province,
+            a.postal_code
           ) AS pickupAddress,
+
+          CONCAT_WS(', ',
+            shop_address.street,
+            shop_address.barangay,
+            shop_address.city,
+            shop_address.province,
+            shop_address.postal_code
+          ) AS shopAddress,
 
           COALESCE(GROUP_CONCAT(DISTINCT ss.name SEPARATOR ', '), '') AS services
 
@@ -162,6 +175,8 @@ export const getRepairById = async (req, res) => {
         LEFT JOIN users u ON sr.client_id = u.id
         LEFT JOIN devices d ON sr.device_id = d.id
         LEFT JOIN addresses a ON sr.pickup_address_id = a.id
+        LEFT JOIN shops s ON sr.shop_id = s.id
+        LEFT JOIN addresses shop_address ON s.address_id = shop_address.id
         LEFT JOIN service_request_items sri ON sri.request_id = sr.id
         LEFT JOIN shop_services ss ON ss.id = sri.service_id
 
@@ -196,6 +211,7 @@ export const getRepairById = async (req, res) => {
       receivedAt: row.received_at,
       receivedMethod: row.received_method,
       pickupAddress: row.pickupAddress || null,
+      shopAddress: row.shopAddress || null,
       services: row.services ? row.services.split(", ") : [],
       paymentStatus: row.payment_status,
       paymentLink: row.payment_link || null,
@@ -207,7 +223,7 @@ export const getRepairById = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Error fetching repair:", error);
+    console.error("Error fetching repair:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
