@@ -126,7 +126,7 @@ export const getMessages = (req, res) => {
     JOIN chats c ON c.id = m.chat_id
     JOIN shops s ON s.id = c.shop_id
     WHERE m.chat_id = ? AND (c.client_id = ? OR s.user_id = ?)
-    ORDER BY m.timestamp ASC
+    ORDER BY m.timestamp ASC, m.id ASC
   `;
 
   db.query(sql, [id, userId, userId], (err, rows) => {
@@ -149,6 +149,10 @@ export const getUserConversations = (req, res) => {
       c.client_id,
       c.shop_id,
       c.last_message_at,
+      latest.id AS last_message_id,
+      latest.message_text AS last_message_text,
+      latest.sender_id AS last_sender_id,
+      latest.timestamp AS last_message_timestamp,
 
       client.first_name AS client_first,
       client.last_name AS client_last,
@@ -159,9 +163,14 @@ export const getUserConversations = (req, res) => {
     FROM chats c
     JOIN users client ON client.id = c.client_id
     JOIN shops s ON s.id = c.shop_id
+    LEFT JOIN chat_messages latest ON latest.id = (
+      SELECT recent.id FROM chat_messages recent
+      WHERE recent.chat_id = c.id
+      ORDER BY recent.timestamp DESC, recent.id DESC LIMIT 1
+    )
 
     WHERE c.client_id = ? OR s.user_id = ?
-    ORDER BY c.last_message_at DESC
+    ORDER BY COALESCE(latest.timestamp, c.started_at) DESC, c.id DESC
   `;
 
   db.query(sql, [userId, userId], (err, rows) => {

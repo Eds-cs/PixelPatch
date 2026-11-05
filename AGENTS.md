@@ -268,6 +268,42 @@ The application currently primarily targets a light interface.
 
 Do not perform project-wide visual redesigns unless explicitly requested.
 
+## Required responsive UI behavior
+
+Every new or modified UI must adapt to mobile, tablet, and desktop widths on
+Android, iOS, and web. This applies to screens, navigation, forms, lists, cards,
+dialogs, and shared components. Responsiveness is part of completing a UI task.
+
+Use the shared `lib/useResponsive.js` hook and its `BREAKPOINTS` values for
+conditional layouts:
+
+* Mobile: below 768 logical pixels.
+* Tablet: 768 through 1199 logical pixels.
+* Desktop: 1200 logical pixels and above.
+
+Choose the layout from the available window width, not just `Platform.OS` or a
+device name. Web can be phone-sized, and native apps can run on tablets. Keep
+layouts responsive to resizing, split-screen use, and orientation changes through
+`useWindowDimensions` or the shared hook; do not cache the initial screen width.
+Use platform checks separately where native and web behavior genuinely differ.
+
+Preserve the responsive navigation patterns: a collapsible mobile menu, compact
+tablet navigation, and full desktop navigation. The native business drawer uses
+a mobile overlay and a persistent sidebar on larger screens. Keep destinations,
+active states, profile actions, and sign-out reachable at every size.
+
+Use flexible sizing, wrapping, appropriate content-width limits, safe-area
+insets, and scrollable content. Avoid fixed dimensions that clip controls,
+overlap content, or cause unintended horizontal scrolling. Keep touch controls
+usable and allow text to scale without hiding essential actions. Reuse shared
+`Screen` and `AsyncList` behavior where appropriate.
+
+Before considering a UI change complete, check representative mobile, tablet,
+and desktop widths, including breakpoint boundaries and portrait/landscape
+layouts. Verify navigation, readable content, reachable actions, and scrolling.
+Lint and a successful build do not prove visual responsiveness; report any
+device or visual checks that could not be performed.
+
 ---
 
 # 7. Platform compatibility

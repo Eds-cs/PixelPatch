@@ -3,13 +3,12 @@
 // behaviour at all. Here the same nav is a permanent sidebar on wide screens
 // and a slide-over drawer on phones.
 import { Drawer } from "expo-router/drawer";
-import { Platform, useWindowDimensions } from "react-native";
+import { Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS } from "../../constants/theme";
 import { ShopProvider } from "../../lib/shop";
-
-const PERMANENT_SIDEBAR_WIDTH = 1024;
+import { useResponsive } from "../../lib/useResponsive";
 
 const SCREENS = [
   { name: "dashboard", title: "Dashboard", icon: "grid" },
@@ -25,15 +24,16 @@ const SCREENS = [
 const HIDDEN = ["repairs/[id]", "disputes/[id]"];
 
 export default function BusinessLayout() {
-  const { width } = useWindowDimensions();
-  const permanent = Platform.OS !== "web" && width >= PERMANENT_SIDEBAR_WIDTH;
+  const { isMobile, isTablet } = useResponsive();
+  const permanent = Platform.OS !== "web" && !isMobile;
 
   return (
     <ShopProvider>
     <Drawer
       screenOptions={{
         drawerType: permanent ? "permanent" : "front",
-        drawerStyle: { width: 256, backgroundColor: COLORS.surface },
+        drawerStyle: { width: isTablet ? 224 : 256, backgroundColor: COLORS.surface },
+        swipeEnabled: Platform.OS !== "web" && !permanent,
         drawerActiveTintColor: COLORS.primary,
         drawerInactiveTintColor: COLORS.textMuted,
         drawerActiveBackgroundColor: "#eff6ff",

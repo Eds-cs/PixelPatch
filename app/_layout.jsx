@@ -39,7 +39,10 @@ function RootNavigator() {
   }, [isLoggedIn, loading, isBusiness, segments, router]);
 
   const inPublicGroup = segments[0] === PUBLIC_GROUP;
-  const showWebHeader = Platform.OS === "web" && isLoggedIn && !inPublicGroup;
+  // Native business routes use their drawer header; every other screen shares
+  // the responsive navigation, including native client screens.
+  const nativeBusinessDrawer = Platform.OS !== "web" && segments[0] === "business";
+  const showWebHeader = isLoggedIn && !inPublicGroup && !nativeBusinessDrawer;
 
   return (
     <View style={{ flex: 1 }}>
@@ -54,9 +57,8 @@ function RootNavigator() {
 
       {loading ? (
         <View
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, { pointerEvents: "auto" }]}
           className="items-center justify-center bg-white"
-          pointerEvents="auto"
         >
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>

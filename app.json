@@ -3,7 +3,7 @@
     "name": "PixelPatch",
     "slug": "pixelpatch-dev",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "pixelpatch",
     "userInterfaceStyle": "light",

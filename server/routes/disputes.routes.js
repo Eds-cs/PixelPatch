@@ -2,6 +2,7 @@ import express from "express";
 import db from "../config/db.js";
 import { authRequired } from "../middleware/authMiddleware.js";
 import { canOpenDispute } from "../utils/canOpenDispute.js";
+import { businessShopRequired } from "../middleware/businessShopMiddleware.js";
 
 const router = express.Router();
 
@@ -60,19 +61,9 @@ router.post("/", authRequired, async (req, res) => {
 /* =======================================================
    SHOP — LIST ALL DISPUTES (CENTRAL DASHBOARD)
 ======================================================= */
-router.get("/shop", authRequired, async (req, res) => {
+router.get("/shop", authRequired, businessShopRequired, async (req, res) => {
   try {
-    // find shop owned by this user
-    const [shops] = await db.promise().query(
-      `SELECT id FROM shops WHERE user_id = ?`,
-      [req.user.id]
-    );
-
-    if (shops.length === 0) {
-      return res.status(403).json({ message: "Not a shop owner" });
-    }
-
-    const shopId = shops[0].id;
+    const shopId = req.shopId;
 
     const [disputes] = await db.promise().query(
       `
@@ -83,6 +74,11 @@ router.get("/shop", authRequired, async (req, res) => {
         d.shop_response,
         d.created_at,
         d.resolved_at,
+        device.name AS device_name,
+        sr.issue_description,
+        (SELECT content FROM dispute_edits
+         WHERE dispute_id = d.id AND edited_by = 'CLIENT'
+         ORDER BY created_at ASC, id ASC LIMIT 1) AS complaint,
         sr.id AS request_id,
         sr.device_id,
         sr.completed_at,
@@ -91,6 +87,7 @@ router.get("/shop", authRequired, async (req, res) => {
       FROM disputes d
       JOIN service_requests sr ON sr.id = d.request_id
       JOIN users u ON u.id = d.client_id
+      LEFT JOIN devices device ON device.id = sr.device_id
       WHERE d.shop_id = ?
       ORDER BY d.created_at DESC
       `,
@@ -253,30 +250,32 @@ router.get("/:id", authRequired, async (req, res) => {
         d.shop_response,
         d.created_at,
         d.resolved_at,
+        device.name AS device_name,
+        sr.issue_description,
         sr.id AS request_id,
         u.first_name,
         u.last_name
       FROM disputes d
       JOIN service_requests sr ON sr.id = d.request_id
       JOIN users u ON u.id = d.client_id
-      WHERE d.id = ?
+      JOIN shops s ON s.id = d.shop_id
+      LEFT JOIN devices device ON device.id = sr.device_id
+      WHERE d.id = ? AND (d.client_id = ? OR s.user_id = ?)
       `,
-      [disputeId]
+      [disputeId, req.user.id, req.user.id]
     );
 
     if (!dispute) {
       return res.status(404).json({ message: "Dispute not found" });
     }
 
-    // 2️⃣ Get the client's original message
-    const [[clientMessage]] = await db.promise().query(
+    // Load the response history, keeping the original client-message field.
+    const [history] = await db.promise().query(
       `
-      SELECT content, created_at
+      SELECT id, edited_by, content, created_at
       FROM dispute_edits
       WHERE dispute_id = ?
-        AND edited_by = 'CLIENT'
-      ORDER BY created_at ASC
-      LIMIT 1
+      ORDER BY created_at ASC, id ASC
       `,
       [disputeId]
     );
@@ -285,7 +284,8 @@ router.get("/:id", authRequired, async (req, res) => {
     return res.json({
       dispute: {
         ...dispute,
-        client_message: clientMessage || null,
+        client_message: history.find((entry) => entry.edited_by === "CLIENT") || null,
+        history,
       },
     });
   } catch (err) {

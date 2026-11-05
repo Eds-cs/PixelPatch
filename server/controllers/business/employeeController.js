@@ -68,7 +68,10 @@ export const getEmployees = (req, res) => {
       `SELECT id,
               first_name,
               last_name,
-              role
+              role,
+              phone,
+              email,
+              DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
        FROM shop_employees
        WHERE shop_id = ?
          AND is_active = 1

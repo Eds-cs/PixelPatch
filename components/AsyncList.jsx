@@ -1,5 +1,6 @@
 import { ActivityIndicator, FlatList, RefreshControl, Text, View } from "react-native";
 import { COLORS } from "../constants/theme";
+import { useResponsive } from "../lib/useResponsive";
 
 // Shared loading / error / empty handling so each screen stays about its data.
 export default function AsyncList({
@@ -13,6 +14,9 @@ export default function AsyncList({
   emptyText = "Nothing here yet.",
   ListHeaderComponent,
 }) {
+  const { horizontalPadding, isDesktop, isTablet } = useResponsive();
+  const maxWidth = isDesktop ? 1200 : isTablet ? 960 : 720;
+
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50">
@@ -38,7 +42,7 @@ export default function AsyncList({
   return (
     <FlatList
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 16, flexGrow: 1, maxWidth: 720, width: "100%", alignSelf: "center" }}
+      contentContainerStyle={{ paddingVertical: 16, paddingHorizontal: horizontalPadding, flexGrow: 1, maxWidth, width: "100%", alignSelf: "center" }}
       data={data ?? []}
       renderItem={renderItem}
       keyExtractor={keyExtractor}

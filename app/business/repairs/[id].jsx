@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../../../components/Button";
 import TextField from "../../../components/TextField";
@@ -27,12 +28,14 @@ import {
   isValidRepairDate,
   QuotationSection,
   RepairRejectionNotice,
+  RepairStatusBadge,
   RepairRow as Row,
   RepairSection as Section,
 } from "../../../components/RepairSummary";
 import api from "../../../lib/api";
 import { generatePaymentLink } from "../../../lib/payments";
 import { COLORS } from "../../../constants/theme";
+import { useResponsive } from "../../../lib/useResponsive";
 
 const PESO = "₱";
 const TODAY_DATE = toDateString(new Date());
@@ -46,6 +49,7 @@ const notify = (title, message) => {
 export default function BusinessRepairDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { isMobile, isDesktop, horizontalPadding } = useResponsive();
 
   const [repair, setRepair] = useState(null);
   const [assessment, setAssessment] = useState(null);
@@ -197,7 +201,7 @@ export default function BusinessRepairDetail() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 16, maxWidth: 960, width: "100%", alignSelf: "center" }}
+      contentContainerStyle={{ paddingVertical: 16, paddingHorizontal: horizontalPadding, maxWidth: isDesktop ? 1200 : 960, width: "100%", alignSelf: "center" }}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -208,32 +212,45 @@ export default function BusinessRepairDetail() {
     >
       <Stack.Screen options={{ title: `Repair #${id}` }} />
 
+      <Pressable onPress={() => router.push("/business/repairs")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
+        <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
+        <Text className="text-sm font-semibold text-blue-600">All repair requests</Text>
+      </Pressable>
+
+      <View className="mb-4 rounded-2xl border border-gray-200 bg-white p-5">
+        <View className="flex-row flex-wrap items-start justify-between gap-3">
+          <View className="flex-1">
+            <Text className="text-xs font-semibold uppercase tracking-wide text-gray-400">Repair #{id}</Text>
+            <Text accessibilityRole="header" className="mt-2 text-2xl font-bold text-gray-900">{repair.deviceType || "Repair details"}</Text>
+            <Text className="mt-1 text-sm text-gray-500">{repair.client || "Client"}</Text>
+          </View>
+          <RepairStatusBadge status={status} decision={decision} />
+        </View>
+        {!isRejected ? (
+          <View className="mt-4 rounded-xl bg-blue-50 p-3">
+            <Text className="text-xs font-bold uppercase text-blue-700">Next step</Text>
+            <Text className="mt-1 text-sm leading-5 text-blue-800">
+              {canDecide ? "Review the request and choose whether to accept it."
+                : normalizedStatus === "COMPLETED" ? "Repair completed. You can review the repair information below."
+                : canComplete ? "Finish the repair, then mark it completed when the work is done."
+                : canAssess ? "Assess the device before preparing a quotation."
+                : canQuote ? "Prepare the quotation for the client to review."
+                : canSetCompletionDate ? "Add an estimated completion date to the quotation."
+                : canStart ? "The technician is assigned and payment is confirmed. Start the repair when ready."
+                : canManageAssignment ? "Assign a technician in the section below."
+                : "Check quotation approval and payment before proceeding to assignment and repair work."}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
       {isRejected ? <RepairRejectionNotice reason={repair.rejectionReason} /> : null}
 
-      <Section title="Request">
-        <Row label="Client" value={repair.client} />
-        <Row label="Device" value={repair.deviceType} />
-        <Row label="Decision" value={normalizedDecision} />
-        <Row label="Status" value={isRejected ? "REJECTED" : normalizedStatus.replace(/_/g, " ")} />
-        <Row label="Delivery" value={repair.deliveryMethod} />
-        <Row label={repairLocation.label} value={repairLocation.value} />
-        <Row label="Preferred date" value={formatRepairDate(repair.preferredDate)} />
-        <Row label="Device received" value={repair.isReceived ? "Received" : "Not yet received"} />
-        {repair.isReceived ? (
-          <>
-            <Row label="Received via" value={repair.receivedMethod} />
-            <Row label="Received at" value={formatRepairDate(repair.receivedAt)} />
-          </>
-        ) : null}
-        {!isRejected ? (
-          <Row label="Payment" value={String(repair.paymentStatus ?? "").replace(/_/g, " ")} />
-        ) : null}
-      </Section>
 
       {!isRejected && (canDecide || canAssess || canQuote || canSetCompletionDate || canStart || canComplete) ? (
         <Section title="Available actions">
           {canDecide ? (
-            <View className="flex-row gap-3">
+            <View className={isMobile ? "gap-3" : "flex-row gap-3"}>
               <View className="flex-1">
                 <Button
                   title="Accept request"
@@ -281,6 +298,26 @@ export default function BusinessRepairDetail() {
           ) : null}
         </Section>
       ) : null}
+
+      <Section title="Request">
+        <Row label="Client" value={repair.client} />
+        <Row label="Device" value={repair.deviceType} />
+        <Row label="Decision" value={normalizedDecision} />
+        <Row label="Status" value={isRejected ? "REJECTED" : normalizedStatus.replace(/_/g, " ")} />
+        <Row label="Delivery" value={repair.deliveryMethod} />
+        <Row label={repairLocation.label} value={repairLocation.value} />
+        <Row label="Preferred date" value={formatRepairDate(repair.preferredDate)} />
+        <Row label="Device received" value={repair.isReceived ? "Received" : "Not yet received"} />
+        {repair.isReceived ? (
+          <>
+            <Row label="Received via" value={repair.receivedMethod} />
+            <Row label="Received at" value={formatRepairDate(repair.receivedAt)} />
+          </>
+        ) : null}
+        {!isRejected ? (
+          <Row label="Payment" value={String(repair.paymentStatus ?? "").replace(/_/g, " ")} />
+        ) : null}
+      </Section>
 
       <Section title="Reported issue">
         <Text className="text-sm text-gray-700">
