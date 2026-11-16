@@ -1,7 +1,7 @@
 // server/controllers/xenditWebhookController.js
 import { timingSafeEqual } from "node:crypto";
 import axios from "axios";
-import db from "../config/db.js";
+import { withTransaction } from "../utils/transaction.js";
 
 const XENDIT_INVOICE_URL = "https://api.xendit.co/v2/invoices";
 let settlementQueue = Promise.resolve();
@@ -89,8 +89,10 @@ export const handleXenditWebhook = async (req, res) => {
       return res.status(400).json({ message: "Invoice details do not match callback" });
     }
 
-    const result = await serializeSettlement(async () => {
-      const [payments] = await db.promise().query(
+    // One transaction for the whole settlement: payments, payment_details,
+    // service_requests and request_quotations all move together or not at all.
+    const result = await serializeSettlement(() => withTransaction(async (conn) => {
+      const [payments] = await conn.query(
         `SELECT p.id, p.amount, p.status, p.shop_id, sr.shop_id AS request_shop_id
          FROM payments p
          JOIN service_requests sr ON sr.id = p.request_id
@@ -110,7 +112,7 @@ export const handleXenditWebhook = async (req, res) => {
       }
 
       const payment = candidates[0];
-      const [details] = await db.promise().query(
+      const [details] = await conn.query(
         `SELECT transaction_ref FROM payment_details WHERE payment_id = ?`,
         [payment.id]
       );
@@ -119,7 +121,7 @@ export const handleXenditWebhook = async (req, res) => {
         return { status: 409, message: "Payment is associated with a different invoice" };
       }
 
-      await db.promise().query(
+      await conn.query(
         `UPDATE payments
          SET status = 'PAID', paid_at = COALESCE(paid_at, NOW())
          WHERE id = ? AND request_id = ? AND shop_id = ? AND amount = ?`,
@@ -127,7 +129,7 @@ export const handleXenditWebhook = async (req, res) => {
       );
 
       if (details.length === 0) {
-        await db.promise().query(
+        await conn.query(
           `INSERT INTO payment_details
             (payment_id, type, status, method, transaction_ref)
            VALUES (?, 'FULL', 'PAID', ?, ?)`,
@@ -135,15 +137,24 @@ export const handleXenditWebhook = async (req, res) => {
         );
       }
 
-      await db.promise().query(
+      await conn.query(
         `UPDATE service_requests
          SET payment_status = 'PAID', client_approved = 1
          WHERE id = ? AND shop_id = ? AND decision = 'ACCEPTED'`,
         [requestId, payment.request_shop_id]
       );
 
+      // Close the quotation that was paid. Only a PENDING quotation moves, so a
+      // CANCELLED one is never revived.
+      await conn.query(
+        `UPDATE request_quotations
+         SET status = 'PAID', updated_at = NOW()
+         WHERE request_id = ? AND status = 'PENDING'`,
+        [requestId]
+      );
+
       return { status: 200, message: "Payment recorded" };
-    });
+    }));
 
     if (result.status !== 200) {
       return res.status(result.status).json({ message: result.message });

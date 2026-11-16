@@ -1,4 +1,5 @@
 import db from "../config/db.js";
+import { withTransaction } from "../utils/transaction.js";
 
 /* ============================================
    PROMISE WRAPPER (CRITICAL)
@@ -101,30 +102,30 @@ export const deleteConversation = async (req, res) => {
     const userId = req.user.id;
     const { id } = req.params;
 
-    await query("START TRANSACTION");
+    const found = await withTransaction(async (conn) => {
+      // Make sure user owns this conversation
+      const [[conv]] = await conn.query(
+        "SELECT id FROM ai_conversations WHERE id = ? AND user_id = ?",
+        [id, userId]
+      );
 
-    // Make sure user owns this conversation
-    const [conv] = await query(
-      "SELECT id FROM ai_conversations WHERE id = ? AND user_id = ?",
-      [id, userId]
-    );
+      if (!conv) return false;
 
-    if (!conv) {
-      await query("ROLLBACK");
+      // Delete messages first (FK safety)
+      await conn.query("DELETE FROM ai_messages WHERE conversation_id = ?", [id]);
+
+      // Delete conversation
+      await conn.query("DELETE FROM ai_conversations WHERE id = ?", [id]);
+
+      return true;
+    });
+
+    if (!found) {
       return res.status(404).json({ error: "Conversation not found" });
     }
 
-    // Delete messages first (FK safety)
-    await query("DELETE FROM ai_messages WHERE conversation_id = ?", [id]);
-
-    // Delete conversation
-    await query("DELETE FROM ai_conversations WHERE id = ?", [id]);
-
-    await query("COMMIT");
-
     res.json({ success: true });
   } catch (err) {
-    await query("ROLLBACK");
     console.error("Delete conversation error:", err);
     res.status(500).json({ error: "Failed to delete conversation" });
   }
@@ -145,9 +146,11 @@ export const renameConversation = async (req, res) => {
 
     const cleanTitle = newTitle.trim().slice(0, 50);
 
+    // updated_at is left alone: it means "last message", which the history
+    // list sorts and dates by. A rename is not conversation activity.
     const result = await query(
       `UPDATE ai_conversations
-       SET title = ?, updated_at = NOW()
+       SET title = ?
        WHERE id = ? AND user_id = ?`,
       [cleanTitle, id, userId]
     );

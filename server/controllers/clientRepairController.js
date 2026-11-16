@@ -1,4 +1,5 @@
 import db from "../config/db.js";
+import { withTransaction } from "../utils/transaction.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
 
 /* ======================================================
@@ -316,8 +317,8 @@ export const approveQuotation = async (req, res) => {
       return res.status(404).json({ message: "Repair not found" });
     }
 
-    // Only block if already approved
-    if (repair.decision !== "ACCEPTED" || repair.client_approved === 1) {
+    // client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
+    if (repair.decision !== "ACCEPTED" || repair.client_approved !== null) {
       return res.status(400).json({
         message: "Quotation cannot be approved at this stage",
       });
@@ -333,14 +334,19 @@ export const approveQuotation = async (req, res) => {
       });
     }
 
-    await db.promise().query(
+    // Conditional update so a concurrent cancel cannot be overwritten.
+    const [result] = await db.promise().query(
       `
       UPDATE service_requests
       SET client_approved = 1, updated_at = NOW()
-      WHERE id = ? AND client_id = ?
+      WHERE id = ? AND client_id = ? AND client_approved IS NULL
       `,
       [requestId, clientId]
     );
+
+    if (result.affectedRows === 0) {
+      return res.status(409).json({ message: "Quotation cannot be approved at this stage" });
+    }
 
     return res.json({ message: "Quotation approved" });
   } catch (err) {
@@ -361,7 +367,10 @@ export const cancelRequest = async (req, res) => {
     const [[repair]] = await db.promise().query(
       `
       SELECT
-        client_approved
+        client_approved,
+        decision,
+        status,
+        payment_status
       FROM service_requests
       WHERE id = ? AND client_id = ?
       `,
@@ -372,6 +381,11 @@ export const cancelRequest = async (req, res) => {
       return res.status(404).json({ message: "Repair not found" });
     }
 
+    // client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
+    if (repair.client_approved === 0) {
+      return res.status(400).json({ message: "This request is already cancelled" });
+    }
+
     // Approved repairs cannot be cancelled
     if (repair.client_approved === 1) {
       return res.status(400).json({
@@ -379,14 +393,49 @@ export const cancelRequest = async (req, res) => {
       });
     }
 
-    await db.promise().query(
-      `
-      UPDATE service_requests
-      SET client_approved = 0, updated_at = NOW()
-      WHERE id = ?
-      `,
-      [requestId]
-    );
+    if (
+      repair.decision === "REJECTED" ||
+      repair.payment_status === "PAID" ||
+      !["PENDING", "REVIEW"].includes(repair.status)
+    ) {
+      return res.status(400).json({ message: "This request can no longer be cancelled" });
+    }
+
+    // Both updates commit together: the request is never cancelled while its
+    // quotation stays open.
+    const cancelled = await withTransaction(async (conn) => {
+      // Conditional update so a concurrent approval cannot be overwritten.
+      const [result] = await conn.query(
+        `
+        UPDATE service_requests
+        SET client_approved = 0, updated_at = NOW()
+        WHERE id = ? AND client_id = ?
+          AND client_approved IS NULL
+          AND decision <> 'REJECTED'
+          AND payment_status <> 'PAID'
+          AND status IN ('PENDING', 'REVIEW')
+        `,
+        [requestId, clientId]
+      );
+
+      if (result.affectedRows === 0) return false;
+
+      // Close an outstanding quotation so it cannot be approved or paid.
+      await conn.query(
+        `
+        UPDATE request_quotations
+        SET status = 'CANCELLED', updated_at = NOW()
+        WHERE request_id = ? AND status = 'PENDING'
+        `,
+        [requestId]
+      );
+
+      return true;
+    });
+
+    if (!cancelled) {
+      return res.status(409).json({ message: "This request can no longer be cancelled" });
+    }
 
     return res.json({ message: "Repair request cancelled" });
   } catch (err) {

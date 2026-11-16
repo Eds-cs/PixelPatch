@@ -18,7 +18,8 @@ import {
   startRepair,
   getRepairInProgress,
   markRepairCompleted,
-  getCompletedRepair 
+  getCompletedRepair,
+  markDeviceReceived
 } from "../controllers/repairController.js";
 console.log("🔥 repairRoutes loaded");
 const router = express.Router();
@@ -61,6 +62,9 @@ router.post("/:id/start", startRepair);
 router.get("/:id/in-progress", getRepairInProgress);
 
 router.post("/:id/complete", markRepairCompleted);
+
+// Record that the shop has the device (pickup / drop-off only)
+router.post("/:id/received", markDeviceReceived);
 
 // View completed repair (invoice)
 router.get("/:id/completed", getCompletedRepair);

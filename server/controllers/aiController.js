@@ -1,6 +1,7 @@
 // controllers/aiController.js
 import OpenAI from "openai";
 import db from "../config/db.js";
+import { withTransaction } from "../utils/transaction.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -76,43 +77,31 @@ export const analyzeIssue = async (req, res) => {
       return res.status(400).json({ error: "Message required" });
     }
 
-    // 🔒 BEGIN TRANSACTION
-    await query("START TRANSACTION");
-
     /* --------------------------------------------------
-       1️⃣ RESOLVE / CREATE CONVERSATION
+       1️⃣ LOAD CONTEXT (reads only, no transaction yet)
     -------------------------------------------------- */
-    let conversationId = conversation_id;
+    let conversationId = conversation_id || null;
+    let dbMessages = [];
 
-    if (!conversationId) {
-      const result = await query(
-        `INSERT INTO ai_conversations
-        (user_id, title, ai_confidence, created_at, updated_at)
-        VALUES (?, 'New Chat', 0, NOW(), NOW())`,
-        [userId]
+    if (conversationId) {
+      // Only the owner may continue a conversation.
+      const [owned] = await query(
+        `SELECT id FROM ai_conversations WHERE id = ? AND user_id = ?`,
+        [conversationId, userId]
       );
 
-      conversationId = result.insertId;
+      if (!owned) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
 
-      // After insert, set default title like "Chat #ID"
-      await query(
-        `UPDATE ai_conversations
-        SET title = CONCAT('Chat #', ?)
-        WHERE id = ?`,
-        [conversationId, conversationId]
+      dbMessages = await query(
+        `SELECT sender, message_text
+         FROM ai_messages
+         WHERE conversation_id = ?
+         ORDER BY timestamp ASC`,
+        [conversationId]
       );
     }
-
-    /* --------------------------------------------------
-       2️⃣ LOAD FULL CONTEXT FROM DB
-    -------------------------------------------------- */
-    const dbMessages = await query(
-      `SELECT sender, message_text
-       FROM ai_messages
-       WHERE conversation_id = ?
-       ORDER BY timestamp ASC`,
-      [conversationId]
-    );
 
     const history = dbMessages.map(m => ({
       sender: m.sender,
@@ -122,16 +111,10 @@ export const analyzeIssue = async (req, res) => {
     history.push({ sender: "user", text });
 
     /* --------------------------------------------------
-       3️⃣ STORE USER MESSAGE
-    -------------------------------------------------- */
-    await query(
-      `INSERT INTO ai_messages (conversation_id, sender, message_text, timestamp)
-       VALUES (?, 'user', ?, NOW())`,
-      [conversationId, text]
-    );
-
-    /* --------------------------------------------------
-       4️⃣ CALL OPENAI
+       2️⃣ CALL OPENAI
+       Done before any write and outside any transaction, so no pooled
+       connection or row lock is held for the length of the round trip.
+       If this fails nothing has been written.
     -------------------------------------------------- */
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -155,14 +138,8 @@ export const analyzeIssue = async (req, res) => {
 
     const aiReply = completion.choices?.[0]?.message?.content || "";
 
-    await query(
-      `INSERT INTO ai_messages (conversation_id, sender, message_text, timestamp)
-       VALUES (?, 'ai', ?, NOW())`,
-      [conversationId, aiReply]
-    );
-
     /* --------------------------------------------------
-       5️⃣ SHOULD WE RECOMMEND SHOPS?
+       3️⃣ SHOULD WE RECOMMEND SHOPS?
     -------------------------------------------------- */
     const recentUsers = history.filter(h => h.sender === "user").slice(-4);
     const combinedText = recentUsers.map(m => m.text).join(" ");
@@ -183,91 +160,120 @@ export const analyzeIssue = async (req, res) => {
     const shouldRecommend =
       explicitAsk || (problemDetected && assistantHints >= 2);
 
-    if (!shouldRecommend) {
-      await query("COMMIT");
-      return res.json({ conversation_id: conversationId, reply: aiReply, shops: [] });
-    }
-
-    /* --------------------------------------------------
-       6️⃣ PREVENT DUPLICATE RECOMMENDATIONS
-    -------------------------------------------------- */
-    const existingSystem = await query(
-      `SELECT id FROM ai_messages
-       WHERE conversation_id = ?
-       AND message_text LIKE '[SYSTEM] Recommended shops%'`,
-      [conversationId]
-    );
-
-    if (existingSystem.length) {
-      await query("COMMIT");
-      return res.json({ conversation_id: conversationId, reply: aiReply, shops: [] });
-    }
-
-    /* --------------------------------------------------
-       7️⃣ SHOP MATCHING
-    -------------------------------------------------- */
     const serviceCategory = deviceToCategory(combinedText);
     const guessedService = inferServiceName(combinedText);
 
-    let sql = `
-      SELECT s.id, s.name, s.rating_average,
-             a.street, a.barangay, a.province, a.region, a.country
-      FROM shops s
-      JOIN addresses a ON a.id = s.address_id
-      JOIN shop_services ss ON ss.shop_id = s.id
-      WHERE s.is_verified = 1
-    `;
-    const params = [];
-
-    if (serviceCategory) {
-      sql += " AND ss.category = ?";
-      params.push(serviceCategory);
-    } else if (guessedService) {
-      sql += " AND ss.name LIKE ?";
-      params.push(`%${guessedService.split(" ")[0]}%`);
-    }
-
-    sql += " GROUP BY s.id ORDER BY s.rating_average DESC LIMIT 10";
-
-    const rows = await query(sql, params);
-
-    const shops = rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      rating_average: Number(r.rating_average) || 0,
-      address: [r.street,r.barangay,r.province,r.region,r.country]
-        .filter(Boolean)
-        .join(", ")
-    }));
-
     /* --------------------------------------------------
-       8️⃣ SYSTEM MESSAGE + CONFIDENCE UPDATE
+       4️⃣ PERSIST — one transaction for every write
     -------------------------------------------------- */
-    await query(
-      `INSERT INTO ai_messages (conversation_id, sender, message_text, timestamp)
-       VALUES (?, 'ai', '[SYSTEM] Recommended shops', NOW())`,
-      [conversationId]
-    );
+    const outcome = await withTransaction(async (conn) => {
+      if (!conversationId) {
+        const [created] = await conn.query(
+          `INSERT INTO ai_conversations
+          (user_id, title, ai_confidence, created_at, updated_at)
+          VALUES (?, 'New Chat', 0, NOW(), NOW())`,
+          [userId]
+        );
 
-    await query(
-      `UPDATE ai_conversations
-       SET ai_confidence = ?, updated_at = NOW()
-       WHERE id = ?`,
-      [Math.min(1, shops.length / 5), conversationId]
-    );
+        conversationId = created.insertId;
 
-    console.log("🚨 analyzeIssue response shape:", {
-      conversation_id: conversationId,
-      reply: aiReply,
-      shopsCount: shops.length
+        // After insert, set default title like "Chat #ID"
+        await conn.query(
+          `UPDATE ai_conversations
+          SET title = CONCAT('Chat #', ?)
+          WHERE id = ?`,
+          [conversationId, conversationId]
+        );
+      }
+
+      await conn.query(
+        `INSERT INTO ai_messages (conversation_id, sender, message_text, timestamp)
+         VALUES (?, 'user', ?, NOW())`,
+        [conversationId, text]
+      );
+
+      await conn.query(
+        `INSERT INTO ai_messages (conversation_id, sender, message_text, timestamp)
+         VALUES (?, 'ai', ?, NOW())`,
+        [conversationId, aiReply]
+      );
+
+      if (!shouldRecommend) {
+        return { shops: [] };
+      }
+
+      /* ------------------------------------------------
+         PREVENT DUPLICATE RECOMMENDATIONS
+      ------------------------------------------------ */
+      const [existingSystem] = await conn.query(
+        `SELECT id FROM ai_messages
+         WHERE conversation_id = ?
+         AND message_text LIKE '[SYSTEM] Recommended shops%'`,
+        [conversationId]
+      );
+
+      if (existingSystem.length) {
+        return { shops: [] };
+      }
+
+      /* ------------------------------------------------
+         SHOP MATCHING
+      ------------------------------------------------ */
+      let sql = `
+        SELECT s.id, s.name, s.rating_average,
+               a.street, a.barangay, a.province, a.region, a.country
+        FROM shops s
+        JOIN addresses a ON a.id = s.address_id
+        JOIN shop_services ss ON ss.shop_id = s.id
+        WHERE s.is_verified = 1
+          AND ss.review_status = 'APPROVED'
+      `;
+      const params = [];
+
+      if (serviceCategory) {
+        sql += " AND ss.category = ?";
+        params.push(serviceCategory);
+      } else if (guessedService) {
+        sql += " AND ss.name LIKE ?";
+        params.push(`%${guessedService.split(" ")[0]}%`);
+      }
+
+      sql += " GROUP BY s.id ORDER BY s.rating_average DESC LIMIT 10";
+
+      const [rows] = await conn.query(sql, params);
+
+      const shops = rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        rating_average: Number(r.rating_average) || 0,
+        address: [r.street,r.barangay,r.province,r.region,r.country]
+          .filter(Boolean)
+          .join(", ")
+      }));
+
+      /* ------------------------------------------------
+         SYSTEM MESSAGE + CONFIDENCE UPDATE
+      ------------------------------------------------ */
+      await conn.query(
+        `INSERT INTO ai_messages (conversation_id, sender, message_text, timestamp)
+         VALUES (?, 'ai', '[SYSTEM] Recommended shops', NOW())`,
+        [conversationId]
+      );
+
+      await conn.query(
+        `UPDATE ai_conversations
+         SET ai_confidence = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [Math.min(1, shops.length / 5), conversationId]
+      );
+
+      return { shops };
     });
 
-    
-    return res.json({ conversation_id: conversationId, reply: aiReply, shops });
+    return res.json({ conversation_id: conversationId, reply: aiReply, shops: outcome.shops });
 
   } catch (err) {
-    await query("ROLLBACK");
-    console.error("AI ERROR:", err);
+    console.error("AI ERROR:", { code: err.code, status: err.status, message: err.message });
     return res.status(500).json({ error: "AI processing error" });
   }
 };

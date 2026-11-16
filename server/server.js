@@ -44,6 +44,12 @@ import employeeRoutes from "./routes/business/employeeRoutes.js";
 // BUSINESS PAYMENT ROUTES
 import paymentRoutes from "./routes/business/paymentRoutes.js";
 
+// BUSINESS SERVICE CATALOG ROUTES
+import businessServiceRoutes from "./routes/business/serviceRoutes.js";
+
+// ADMIN ROUTES (admin role only)
+import adminRoutes from "./routes/admin.js";
+
 // routes for Xendit Webhooks
 import xenditWebhookRoutes from "./routes/webhooks/xenditWebhookRoutes.js";
 
@@ -101,6 +107,12 @@ app.use("/api/business", businessDashboardRoutes);
 
 // BUSINESS PAYMENT ROUTES
 app.use("/api/business", paymentRoutes);
+
+// BUSINESS SERVICE CATALOG ROUTES
+app.use("/api/business", businessServiceRoutes);
+
+// ADMIN ROUTES
+app.use("/api/admin", adminRoutes);
 
 /* CHAT */
 app.use("/api", chatRoutes);

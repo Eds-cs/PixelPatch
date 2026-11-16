@@ -25,8 +25,10 @@ import {
   AssessmentSection,
   formatRepairDate,
   getRepairLocation,
+  isClientCancelled,
   isValidRepairDate,
   QuotationSection,
+  RepairCancelledNotice,
   RepairRejectionNotice,
   RepairStatusBadge,
   RepairRow as Row,
@@ -169,6 +171,8 @@ export default function BusinessRepairDetail() {
   const normalizedDecision = String(decision ?? "").toUpperCase();
   const normalizedStatus = String(status ?? "").toUpperCase();
   const isRejected = normalizedDecision === "REJECTED";
+  // clientApproved: null = undecided, 1 = approved, 0 = cancelled by the client.
+  const isCancelled = !isRejected && isClientCancelled(repair.clientApproved);
   const paymentStatus = String(repair.paymentStatus ?? "").toUpperCase();
   const repairLocation = getRepairLocation({
     deliveryMethod: repair.deliveryMethod,
@@ -176,15 +180,17 @@ export default function BusinessRepairDetail() {
     shopAddress: repair.shopAddress,
   });
 
-  const canDecide = normalizedDecision === "PENDING";
-  const canAssess = normalizedDecision === "ACCEPTED" && !assessment;
-  const canQuote = normalizedDecision === "ACCEPTED" && Boolean(assessment) && !quotation;
+  const canDecide = !isCancelled && normalizedDecision === "PENDING";
+  const canAssess = !isCancelled && normalizedDecision === "ACCEPTED" && !assessment;
+  const canQuote = !isCancelled && normalizedDecision === "ACCEPTED" && Boolean(assessment) && !quotation;
   const canSetCompletionDate =
+    !isCancelled &&
     normalizedDecision === "ACCEPTED" &&
     Boolean(quotation) &&
     !isValidRepairDate(quotation.estimated_completion_date) &&
     paymentStatus === "PENDING";
   const canAddServices =
+    !isCancelled &&
     normalizedDecision === "ACCEPTED" && !quotation && paymentStatus === "PENDING";
   const canStart =
     normalizedDecision === "ACCEPTED" &&
@@ -193,6 +199,15 @@ export default function BusinessRepairDetail() {
     Boolean(assignment) &&
     !["IN_PROGRESS", "COMPLETED"].includes(normalizedStatus);
   const canComplete = normalizedStatus === "IN_PROGRESS";
+  // Pickup and drop-off bring the device to the shop; on-site repairs don't.
+  // Mirrors the server rule in markDeviceReceived.
+  const deliveryMethod = String(repair.deliveryMethod ?? "").toUpperCase();
+  const canMarkReceived =
+    !isCancelled &&
+    normalizedDecision === "ACCEPTED" &&
+    normalizedStatus !== "COMPLETED" &&
+    ["PICKUP", "DROPOFF"].includes(deliveryMethod) &&
+    !repair.isReceived;
   const canManageAssignment =
     normalizedDecision === "ACCEPTED" &&
     paymentStatus === "PAID" &&
@@ -224,9 +239,9 @@ export default function BusinessRepairDetail() {
             <Text accessibilityRole="header" className="mt-2 text-2xl font-bold text-gray-900">{repair.deviceType || "Repair details"}</Text>
             <Text className="mt-1 text-sm text-gray-500">{repair.client || "Client"}</Text>
           </View>
-          <RepairStatusBadge status={status} decision={decision} />
+          <RepairStatusBadge status={status} decision={decision} clientApproved={repair.clientApproved} />
         </View>
-        {!isRejected ? (
+        {!isRejected && !isCancelled ? (
           <View className="mt-4 rounded-xl bg-blue-50 p-3">
             <Text className="text-xs font-bold uppercase text-blue-700">Next step</Text>
             <Text className="mt-1 text-sm leading-5 text-blue-800">
@@ -245,9 +260,10 @@ export default function BusinessRepairDetail() {
       </View>
 
       {isRejected ? <RepairRejectionNotice reason={repair.rejectionReason} /> : null}
+      {isCancelled ? <RepairCancelledNotice /> : null}
 
 
-      {!isRejected && (canDecide || canAssess || canQuote || canSetCompletionDate || canStart || canComplete) ? (
+      {!isRejected && (canDecide || canAssess || canQuote || canSetCompletionDate || canStart || canComplete || canMarkReceived) ? (
         <Section title="Available actions">
           {canDecide ? (
             <View className={isMobile ? "gap-3" : "flex-row gap-3"}>
@@ -264,6 +280,20 @@ export default function BusinessRepairDetail() {
                 <Button title="Reject request" variant="outline" onPress={() => setRejectOpen(true)} />
               </View>
             </View>
+          ) : null}
+          {canMarkReceived ? (
+            <Button
+              title={deliveryMethod === "PICKUP" ? "Mark device collected" : "Mark device received"}
+              variant="outline"
+              className="mb-2"
+              loading={busy}
+              onPress={() =>
+                act(
+                  () => api.post(`/business/repairs/${id}/received`),
+                  deliveryMethod === "PICKUP" ? "Device marked as collected." : "Device marked as received."
+                )
+              }
+            />
           ) : null}
           {canAssess ? (
             <Button title="Add assessment" className="mb-2" onPress={() => setAssessOpen(true)} />
@@ -303,7 +333,7 @@ export default function BusinessRepairDetail() {
         <Row label="Client" value={repair.client} />
         <Row label="Device" value={repair.deviceType} />
         <Row label="Decision" value={normalizedDecision} />
-        <Row label="Status" value={isRejected ? "REJECTED" : normalizedStatus.replace(/_/g, " ")} />
+        <Row label="Status" value={isRejected ? "REJECTED" : isCancelled ? "CANCELLED BY CLIENT" : normalizedStatus.replace(/_/g, " ")} />
         <Row label="Delivery" value={repair.deliveryMethod} />
         <Row label={repairLocation.label} value={repairLocation.value} />
         <Row label="Preferred date" value={formatRepairDate(repair.preferredDate)} />
@@ -389,7 +419,7 @@ export default function BusinessRepairDetail() {
         <QuotationSection quotation={quotation} />
       ) : null}
 
-      {!isRejected ? <Section title="Assigned technician">
+      {!isRejected && !isCancelled ? <Section title="Assigned technician">
           {assignment ? (
             <View className="flex-row items-center justify-between">
               <Text className="flex-1 pr-3 text-sm text-gray-900">
@@ -435,7 +465,7 @@ export default function BusinessRepairDetail() {
             <Text selectable className="mt-2 text-xs text-blue-600">
               {repair.paymentLink}
             </Text>
-          ) : (
+          ) : isCancelled ? null : (
             <Button
               title="Generate payment link"
               className="mt-4"

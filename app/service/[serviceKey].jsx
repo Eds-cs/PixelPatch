@@ -24,7 +24,7 @@ export default function ServiceDetail() {
   if (error || !data?.service) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50 p-6">
-        <Stack.Screen options={{ title: "Service", headerShown: true }} />
+        <Stack.Screen options={{ title: "Service", headerShown: false }} />
         <Text className="mb-4 text-center text-sm text-gray-500">{error || "Service not found."}</Text>
         <Button title="Try again" onPress={refresh} loading={refreshing} />
         <Button title="Back to services" variant="ghost" className="mt-2" onPress={() => router.push("/services")} />
@@ -49,7 +49,8 @@ export default function ServiceDetail() {
       keyboardDismissMode="on-drag"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={COLORS.primary} />}
     >
-      <Stack.Screen options={{ title: service.name || "Service", headerShown: true }} />
+      {/* The in-page "Back to services" link replaces the stack header. */}
+      <Stack.Screen options={{ title: service.name || "Service", headerShown: false }} />
       <Pressable onPress={() => router.push("/services")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
         <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
         <Text className="text-sm font-semibold text-blue-600">Back to services</Text>

@@ -4,7 +4,11 @@ import {
   createEmployee,
   getEmployees,
   assignEmployeeToRequest,
-  getAssignmentForRequest
+  getAssignmentForRequest,
+  getAllEmployees,
+  updateEmployee,
+  deactivateEmployee,
+  reactivateEmployee
 } from "../../controllers/business/employeeController.js";
 
 import { authRequired } from "../../middleware/authMiddleware.js";
@@ -18,6 +22,10 @@ router.use(authRequired, businessShopRequired);
 ============================== */
 router.post("/employees", createEmployee);
 router.get("/employees", getEmployees);
+router.get("/employees/all", getAllEmployees);
+router.put("/employees/:id", updateEmployee);
+router.post("/employees/:id/deactivate", deactivateEmployee);
+router.post("/employees/:id/reactivate", reactivateEmployee);
 
 /* ==============================
    REQUEST ASSIGNMENT

@@ -13,7 +13,7 @@ import { useGoogleAuth, idTokenFrom, isGoogleConfigured } from "../../lib/google
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, sessionNotice } = useAuth();
 
   const [form, setForm] = useState({ email: "", password: "", rememberMe: false });
   const [errors, setErrors] = useState({ email: "", password: "" });
@@ -94,6 +94,15 @@ export default function Login() {
             <Text className="mb-8 text-base text-gray-500">
               Sign in to book and track your repairs.
             </Text>
+
+            {sessionNotice ? (
+              <Text
+                accessibilityRole="alert"
+                className="mb-6 rounded-lg bg-amber-50 p-3 text-sm text-amber-800"
+              >
+                {sessionNotice}
+              </Text>
+            ) : null}
 
             <TextField
               label="Email"

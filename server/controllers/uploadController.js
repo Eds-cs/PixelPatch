@@ -19,7 +19,10 @@ export const uploadPhoto = (req, res) => {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
-  const fileUrl = `${import.meta.env.VITE_API_URL}/uploads/${req.file.filename}`;
+  // Relative path, like the other upload routes. The frontend resolves it
+  // against the API host with lib/api.js mediaUrl(). (This used to read
+  // import.meta.env.VITE_API_URL, which only exists in the old Vite app.)
+  const fileUrl = `/uploads/${req.file.filename}`;
 
   return res.json({
     message: "Upload successful!",

@@ -34,6 +34,18 @@ export const register = async (req, res) => {
       photo_url
     } = req.body;
 
+    if (
+      !String(first_name ?? "").trim() ||
+      !String(last_name ?? "").trim() ||
+      !String(email ?? "").trim() ||
+      typeof password !== "string" ||
+      password.length < 8
+    ) {
+      return res.status(400).json({
+        error: "First name, last name, email and a password of at least 8 characters are required",
+      });
+    }
+
     const hashedPassword = await hashPassword(password);
 
     const sql = `
@@ -46,17 +58,24 @@ export const register = async (req, res) => {
       sql,
       [
         1,
-        first_name,
-        middle_name,
-        last_name,
-        birthdate,
-        email,
-        phone,
+        String(first_name).trim(),
+        middle_name || null,
+        String(last_name).trim(),
+        // Optional: the app does not collect a birthdate, and phone is optional.
+        birthdate || null,
+        String(email).trim(),
+        String(phone ?? "").trim() || null,
         hashedPassword,
         photo_url || null,
       ],
       (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
+        if (err) {
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({ error: "An account with this email already exists" });
+          }
+          console.error("register error:", { code: err.code });
+          return res.status(500).json({ error: "Registration failed. Please try again." });
+        }
 
         res.json({ 
           message: "Registration successful", 
@@ -72,18 +91,6 @@ export const register = async (req, res) => {
 /* =====================================
                   LOGIN
 ====================================== */
-
-export const generateTestHash = async (req, res) => {
-  try {
-    const bcrypt = await import("bcryptjs");
-    const hash = await bcrypt.hash("password123", 10);
-
-    res.json({ hash });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Hash generation failed" });
-  }
-};
 
 export const login = (req, res) => {
   const { email, password } = req.body;

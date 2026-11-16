@@ -21,8 +21,10 @@ import {
   AssessmentSection,
   formatRepairDate,
   getRepairLocation,
+  isClientCancelled,
   isValidRepairDate,
   QuotationSection,
+  RepairCancelledNotice,
   RepairRejectionNotice,
   RepairStatusBadge,
   RepairRow as Row,
@@ -131,7 +133,7 @@ export default function RepairDetail() {
   if (error || !data?.repair) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50 p-6">
-        <Stack.Screen options={{ title: "Repair", headerShown: true }} />
+        <Stack.Screen options={{ title: "Repair", headerShown: false }} />
         <Text className="mb-4 text-center text-sm text-gray-500">{error || "Repair not found."}</Text>
         <Button title="Try again" onPress={refresh} loading={refreshing} />
         <Button title="Back to my repairs" variant="ghost" className="mt-2" onPress={() => router.push("/repairs")} />
@@ -148,8 +150,16 @@ export default function RepairDetail() {
     shopAddress: repair.shop_address,
   });
   const hasCompletionDate = isValidRepairDate(quotation?.estimated_completion_date);
-  const canApprove = !isRejected && quotation && hasCompletionDate && !repair.client_approved;
-  const canCancel = !isRejected && ["pending", "accepted"].includes(String(repair.status ?? "").toLowerCase());
+  // client_approved: null = undecided, 1 = approved, 0 = cancelled.
+  const isCancelled = isClientCancelled(repair.client_approved);
+  const isUndecided = repair.client_approved === null || repair.client_approved === undefined;
+  const canApprove = !isRejected && isUndecided && quotation && hasCompletionDate;
+  // Mirrors the server: cancellable until approval, while PENDING or REVIEW and unpaid.
+  const canCancel =
+    !isRejected &&
+    isUndecided &&
+    String(repair.payment_status ?? "").toUpperCase() !== "PAID" &&
+    ["PENDING", "REVIEW"].includes(String(repair.status ?? "").toUpperCase());
   // The server rejects reviews unless status is exactly "COMPLETED"; compare
   // case-insensitively since other endpoints report status in lower case.
   const canReview = String(repair.status ?? "").toUpperCase() === "COMPLETED";
@@ -181,7 +191,8 @@ export default function RepairDetail() {
         <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={COLORS.primary} />
       }
     >
-      <Stack.Screen options={{ title: `Repair #${id}`, headerShown: true }} />
+      {/* The in-page "Back to my repairs" link replaces the stack header. */}
+      <Stack.Screen options={{ title: `Repair #${id}`, headerShown: false }} />
 
       <Pressable onPress={() => router.push("/repairs")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
         <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
@@ -194,9 +205,9 @@ export default function RepairDetail() {
             <Text accessibilityRole="header" className="mt-2 text-2xl font-bold text-gray-900">{deviceTitle}</Text>
             <View className="mt-2 flex-row items-center gap-2"><Ionicons name="storefront-outline" size={16} color={COLORS.textMuted} /><Text className="flex-1 text-sm text-gray-500">{repair.shop_name || "Your repair shop"}</Text></View>
           </View>
-          <RepairStatusBadge status={repair.status} decision={repair.decision} />
+          <RepairStatusBadge status={repair.status} decision={repair.decision} clientApproved={repair.client_approved} />
         </View>
-        {!isRejected ? <View className="mt-4 rounded-xl bg-blue-50 p-4"><Text className="text-xs font-bold uppercase text-blue-700">Your repair update</Text><Text className="mt-1 text-sm leading-6 text-blue-800">{nextUpdate}</Text></View> : null}
+        {!isRejected && !isCancelled ? <View className="mt-4 rounded-xl bg-blue-50 p-4"><Text className="text-xs font-bold uppercase text-blue-700">Your repair update</Text><Text className="mt-1 text-sm leading-6 text-blue-800">{nextUpdate}</Text></View> : null}
         <View className="mt-4 flex-row flex-wrap gap-3">
           {repair.shop_id ? <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${repair.shop_id}`)} /> : null}
           <Button title="My messages" variant="outline" onPress={() => router.push("/chat")} />
@@ -204,6 +215,7 @@ export default function RepairDetail() {
       </View>
 
       {isRejected ? <RepairRejectionNotice reason={repair.rejection_reason} /> : null}
+      {!isRejected && isCancelled ? <RepairCancelledNotice message="You cancelled this repair request." /> : null}
       {actionError ? <Text accessibilityRole="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">{actionError}</Text> : null}
 
       <View className={isDesktop ? "flex-row items-start gap-4" : ""}>
@@ -247,7 +259,7 @@ export default function RepairDetail() {
       {!isRejected && quotation ? (
         <QuotationSection quotation={quotation} />
       ) : null}
-      {!isRejected && quotation && !hasCompletionDate ? (
+      {!isRejected && !isCancelled && quotation && !hasCompletionDate ? (
         <Text className="mb-3 text-sm text-amber-700">
           The shop needs to add an estimated completion date before you can approve this quotation.
         </Text>

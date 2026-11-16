@@ -2,6 +2,9 @@
 import db from "../config/db.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
 
+// service_requests.client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
+const CANCELLED_MESSAGE = "The client cancelled this repair request";
+
 /* ----------------------------------------------------------
    Helper: Promise wrapper for db.query()
 ----------------------------------------------------------- */
@@ -75,6 +78,7 @@ export const getRepairsForShop = async (req, res) => {
         sr.decision AS decisionStatus,
         sr.status,
         sr.payment_status,
+        sr.client_approved,
         DATE_FORMAT(sr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
 
         /* Fallback for old MySQL: return comma-separated service list */
@@ -89,7 +93,7 @@ export const getRepairsForShop = async (req, res) => {
 
       WHERE sr.shop_id = ?
       GROUP BY sr.id, u.first_name, d.name, sr.issue_description,
-        sr.decision, sr.status, sr.payment_status, sr.created_at
+        sr.decision, sr.status, sr.payment_status, sr.client_approved, sr.created_at
       ORDER BY sr.id DESC
     `;
 
@@ -145,6 +149,7 @@ export const getRepairById = async (req, res) => {
           sr.received_at,
           sr.received_method,
           sr.payment_status,
+          sr.client_approved,
 
           p.payment_link,
 
@@ -215,6 +220,8 @@ export const getRepairById = async (req, res) => {
       services: row.services ? row.services.split(", ") : [],
       paymentStatus: row.payment_status,
       paymentLink: row.payment_link || null,
+      // NULL = undecided, 1 = approved, 0 = cancelled by the client.
+      clientApproved: row.client_approved,
     };
 
     return res.json({
@@ -242,6 +249,10 @@ export const getRepairServices = async (req, res) => {
        FROM service_requests sr
        JOIN shop_services ss ON ss.shop_id = sr.shop_id
        WHERE sr.id = ? AND sr.shop_id = ?
+         -- Unreviewed services can't be added; ones already on the request still show.
+         AND (ss.review_status = 'APPROVED' OR EXISTS (
+           SELECT 1 FROM service_request_items si WHERE si.request_id = sr.id AND si.service_id = ss.id
+         ))
        ORDER BY ss.name ASC`,
       [req.params.id, req.shopId]
     );
@@ -267,7 +278,7 @@ export const addRepairServices = async (req, res) => {
   try {
     const [requestRows, availableRows, existingRows] = await Promise.all([
       query(
-        `SELECT sr.decision, sr.status, sr.payment_status, rq.id AS quotation_id
+        `SELECT sr.decision, sr.status, sr.payment_status, sr.client_approved, rq.id AS quotation_id
          FROM service_requests sr
          LEFT JOIN request_quotations rq ON rq.request_id = sr.id
          WHERE sr.id = ? AND sr.shop_id = ?
@@ -275,7 +286,7 @@ export const addRepairServices = async (req, res) => {
         [req.params.id, req.shopId]
       ),
       query(
-        `SELECT id FROM shop_services WHERE shop_id = ? AND id IN (${serviceIds.map(() => "?").join(",")})`,
+        `SELECT id FROM shop_services WHERE shop_id = ? AND review_status = 'APPROVED' AND id IN (${serviceIds.map(() => "?").join(",")})`,
         [req.shopId, ...serviceIds]
       ),
       query(
@@ -289,6 +300,9 @@ export const addRepairServices = async (req, res) => {
     }
 
     const repair = requestRows[0];
+    if (repair.client_approved === 0) {
+      return res.status(409).json({ message: CANCELLED_MESSAGE });
+    }
     if (
       repair.decision !== "ACCEPTED" ||
       repair.status === "IN_PROGRESS" ||
@@ -300,7 +314,7 @@ export const addRepairServices = async (req, res) => {
     }
 
     if (availableRows.length !== serviceIds.length) {
-      return res.status(400).json({ message: "One or more services are not offered by this shop" });
+      return res.status(400).json({ message: "One or more services are not offered by this shop or are awaiting admin approval" });
     }
 
     const existingIds = new Set(existingRows.map((row) => Number(row.service_id)));
@@ -340,7 +354,7 @@ export const rejectRepair = async (req, res) => {
 
     // Check ownership
     const existing = await query(
-      `SELECT id FROM service_requests WHERE id = ? AND shop_id = ? LIMIT 1`,
+      `SELECT id, client_approved FROM service_requests WHERE id = ? AND shop_id = ? LIMIT 1`,
       [id, shopId]
     );
 
@@ -350,6 +364,10 @@ export const rejectRepair = async (req, res) => {
         success: false,
         message: "Not authorized",
       });
+    }
+
+    if (existing[0].client_approved === 0) {
+      return res.status(409).json({ success: false, message: CANCELLED_MESSAGE });
     }
 
     // Update status
@@ -393,7 +411,7 @@ export const confirmRepair = async (req, res) => {
 
     // Check ownership
     const existing = await query(
-      `SELECT id, decision FROM service_requests
+      `SELECT id, decision, client_approved FROM service_requests
        WHERE id = ? AND shop_id = ? LIMIT 1`,
       [id, shopId]
     );
@@ -404,6 +422,10 @@ export const confirmRepair = async (req, res) => {
         success: false,
         message: "Not authorized"
       });
+    }
+
+    if (existing[0].client_approved === 0) {
+      return res.status(409).json({ success: false, message: CANCELLED_MESSAGE });
     }
 
     // Prevent double decision
@@ -464,7 +486,7 @@ export const saveAssessment = async (req, res) => {
 
     // 1️⃣ Verify ownership + ACCEPTED
     const requestRows = await query(
-      `SELECT id, decision
+      `SELECT id, decision, client_approved
        FROM service_requests
        WHERE id = ? AND shop_id = ?
        LIMIT 1`,
@@ -476,6 +498,10 @@ export const saveAssessment = async (req, res) => {
         success: false,
         message: "Not authorized"
       });
+    }
+
+    if (requestRows[0].client_approved === 0) {
+      return res.status(409).json({ success: false, message: CANCELLED_MESSAGE });
     }
 
     if (requestRows[0].decision !== "ACCEPTED") {
@@ -529,18 +555,30 @@ export const saveAssessment = async (req, res) => {
     }
 
     // ➕ INSERT (first time)
-    await query(
-      `INSERT INTO request_assessments
-       (request_id, device_condition, observed_issues, recommendation, is_remote, created_at)
-       VALUES (?, ?, ?, ?, ?, NOW())`,
-      [
-        id,
-        deviceCondition || null,
-        observedIssues || null,
-        recommendation || null,
-        isRemote ? 1 : 0
-      ]
-    );
+    try {
+      await query(
+        `INSERT INTO request_assessments
+         (request_id, device_condition, observed_issues, recommendation, is_remote, created_at)
+         VALUES (?, ?, ?, ?, ?, NOW())`,
+        [
+          id,
+          deviceCondition || null,
+          observedIssues || null,
+          recommendation || null,
+          isRemote ? 1 : 0
+        ]
+      );
+    } catch (insertError) {
+      // request_assessments.request_id is UNIQUE: two simultaneous first
+      // saves cannot both insert.
+      if (insertError.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+          success: false,
+          message: "An assessment already exists for this repair. Reload and try again."
+        });
+      }
+      throw insertError;
+    }
 
     return res.json({
       success: true,
@@ -659,6 +697,7 @@ export const createQuotation = async (req, res) => {
        WHERE sr.id = ?
          AND sr.shop_id = ?
          AND sr.decision = 'ACCEPTED'
+         AND sr.client_approved IS NULL
        LIMIT 1`,
       [id, shopId]
     );
@@ -715,20 +754,33 @@ export const createQuotation = async (req, res) => {
     /* -------------------------------------------------
        6️⃣ Insert quotation (labor_fee = 0)
     -------------------------------------------------- */
-    const result = await query(
-      `INSERT INTO request_quotations
-       (request_id, assessment_id, labor_fee, estimated_cost,
-        estimated_completion_time, is_parts_needed,
-        status, created_at, updated_at)
-       VALUES (?, ?, 0, ?, ?, ?, 'PENDING', NOW(), NOW())`,
-      [
-        id,
-        assessmentId,
-        estimatedCost,
-        estimatedCompletionTime || null,
-        isPartsNeeded ? 1 : 0
-      ]
-    );
+    let result;
+    try {
+      result = await query(
+        `INSERT INTO request_quotations
+         (request_id, assessment_id, labor_fee, estimated_cost,
+          estimated_completion_time, is_parts_needed,
+          status, created_at, updated_at)
+         VALUES (?, ?, 0, ?, ?, ?, 'PENDING', NOW(), NOW())`,
+        [
+          id,
+          assessmentId,
+          estimatedCost,
+          estimatedCompletionTime || null,
+          isPartsNeeded ? 1 : 0
+        ]
+      );
+    } catch (insertError) {
+      // request_quotations.request_id is UNIQUE: enforces the one-quotation
+      // rule even if two requests pass the existence check above together.
+      if (insertError.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+          success: false,
+          message: "Quotation already exists"
+        });
+      }
+      throw insertError;
+    }
 
     const quotationId = result.insertId;
 
@@ -1528,3 +1580,62 @@ export const getCompletedRepair = (req, res) => {
   });
 };
 
+
+/* ============================================================
+   MARK DEVICE RECEIVED
+   POST /api/business/repairs/:id/received
+   Records that the shop has the device in hand. Pickup: the shop collected
+   it (received_method = 'PICKUP'). Drop-off: the client delivered it
+   (received_method = 'DELIVERY'). On-site repairs never bring the device to
+   the shop, so they have nothing to receive. This does not gate any later
+   workflow step.
+============================================================ */
+const RECEIVED_METHOD = { PICKUP: "PICKUP", DROPOFF: "DELIVERY" };
+
+export const markDeviceReceived = async (req, res) => {
+  try {
+    const rows = await query(
+      `SELECT delivery_method, decision, status, client_approved, is_received
+       FROM service_requests
+       WHERE id = ? AND shop_id = ?
+       LIMIT 1`,
+      [req.params.id, req.shopId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Repair not found" });
+    }
+
+    const repair = rows[0];
+    const method = RECEIVED_METHOD[repair.delivery_method];
+
+    if (repair.client_approved === 0) {
+      return res.status(409).json({ message: CANCELLED_MESSAGE });
+    }
+    if (!method) {
+      return res.status(409).json({ message: "On-site repairs don't bring the device to the shop." });
+    }
+    if (repair.decision !== "ACCEPTED" || repair.status === "COMPLETED") {
+      return res.status(409).json({ message: "A device can be marked received after the request is accepted and before it is completed." });
+    }
+    if (Number(repair.is_received) === 1) {
+      return res.status(409).json({ message: "This device is already marked as received." });
+    }
+
+    const result = await query(
+      `UPDATE service_requests
+       SET is_received = 1, received_at = NOW(), received_method = ?, updated_at = NOW()
+       WHERE id = ? AND shop_id = ? AND is_received = 0`,
+      [method, req.params.id, req.shopId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(409).json({ message: "This device is already marked as received." });
+    }
+
+    return res.json({ success: true, receivedMethod: method });
+  } catch (error) {
+    console.error("markDeviceReceived:", { code: error.code });
+    return res.status(500).json({ message: "Couldn't mark the device as received." });
+  }
+};

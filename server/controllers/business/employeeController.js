@@ -235,3 +235,116 @@ export const getAssignmentForRequest = (req, res) => {
     );
   });
 };
+
+/* ======================================================
+   EMPLOYEE EDIT / DEACTIVATE / REACTIVATE
+   All scoped to req.shopId (businessShopRequired).
+====================================================== */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const clean = (value) => String(value ?? "").trim();
+
+function validateEmployee(body) {
+  const firstName = clean(body.firstName);
+  const lastName = clean(body.lastName);
+  const role = clean(body.role);
+  const phone = clean(body.phone);
+  const email = clean(body.email);
+
+  if (!firstName || !lastName || !role) return { error: "First name, last name and role are required." };
+  if (firstName.length > 100 || lastName.length > 100 || role.length > 100) return { error: "Names and role must be 100 characters or fewer." };
+  if (phone.length > 20) return { error: "Phone must be 20 characters or fewer." };
+  if (email && (email.length > 150 || !EMAIL_RE.test(email))) return { error: "Enter a valid email address or leave it empty." };
+
+  return { values: { firstName, lastName, role, phone: phone || null, email: email || null } };
+}
+
+/* GET /api/business/employees/all — active and inactive, for the team screen */
+export const getAllEmployees = async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(
+      `SELECT se.id, se.first_name, se.last_name, se.role, se.phone, se.email, se.is_active,
+              DATE_FORMAT(se.created_at, '%Y-%m-%dT%H:%i:%s') AS created_at,
+              (SELECT COUNT(*)
+               FROM request_assignments ra
+               JOIN service_requests sr ON sr.id = ra.request_id
+               WHERE ra.employee_id = se.id AND sr.status <> 'COMPLETED') AS open_assignment_count
+       FROM shop_employees se
+       WHERE se.shop_id = ?
+       ORDER BY se.is_active DESC, se.first_name ASC`,
+      [req.shopId]
+    );
+    res.json({ employees: rows });
+  } catch (err) {
+    console.error("getAllEmployees:", { code: err.code });
+    res.status(500).json({ message: "Failed to fetch employees" });
+  }
+};
+
+/* PUT /api/business/employees/:id */
+export const updateEmployee = async (req, res) => {
+  const { values, error } = validateEmployee(req.body ?? {});
+  if (error) return res.status(400).json({ message: error });
+
+  try {
+    const [result] = await db.promise().query(
+      `UPDATE shop_employees
+       SET first_name = ?, last_name = ?, role = ?, phone = ?, email = ?, updated_at = NOW()
+       WHERE id = ? AND shop_id = ?`,
+      [values.firstName, values.lastName, values.role, values.phone, values.email, req.params.id, req.shopId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: "Employee not found" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("updateEmployee:", { code: err.code });
+    res.status(500).json({ message: "Couldn't update this employee." });
+  }
+};
+
+/* POST /api/business/employees/:id/deactivate
+   Refused while the employee is assigned to an unfinished repair, so no
+   in-flight repair is left with a technician who can't be reassigned to it. */
+export const deactivateEmployee = async (req, res) => {
+  try {
+    const [[employee]] = await db.promise().query(
+      `SELECT se.id,
+              (SELECT COUNT(*)
+               FROM request_assignments ra
+               JOIN service_requests sr ON sr.id = ra.request_id
+               WHERE ra.employee_id = se.id AND sr.status <> 'COMPLETED') AS open_assignment_count
+       FROM shop_employees se
+       WHERE se.id = ? AND se.shop_id = ?`,
+      [req.params.id, req.shopId]
+    );
+
+    if (!employee) return res.status(404).json({ message: "Employee not found" });
+    if (Number(employee.open_assignment_count) > 0) {
+      return res.status(409).json({
+        message: "This employee is assigned to a repair that isn't completed. Reassign it before deactivating them.",
+      });
+    }
+
+    await db.promise().query(
+      "UPDATE shop_employees SET is_active = 0, updated_at = NOW() WHERE id = ? AND shop_id = ?",
+      [req.params.id, req.shopId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("deactivateEmployee:", { code: err.code });
+    res.status(500).json({ message: "Couldn't deactivate this employee." });
+  }
+};
+
+/* POST /api/business/employees/:id/reactivate */
+export const reactivateEmployee = async (req, res) => {
+  try {
+    const [result] = await db.promise().query(
+      "UPDATE shop_employees SET is_active = 1, updated_at = NOW() WHERE id = ? AND shop_id = ?",
+      [req.params.id, req.shopId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ message: "Employee not found" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("reactivateEmployee:", { code: err.code });
+    res.status(500).json({ message: "Couldn't reactivate this employee." });
+  }
+};

@@ -53,6 +53,7 @@ router.get("/services", (req, res) => {
     FROM shop_services ss
     JOIN shops s ON s.id = ss.shop_id
     WHERE s.is_verified = 1
+      AND ss.review_status = 'APPROVED'
     GROUP BY ss.name, ss.category
     ORDER BY avg_shop_rating DESC, shop_count DESC
     LIMIT 10
@@ -96,6 +97,7 @@ router.get("/services/:serviceKey", (req, res) => {
     WHERE ss.name = ?
       AND ss.category = ?
       AND s.is_verified = 1
+      AND ss.review_status = 'APPROVED'
     GROUP BY ss.name, ss.category
     LIMIT 1
   `;
@@ -125,6 +127,7 @@ router.get("/services/:serviceKey", (req, res) => {
       WHERE ss.name = ?
         AND ss.category = ?
         AND s.is_verified = 1
+        AND ss.review_status = 'APPROVED'
       ORDER BY s.rating_average DESC
     `;
 

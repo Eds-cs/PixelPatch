@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import AsyncList from "../../../components/AsyncList";
 import Button from "../../../components/Button";
 import TextField from "../../../components/TextField";
-import { RepairStatusBadge } from "../../../components/RepairSummary";
+import { isClientCancelled, RepairStatusBadge } from "../../../components/RepairSummary";
 import { useFetch } from "../../../lib/useFetch";
 import { useShop } from "../../../lib/shop";
 import { useResponsive } from "../../../lib/useResponsive";
@@ -20,6 +20,7 @@ const FILTERS = [
   { key: "progress", label: "In progress", icon: "construct-outline", note: "Repair work underway", color: "#4f46e5" },
   { key: "completed", label: "Completed", icon: "checkmark-circle-outline", note: "Finished repairs", color: "#059669" },
   { key: "rejected", label: "Rejected" },
+  { key: "cancelled", label: "Cancelled" },
 ];
 const SORTS = [
   { key: "newest", label: "Newest" },
@@ -32,6 +33,7 @@ export function getRepairQueueStage(repair) {
   const decision = String(repair.decisionStatus ?? "").toUpperCase();
   const status = String(repair.status ?? "").toUpperCase();
   if (decision === "REJECTED") return "rejected";
+  if (isClientCancelled(repair.client_approved)) return "cancelled";
   if (decision === "PENDING") return "new";
   if (decision !== "ACCEPTED") return "other";
   if (status === "COMPLETED") return "completed";
@@ -49,7 +51,7 @@ function requestDate(repair) {
 }
 
 function PaymentLabel({ repair }) {
-  if (getRepairQueueStage(repair) === "rejected") {
+  if (["rejected", "cancelled"].includes(getRepairQueueStage(repair))) {
     return <Text className="text-xs text-gray-400">Payment not applicable</Text>;
   }
   const status = String(repair.payment_status ?? "").toUpperCase();
@@ -67,7 +69,7 @@ function PaymentLabel({ repair }) {
 
 function QueueItem({ repair, desktop, mobile, onPress }) {
   const stage = getRepairQueueStage(repair);
-  const action = stage === "new" ? "Review request" : stage === "completed" ? "View repair" : stage === "rejected" ? "View request" : "Open workspace";
+  const action = stage === "new" ? "Review request" : stage === "completed" ? "View repair" : ["rejected", "cancelled"].includes(stage) ? "View request" : "Open workspace";
   const device = repair.deviceType || "Device not specified";
   const date = requestDate(repair);
   return (
@@ -91,7 +93,7 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
               <Text className="mt-1 text-base font-bold text-gray-900">{device}</Text>
               <Text className="mt-1 text-sm text-gray-500">{repair.client || "Client"}</Text>
             </View>
-            {!desktop ? <RepairStatusBadge status={repair.status} decision={repair.decisionStatus} /> : null}
+            {!desktop ? <RepairStatusBadge status={repair.status} decision={repair.decisionStatus} clientApproved={repair.client_approved} /> : null}
           </View>
         </View>
 
@@ -103,7 +105,7 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
         {desktop ? (
           <>
             <View style={{ flex: 2, minWidth: 0 }} className="items-start gap-2">
-              <RepairStatusBadge status={repair.status} decision={repair.decisionStatus} />
+              <RepairStatusBadge status={repair.status} decision={repair.decisionStatus} clientApproved={repair.client_approved} />
               <PaymentLabel repair={repair} />
             </View>
             <View style={{ flex: 2, minWidth: 0 }}>

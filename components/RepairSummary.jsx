@@ -10,19 +10,27 @@ const REPAIR_STATUS_STYLES = {
   in_progress: ["bg-indigo-100", "text-indigo-800", "In progress"],
   completed: ["bg-emerald-100", "text-emerald-800", "Completed"],
   rejected: ["bg-red-100", "text-red-800", "Rejected"],
+  cancelled: ["bg-gray-200", "text-gray-700", "Cancelled"],
 };
 
-export function getRepairDisplayStatus(status, decision) {
+// service_requests.client_approved: null = undecided, 1 = approved, 0 = cancelled.
+// Check for null first: Number(null) is 0.
+export function isClientCancelled(clientApproved) {
+  return clientApproved !== null && clientApproved !== undefined && Number(clientApproved) === 0;
+}
+
+export function getRepairDisplayStatus(status, decision, clientApproved) {
   const normalizedDecision = String(decision ?? "").toLowerCase();
   if (normalizedDecision === "rejected") return "rejected";
+  if (isClientCancelled(clientApproved)) return "cancelled";
 
   const normalizedStatus = String(status ?? "").toLowerCase();
   if (normalizedStatus && normalizedStatus !== "unknown") return normalizedStatus;
   return normalizedDecision || "unknown";
 }
 
-export function RepairStatusBadge({ status, decision }) {
-  const key = getRepairDisplayStatus(status, decision);
+export function RepairStatusBadge({ status, decision, clientApproved }) {
+  const key = getRepairDisplayStatus(status, decision, clientApproved);
   const [background, foreground, label] = REPAIR_STATUS_STYLES[key] ?? [
     "bg-gray-200",
     "text-gray-700",
@@ -168,6 +176,20 @@ export function getRepairLocation({ deliveryMethod, serviceAddress, shopAddress 
     label: "Pickup address",
     value: serviceAddress || "Address not available",
   };
+}
+
+export function RepairCancelledNotice({ message }) {
+  return (
+    <View className="mb-4 flex-row rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <Ionicons name="ban-outline" size={22} color="#4b5563" />
+      <View className="ml-3 flex-1">
+        <Text className="text-base font-bold text-gray-800">Repair request cancelled</Text>
+        <Text className="mt-1 text-sm text-gray-600">
+          {message || "The client cancelled this repair request."}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 export function RepairRejectionNotice({ reason }) {

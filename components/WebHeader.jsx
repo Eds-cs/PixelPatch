@@ -25,6 +25,17 @@ const BUSINESS_NAV = [
   { label: "Reviews", href: "/business/reviews" },
 ];
 
+const ADMIN_NAV = [
+  { label: "Dashboard", href: "/admin/dashboard", exact: true },
+  { label: "Services", href: "/admin/services" },
+  { label: "Shops", href: "/admin/shops" },
+  { label: "Users", href: "/admin/users" },
+  { label: "Repairs", href: "/admin/repairs" },
+  { label: "Disputes", href: "/admin/disputes" },
+  { label: "Payments", href: "/admin/payments" },
+  { label: "Reviews", href: "/admin/reviews" },
+];
+
 function isActive(pathname, href, exact) {
   return exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -32,12 +43,19 @@ function isActive(pathname, href, exact) {
 export default function WebHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isBusiness, logout } = useAuth();
+  const { user, isBusiness, isAdmin, logout } = useAuth();
   const { layout, isMobile, isDesktop, horizontalPadding } = useResponsive();
   const [menuPath, setMenuPath] = useState(null);
   const menuOpen = isMobile && menuPath === pathname;
-  const navigation = isBusiness ? BUSINESS_NAV : CLIENT_NAV;
-  const profileHref = isBusiness ? "/business/profile" : "/profile";
+  const navigation = isAdmin ? ADMIN_NAV : isBusiness ? BUSINESS_NAV : CLIENT_NAV;
+  const profileHref = isAdmin ? "/admin/account" : isBusiness ? "/business/profile" : "/profile";
+  // Visible label: the signed-in person's first name, else one word for the role.
+  const firstName = String(user?.first_name ?? "").trim();
+  const profileLabel = firstName || (isAdmin ? "Admin" : isBusiness ? "Shop" : "Profile");
+  // Screen readers still hear where the link goes.
+  const profileDestination = isAdmin ? "admin account" : isBusiness ? "shop profile" : "profile";
+  const profileA11yLabel = firstName ? `${firstName}, open ${profileDestination}` : `Open ${profileDestination}`;
+  const homeHref = isAdmin ? "/admin/dashboard" : isBusiness ? "/business/dashboard" : "/";
 
   const navigate = (href) => {
     setMenuPath(null);
@@ -66,20 +84,25 @@ export default function WebHeader() {
       <Pressable
         onPress={() => navigate(profileHref)}
         accessibilityRole="link"
-        accessibilityLabel={isBusiness ? "Shop profile" : "Profile"}
+        accessibilityLabel={profileA11yLabel}
         accessibilityState={{ selected: isActive(pathname, profileHref) }}
         className="flex-row items-center rounded-md px-3 py-3"
       >
         <Ionicons name="person-circle-outline" size={22} color={COLORS.textMuted} />
-        <Text className="ml-2 text-sm font-semibold text-gray-700">{isBusiness ? "Shop profile" : "Profile"}</Text>
+        {/* Long names are truncated so the header never overflows. */}
+        <Text numberOfLines={1} style={{ maxWidth: isMobile ? undefined : 140 }} className="ml-2 text-sm font-semibold text-gray-700">{profileLabel}</Text>
       </Pressable>
-      <Pressable
-        onPress={() => { setMenuPath(null); logout(); }}
-        accessibilityRole="button"
-        className="rounded-md border border-gray-300 px-3 py-3"
-      >
-        <Text className="text-sm font-semibold text-gray-700">Sign out</Text>
-      </Pressable>
+      {/* The top bar shows only the profile link; sign-out lives on each
+          role's profile page. The phone menu keeps it for quick access. */}
+      {isMobile ? (
+        <Pressable
+          onPress={() => { setMenuPath(null); logout(); }}
+          accessibilityRole="button"
+          className="mt-2 rounded-md border border-gray-300 px-3 py-3"
+        >
+          <Text className="text-sm font-semibold text-gray-700">Sign out</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 
@@ -88,7 +111,7 @@ export default function WebHeader() {
       <View className="mx-auto w-full max-w-7xl" style={{ paddingHorizontal: horizontalPadding }}>
       <View className="min-h-16 flex-row items-center justify-between">
         <Pressable
-          onPress={() => navigate(isBusiness ? "/business/dashboard" : "/")}
+          onPress={() => navigate(homeHref)}
           accessibilityRole="link"
           className="mr-4 shrink-0 py-3"
         >

@@ -3,6 +3,7 @@ import express from "express";
 import db from "../config/db.js";
 import { upload } from "../middleware/upload.js";
 import { authRequired } from "../middleware/authMiddleware.js";
+import { resolveShopDeliveryTypes } from "../utils/shopDeliveryTypes.js";
 
 const router = express.Router();
 
@@ -50,18 +51,38 @@ router.post(
       /* -----------------------------------------------------------
          VALIDATE SHOP SERVICE TYPES (delivery methods)
       ------------------------------------------------------------ */
-      const [types] = await db.promise().query(
-        `SELECT is_pickup, is_dropoff, is_onsite
-         FROM shop_service_types
-         WHERE shop_id = ?`,
+      // Only admin-verified shops take requests. Public lists already hide
+      // unverified shops; this closes the direct-link route.
+      const [[shop]] = await db.promise().query(
+        "SELECT is_verified FROM shops WHERE id = ? LIMIT 1",
         [shop_id]
       );
-
-      if (!types.length) {
-        return res.status(400).json({ message: "Shop has no configured service types." });
+      if (!shop || Number(shop.is_verified) !== 1) {
+        return res.status(400).json({ message: "This shop isn't accepting repair requests yet." });
       }
 
-      const t = types[0];
+      // Every selected service must belong to this shop and be admin-approved.
+      const serviceIds = [...new Set(services.map(Number))];
+      if (serviceIds.some((serviceId) => !Number.isSafeInteger(serviceId) || serviceId <= 0)) {
+        return res.status(400).json({ message: "Invalid service selection." });
+      }
+      const [validServices] = await db.promise().query(
+        `SELECT id FROM shop_services
+         WHERE shop_id = ? AND review_status = 'APPROVED'
+           AND id IN (${serviceIds.map(() => "?").join(",")})`,
+        [shop_id, ...serviceIds]
+      );
+      if (validServices.length !== serviceIds.length) {
+        return res.status(400).json({ message: "One or more selected services aren't available from this shop." });
+      }
+      services = serviceIds;
+
+      // Same source the request screen uses (explicit row, else per-service flags).
+      const t = await resolveShopDeliveryTypes(shop_id);
+
+      if (!t.is_pickup && !t.is_dropoff && !t.is_onsite) {
+        return res.status(400).json({ message: "This shop is not accepting repair requests yet." });
+      }
 
       const allowed = {
         PICKUP: t.is_pickup,

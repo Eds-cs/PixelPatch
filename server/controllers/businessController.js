@@ -1,8 +1,13 @@
 // server/controllers/businessController.js
 import db from "../config/db.js";
+import { withTransaction } from "../utils/transaction.js";
 import jwt from "jsonwebtoken";
 import { resolveShopIdForUser } from "./repairController.js";
 
+
+// Payout methods offered by app/become-partner.jsx (shop_payouts.method also
+// allows CARD for older data).
+const PAYOUT_METHODS = ["GCASH", "MAYA", "BANK"];
 
 // Register a new business/shop
 
@@ -84,9 +89,11 @@ export const registerBusiness = async (req, res) => {
     // --------------------------------------------------
     if (
       !payment ||
-      !payment.payment_method ||
-      !payment.account_name ||
-      !payment.account_number ||
+      !PAYOUT_METHODS.includes(payment.payment_method) ||
+      !String(payment.account_name ?? "").trim() ||
+      String(payment.account_name).trim().length > 100 ||
+      !String(payment.account_number ?? "").trim() ||
+      String(payment.account_number).trim().length > 50 ||
       payment.terms !== true ||
       payment.privacy !== true
     ) {
@@ -117,175 +124,151 @@ export const registerBusiness = async (req, res) => {
     // --------------------------------------------------
     // 5. TRANSACTION — ALL OR NOTHING
     // --------------------------------------------------
-    db.beginTransaction((err) => {
-      if (err) {
-        console.error("❌ TX start error:", err);
-        return res.status(500).json({ message: "Transaction error" });
+    // One pooled connection for the whole registration: the address, shop,
+    // role change and services are committed together or rolled back together.
+    const shopId = await withTransaction(async (conn) => {
+      // -----------------------------
+      // ADDRESS INSERT
+      // -----------------------------
+      const [addressResult] = await conn.query(
+        `
+        INSERT INTO addresses (
+          user_id,
+          country,
+          region,
+          province,
+          city,
+          barangay,
+          street,
+          postal_code,
+          latitude,
+          longitude,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        `,
+        [
+          userId,
+          "",                 // country placeholder
+          region,
+          province,
+          city,
+          barangay,
+          street,
+          postal_code || null,
+          null,              // latitude: not collected yet (unknown)
+          null               // longitude: not collected yet (unknown)
+        ]
+      );
+
+      const addressId = addressResult.insertId;
+
+      // -----------------------------
+      // SHOP INSERT
+      // -----------------------------
+      const [shopResult] = await conn.query(
+        `
+        INSERT INTO shops (
+          user_id,
+          name,
+          description,
+          address_id,
+          phone_number,
+          email,
+          open_time,
+          closing_time,
+          days_from,
+          days_to,
+          is_verified,
+          rating_average,
+          current_customer_count,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        `,
+        [
+          userId,
+          business_name,
+          "Business profile created",
+          addressId,
+          business_phone,
+          business_email,
+          open_time,
+          close_time,
+          days_from,
+          days_to,
+          0,        // is_verified
+          0.00,     // rating_average (initial)
+          0
+        ]
+      );
+
+      const newShopId = shopResult.insertId;
+
+      await conn.query("UPDATE users SET role_id = 3 WHERE id = ?", [userId]);
+
+      // -----------------------------
+      // SERVICES INSERT
+      // -----------------------------
+      for (const svc of services) {
+        await conn.query(
+          `
+          INSERT INTO shop_services (
+            shop_id,
+            name,
+            category,
+            description,
+            base_price,
+            estimated_timeframe,
+            accepts_pickup,
+            accepts_onsite,
+            accepts_dropoff,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, NOW(), NOW())
+          `,
+          [
+            newShopId,
+            svc.repair_service,
+            svc.category.toUpperCase(),
+            "Registered service",
+            parseFloat(svc.price),
+            `${svc.time_from}-${svc.time_to} ${svc.time_unit}`
+          ]
+        );
       }
 
-      (async () => {
-        try {
-          // -----------------------------
-          // ADDRESS INSERT
-          // -----------------------------
-          const addressResult = await new Promise((resolve, reject) => {
-            db.query(
-              `
-              INSERT INTO addresses (
-                user_id,
-                country,
-                region,
-                province,
-                city,
-                barangay,
-                street,
-                postal_code,
-                latitude,
-                longitude,
-                created_at,
-                updated_at
-              )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-              `,
-              [
-                userId,
-                "",                 // country placeholder
-                region,
-                province,
-                city,
-                barangay,
-                street,
-                postal_code || null,
-                0.0,               // latitude placeholder
-                0.0                // longitude placeholder
-              ],
-              (err, result) => (err ? reject(err) : resolve(result))
-            );
-          });
+      // -----------------------------
+      // PAYOUT ACCOUNT
+      // -----------------------------
+      // Starts PENDING; verification of the account is a separate step.
+      await conn.query(
+        `INSERT INTO shop_payouts (shop_id, method, account_name, account_number, tin, status)
+         VALUES (?, ?, ?, ?, NULL, 'PENDING')`,
+        [
+          newShopId,
+          payment.payment_method,
+          String(payment.account_name).trim(),
+          String(payment.account_number).trim()
+        ]
+      );
 
-          const addressId = addressResult.insertId;
+      return newShopId;
+    });
 
-          // -----------------------------
-          // SHOP INSERT
-          // -----------------------------
-          const shopResult = await new Promise((resolve, reject) => {
-            db.query(
-              `
-              INSERT INTO shops (
-                user_id,
-                name,
-                description,
-                address_id,
-                phone_number,
-                email,
-                open_time,
-                closing_time,
-                days_from,
-                days_to,
-                is_verified,
-                rating_average,
-                current_customer_count,
-                created_at,
-                updated_at
-              )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-              `,
-              [
-                userId,
-                business_name,
-                "Business profile created",
-                addressId,
-                business_phone,
-                business_email,
-                open_time,
-                close_time,
-                days_from,
-                days_to,
-                0,        // is_verified
-                0.00,     // rating_average (initial)
-                0
-              ],
-              (err, result) => (err ? reject(err) : resolve(result))
-            );
-          });
-
-          const shopId = shopResult.insertId;
-
-          await new Promise((resolve, reject) => {
-            db.query(
-              "UPDATE users SET role_id = 3 WHERE id = ?",
-              [userId],
-              (err) => (err ? reject(err) : resolve())
-            );
-          });
-
-          // -----------------------------
-          // SERVICES INSERT
-          // -----------------------------
-          for (const svc of services) {
-            await new Promise((resolve, reject) => {
-              db.query(
-                `
-                INSERT INTO shop_services (
-                  shop_id,
-                  name,
-                  category,
-                  description,
-                  base_price,
-                  estimated_timeframe,
-                  accepts_pickup,
-                  accepts_onsite,
-                  accepts_dropoff,
-                  created_at,
-                  updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, NOW(), NOW())
-                `,
-                [
-                  shopId,
-                  svc.repair_service,
-                  svc.category.toUpperCase(),
-                  "Registered service",
-                  parseFloat(svc.price),
-                  `${svc.time_from}-${svc.time_to} ${svc.time_unit}`
-                ],
-                (err) => (err ? reject(err) : resolve())
-              );
-            });
-          }
-
-          // -----------------------------
-          // COMMIT
-          // -----------------------------
-          db.commit((err) => {
-            if (err) {
-              db.rollback(() => {
-                console.error("❌ TX commit error:", err);
-                return res.status(500).json({ message: "Registration failed" });
-              });
-              return;
-            }
-
-            return res.json({
-              success: true,
-              message: "Business registered successfully",
-              shop_id: shopId,
-              token: jwt.sign(
-                { id: userId, role_id: 3 },
-                process.env.JWT_SECRET,
-                { expiresIn: "7d" }
-              ),
-              user: { id: userId, role_id: 3 }
-            });
-          });
-
-        } catch (txErr) {
-          db.rollback(() => {
-            console.error("❌ registerBusiness TX error:", txErr);
-            return res.status(500).json({ message: "Registration failed" });
-          });
-        }
-      })();
+    return res.json({
+      success: true,
+      message: "Business registered successfully",
+      shop_id: shopId,
+      token: jwt.sign(
+        { id: userId, role_id: 3 },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+      ),
+      user: { id: userId, role_id: 3 }
     });
 
   } catch (err) {

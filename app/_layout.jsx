@@ -15,9 +15,18 @@ import WebHeader from "../components/WebHeader";
 
 // Screens that stay reachable while signed out.
 const PUBLIC_GROUP = "(auth)";
+const ADMIN_GROUP = "admin";
+// Shared informational screens an admin may still open outside the portal.
+const ADMIN_SHARED = ["settings", "help", "about"];
+
+function homeFor({ isAdmin, isBusiness }) {
+  if (isAdmin) return "/admin/dashboard";
+  // Shop owners land in their portal; clients begin with AI troubleshooting.
+  return isBusiness ? "/business/dashboard" : "/assistant";
+}
 
 function RootNavigator() {
-  const { isLoggedIn, loading, isBusiness } = useAuth();
+  const { isLoggedIn, loading, isBusiness, isAdmin } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -29,19 +38,26 @@ function RootNavigator() {
     if (loading) return;
 
     const inPublicGroup = segments[0] === PUBLIC_GROUP;
+    const inAdminGroup = segments[0] === ADMIN_GROUP;
 
     if (!isLoggedIn && !inPublicGroup) {
       router.replace("/login");
     } else if (isLoggedIn && inPublicGroup) {
-      // Shop owners land in their portal; clients begin with AI troubleshooting.
-      router.replace(isBusiness ? "/business/dashboard" : "/assistant");
+      router.replace(homeFor({ isAdmin, isBusiness }));
+    } else if (isLoggedIn && inAdminGroup && !isAdmin) {
+      // The server refuses admin APIs anyway; keep non-admins out of the UI too.
+      router.replace(homeFor({ isAdmin, isBusiness }));
+    } else if (isLoggedIn && isAdmin && !inAdminGroup && !ADMIN_SHARED.includes(segments[0])) {
+      // Admin accounts are not client or business accounts.
+      router.replace("/admin/dashboard");
     }
-  }, [isLoggedIn, loading, isBusiness, segments, router]);
+  }, [isLoggedIn, loading, isBusiness, isAdmin, segments, router]);
 
   const inPublicGroup = segments[0] === PUBLIC_GROUP;
-  // Native business routes use their drawer header; every other screen shares
-  // the responsive navigation, including native client screens.
-  const nativeBusinessDrawer = Platform.OS !== "web" && segments[0] === "business";
+  // Native business and admin routes use their drawer header; every other
+  // screen shares the responsive navigation, including native client screens.
+  const nativeBusinessDrawer =
+    Platform.OS !== "web" && (segments[0] === "business" || segments[0] === ADMIN_GROUP);
   const showWebHeader = isLoggedIn && !inPublicGroup && !nativeBusinessDrawer;
 
   return (
@@ -53,6 +69,7 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="business" />
+        <Stack.Screen name="admin" />
       </Stack>
 
       {loading ? (

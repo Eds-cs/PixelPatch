@@ -1,5 +1,6 @@
 // server/controllers/shopServiceController.js
 import db from "../config/db.js";
+import { resolveShopDeliveryTypes } from "../utils/shopDeliveryTypes.js";
 
 
 
@@ -29,21 +30,11 @@ export const getShopServiceTypes = async (req, res) => {
   try {
     const { shop_id } = req.params;
 
-    const [rows] = await db.promise().query(
-      `SELECT is_onsite, is_dropoff, is_pickup
-       FROM shop_service_types
-       WHERE shop_id = ?
-       LIMIT 1`,
-      [shop_id]
-    );
+    // Falls back to the shop's per-service flags when there is no explicit
+    // shop_service_types row (see utils/shopDeliveryTypes.js).
+    const serviceTypes = await resolveShopDeliveryTypes(shop_id);
 
-    if (rows.length === 0) {
-      return res.json({
-        serviceTypes: { is_onsite: 0, is_dropoff: 0, is_pickup: 0 }
-      });
-    }
-
-    res.json({ serviceTypes: rows[0] });
+    res.json({ serviceTypes });
 
   } catch (error) {
     console.error("getShopServiceTypes Error:", error);

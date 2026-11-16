@@ -83,11 +83,18 @@ export default function ShopDetail() {
         ) : null}
       </View>
 
-      <Button
-        title="Request a repair"
-        className="mb-6"
-        onPress={() => router.push(`/request/${id}`)}
-      />
+      {/* Only admin-verified shops take requests (the server enforces this too). */}
+      {Number(s?.is_verified) === 1 ? (
+        <Button
+          title="Request a repair"
+          className="mb-6"
+          onPress={() => router.push(`/request/${id}`)}
+        />
+      ) : (
+        <Text className="mb-6 rounded-xl bg-amber-50 p-4 text-sm leading-5 text-amber-800">
+          This shop is waiting for PixelPatch verification and can&apos;t take repair requests yet.
+        </Text>
+      )}
 
       <Text className="mb-3 text-lg font-bold text-gray-900">Services</Text>
       <View className="mb-6">

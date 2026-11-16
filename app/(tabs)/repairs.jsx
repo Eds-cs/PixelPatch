@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncList from "../../components/AsyncList";
 import Button from "../../components/Button";
 import TextField from "../../components/TextField";
-import { RepairStatusBadge } from "../../components/RepairSummary";
+import { isClientCancelled, RepairStatusBadge } from "../../components/RepairSummary";
 import { useFetch } from "../../lib/useFetch";
 import { useResponsive } from "../../lib/useResponsive";
 import { COLORS } from "../../constants/theme";
@@ -19,11 +19,13 @@ const FILTERS = [
   { key: "progress", label: "In progress" },
   { key: "completed", label: "Completed" },
   { key: "rejected", label: "Not accepted" },
+  { key: "cancelled", label: "Cancelled" },
 ];
 function stage(repair) {
   const decision = String(repair.decision || "").toUpperCase();
   const status = String(repair.status || "").toUpperCase();
   if (decision === "REJECTED") return "rejected";
+  if (isClientCancelled(repair.client_approved)) return "cancelled";
   if (decision === "PENDING") return "waiting";
   if (decision !== "ACCEPTED") return "other";
   if (status === "COMPLETED") return "completed";
@@ -43,6 +45,7 @@ function deviceName(repair) {
 function nextStep(repair) {
   const current = stage(repair);
   if (current === "rejected") return "The shop did not accept this request. Open it to see the reason.";
+  if (current === "cancelled") return "You cancelled this repair request.";
   if (current === "waiting") return "Your request is waiting for the shop's decision.";
   if (current === "progress") return "Repair work is underway. Open your repair for details.";
   if (current === "completed") return "Your repair is complete. View the details and your review options.";
@@ -51,7 +54,7 @@ function nextStep(repair) {
   return "Check the assessment and quotation in your repair details.";
 }
 function PaymentState({ repair }) {
-  if (stage(repair) === "rejected") return <Text className="text-xs text-gray-400">Payment not applicable</Text>;
+  if (["rejected", "cancelled"].includes(stage(repair))) return <Text className="text-xs text-gray-400">Payment not applicable</Text>;
   const value = String(repair.payment_status || "").toUpperCase();
   const paid = value === "PAID";
   const failed = value === "FAILED";
@@ -72,14 +75,14 @@ export default function Repairs() {
   const { data, error, loading, refreshing, refresh } = useFetch("/client/repairs", (d) => d.repairs ?? []);
   const repairs = data ?? [];
   const counts = Object.fromEntries(FILTERS.map((item) => [item.key, item.key === "all" ? repairs.length : repairs.filter((repair) => stage(repair) === item.key).length]));
-  const active = repairs.filter((repair) => !["completed", "rejected"].includes(stage(repair))).length;
+  const active = repairs.filter((repair) => !["completed", "rejected", "cancelled"].includes(stage(repair))).length;
   const needle = query.trim().toLowerCase();
   const filtered = repairs.filter((repair) =>
     (filter === "all" || stage(repair) === filter) &&
     (!needle || [repair.id, `#${repair.id}`, repair.device_name, repair.device_brand, repair.device_model, repair.shop_name].join(" ").toLowerCase().includes(needle))
   ).sort((a, b) => {
     if (sort === "active") {
-      const closed = (repair) => Number(["completed", "rejected"].includes(stage(repair)));
+      const closed = (repair) => Number(["completed", "rejected", "cancelled"].includes(stage(repair)));
       const priority = closed(a) - closed(b);
       if (priority) return priority;
     }
@@ -150,14 +153,14 @@ export default function Repairs() {
             <View style={isDesktop ? { flex: 3, minWidth: 0 } : undefined}>
               <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
                 <Text className="text-xs font-semibold text-gray-400">Repair #{item.id}</Text>
-                {!isDesktop ? <RepairStatusBadge status={item.status} decision={item.decision} /> : null}
+                {!isDesktop ? <RepairStatusBadge status={item.status} decision={item.decision} clientApproved={item.client_approved} /> : null}
               </View>
               <Text className="text-lg font-bold text-gray-900">{deviceName(item)}</Text>
               {item.device_name && item.device_name !== deviceName(item) ? <Text className="mt-1 text-xs text-gray-400">{item.device_name}</Text> : null}
               <View className="mt-3 flex-row items-start gap-2"><Ionicons name="storefront-outline" size={16} color={COLORS.textMuted} /><Text className="flex-1 text-sm text-gray-600">{item.shop_name || "Shop not specified"}</Text></View>
             </View>
             <View style={isDesktop ? { flex: 4, minWidth: 0 } : undefined} className={isDesktop ? "" : "mt-4"}>
-              {isDesktop ? <RepairStatusBadge status={item.status} decision={item.decision} /> : null}
+              {isDesktop ? <RepairStatusBadge status={item.status} decision={item.decision} clientApproved={item.client_approved} /> : null}
               <Text className={`text-sm leading-6 text-gray-600 ${isDesktop ? "mt-3" : ""}`}>{nextStep(item)}</Text>
               <View className="mt-3"><PaymentState repair={item} /></View>
             </View>

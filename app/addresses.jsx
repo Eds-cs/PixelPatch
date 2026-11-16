@@ -1,8 +1,11 @@
 // app/addresses.jsx
-// GET  /api/addresses
-// POST /api/addresses  (region, province, city, barangay are required server-side)
+// GET    /api/addresses              (includes request_count, is_shop_address)
+// POST   /api/addresses              (region, province, city, barangay required)
+// PUT    /api/addresses/:id          (same fields; locked for a shop's address)
+// POST   /api/addresses/:id/default
+// DELETE /api/addresses/:id          (refused while a repair or shop uses it)
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -13,6 +16,8 @@ import Modal from "../components/Modal";
 import api from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import { formatAddress } from "../lib/format";
+import { confirmAction } from "../lib/confirm";
+import { useResponsive } from "../lib/useResponsive";
 import { COLORS } from "../constants/theme";
 
 const EMPTY = {
@@ -26,22 +31,48 @@ const EMPTY = {
   country: "Philippines",
 };
 
+const isShopAddress = (address) => Number(address?.is_shop_address) === 1;
+const usedCount = (address) => Number(address?.request_count) || 0;
+
 export default function Addresses() {
+  const { isMobile } = useResponsive();
   const { data, error, loading, refreshing, refresh } = useFetch(
     "/addresses",
     (d) => d.addresses ?? []
   );
 
-  const [open, setOpen] = useState(false);
+  // null = closed, "new" = adding, otherwise the address being edited.
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [listError, setListError] = useState(null);
+  const [defaultingId, setDefaultingId] = useState(null);
 
+  const isNew = editing === "new";
   const setField = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
+
+  const openNew = () => {
+    setForm(EMPTY);
+    setFormError(null);
+    setEditing("new");
+  };
+
+  const openEdit = (address) => {
+    setForm(
+      Object.fromEntries(Object.keys(EMPTY).map((key) => [key, address[key] ?? (key === "country" ? "Philippines" : "")]))
+    );
+    setFormError(null);
+    setEditing(address);
+  };
+
+  const close = () => {
+    if (!busy) setEditing(null);
+  };
 
   const submit = async () => {
     // Mirrors the server's own required-field check.
-    const missing = ["region", "province", "city", "barangay"].filter((k) => !form[k].trim());
+    const missing = ["region", "province", "city", "barangay"].filter((k) => !String(form[k]).trim());
     if (missing.length) {
       setFormError(`Required: ${missing.join(", ")}.`);
       return;
@@ -50,13 +81,14 @@ export default function Addresses() {
     setBusy(true);
     setFormError(null);
     try {
-      await api.post("/addresses", {
+      const payload = {
         ...form,
-        label: form.label.trim() || null,
-        postal_code: form.postal_code.trim() || null,
-      });
-      setOpen(false);
-      setForm(EMPTY);
+        label: String(form.label).trim() || null,
+        postal_code: String(form.postal_code).trim() || null,
+      };
+      if (isNew) await api.post("/addresses", payload);
+      else await api.put(`/addresses/${editing.id}`, payload);
+      setEditing(null);
       await refresh();
     } catch (e) {
       setFormError(e.message || "Couldn't save this address.");
@@ -64,6 +96,45 @@ export default function Addresses() {
       setBusy(false);
     }
   };
+
+  const remove = () => {
+    const address = editing;
+    confirmAction(
+      "Delete address",
+      `Delete "${address.label || formatAddress(address) || "this address"}"? This can't be undone.`,
+      async () => {
+        setBusy(true);
+        setFormError(null);
+        try {
+          await api.delete(`/addresses/${address.id}`);
+          setEditing(null);
+          await refresh();
+        } catch (e) {
+          setFormError(e.message || "Couldn't delete this address.");
+        } finally {
+          setBusy(false);
+        }
+      },
+      { confirmLabel: "Delete", destructive: true }
+    );
+  };
+
+  const makeDefault = async (address) => {
+    if (defaultingId) return;
+    setDefaultingId(address.id);
+    setListError(null);
+    try {
+      await api.post(`/addresses/${address.id}/default`);
+      await refresh();
+    } catch (e) {
+      setListError(e.message || "Couldn't set the default address.");
+    } finally {
+      setDefaultingId(null);
+    }
+  };
+
+  const locked = !isNew && isShopAddress(editing);
+  const canDelete = !isNew && !locked && !usedCount(editing);
 
   return (
     <View className="flex-1 bg-gray-50">
@@ -78,89 +149,168 @@ export default function Addresses() {
         keyExtractor={(item) => String(item.id)}
         emptyText="No addresses saved yet."
         ListHeaderComponent={
-          <Button title="Add address" className="mb-4" onPress={() => setOpen(true)} />
+          <View className="mb-4">
+            <Button title="Add address" onPress={openNew} />
+            {data?.length ? (
+              <Text className="mt-3 text-xs text-gray-500">Tap an address to edit or delete it.</Text>
+            ) : null}
+            {listError ? (
+              <Text accessibilityRole="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {listError}
+              </Text>
+            ) : null}
+          </View>
         }
         renderItem={({ item }) => (
-          <View className="mb-3 flex-row items-start rounded-xl border border-gray-200 bg-white p-4">
-            <Ionicons name="location-outline" size={20} color={COLORS.textMuted} />
-            <View className="ml-3 flex-1">
-              <View className="flex-row items-center">
-                <Text className="text-base font-semibold text-gray-900">
-                  {item.label || "Address"}
-                </Text>
-                {item.is_default ? (
-                  <View className="ml-2 rounded-full bg-blue-100 px-2 py-0.5">
-                    <Text className="text-xs font-semibold text-blue-700">Default</Text>
-                  </View>
+          <View className="mb-3 rounded-xl border border-gray-200 bg-white">
+            <Pressable
+              onPress={() => openEdit(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit address ${item.label || formatAddress(item)}`}
+              className="flex-row items-start p-4 active:bg-blue-50"
+            >
+              <Ionicons
+                name={isShopAddress(item) ? "storefront-outline" : "location-outline"}
+                size={20}
+                color={COLORS.textMuted}
+              />
+              <View className="ml-3 flex-1">
+                <View className="flex-row flex-wrap items-center gap-2">
+                  <Text className="text-base font-semibold text-gray-900">
+                    {item.label || (isShopAddress(item) ? "Shop address" : "Address")}
+                  </Text>
+                  {Number(item.is_default) ? (
+                    <View className="rounded-full bg-blue-100 px-2 py-0.5">
+                      <Text className="text-xs font-semibold text-blue-700">Default</Text>
+                    </View>
+                  ) : null}
+                  {isShopAddress(item) ? (
+                    <View className="rounded-full bg-gray-100 px-2 py-0.5">
+                      <Text className="text-xs font-semibold text-gray-600">Your shop</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text className="mt-0.5 text-sm text-gray-600">{formatAddress(item)}</Text>
+                {item.postal_code ? (
+                  <Text className="mt-0.5 text-xs text-gray-400">{item.postal_code}</Text>
                 ) : null}
               </View>
-              <Text className="mt-0.5 text-sm text-gray-600">{formatAddress(item)}</Text>
-              {item.postal_code ? (
-                <Text className="mt-0.5 text-xs text-gray-400">{item.postal_code}</Text>
-              ) : null}
-            </View>
+              <Ionicons
+                name={isShopAddress(item) ? "lock-closed-outline" : "create-outline"}
+                size={18}
+                color={COLORS.textMuted}
+              />
+            </Pressable>
+            {!Number(item.is_default) ? (
+              <View className="border-t border-gray-100 px-4 py-1">
+                <Pressable
+                  onPress={() => makeDefault(item)}
+                  disabled={Boolean(defaultingId)}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: defaultingId === item.id, disabled: Boolean(defaultingId) }}
+                  className="min-h-11 justify-center self-start"
+                >
+                  <Text className="text-sm font-semibold text-blue-600">
+                    {defaultingId === item.id ? "Setting default…" : "Set as default"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         )}
       />
 
       <Modal
-        visible={open}
-        onClose={() => setOpen(false)}
-        title="Add address"
-        footer={<Button title="Save address" loading={busy} onPress={submit} />}
+        visible={editing !== null}
+        onClose={close}
+        title={isNew ? "Add address" : locked ? "Shop address" : "Edit address"}
+        footer={
+          locked ? null : (
+            <View className={isMobile ? "gap-3" : "flex-row-reverse gap-3"}>
+              <View className={isMobile ? "" : "flex-1"}>
+                <Button title="Save address" loading={busy} onPress={submit} />
+              </View>
+              {canDelete ? (
+                <View className={isMobile ? "" : "flex-1"}>
+                  <Button title="Delete address" variant="outline" disabled={busy} onPress={remove} />
+                </View>
+              ) : null}
+            </View>
+          )
+        }
       >
-        {formError ? <Text className="mb-3 text-sm text-red-600">{formError}</Text> : null}
+        {formError ? (
+          <Text accessibilityRole="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {formError}
+          </Text>
+        ) : null}
+
+        {locked ? (
+          <Text className="mb-4 rounded-lg bg-gray-100 p-3 text-xs leading-5 text-gray-700">
+            This is your shop&apos;s address, shown to customers. It can&apos;t be changed from My addresses.
+          </Text>
+        ) : !isNew && usedCount(editing) ? (
+          <Text className="mb-4 rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-800">
+            This address is part of a repair request, so it can&apos;t be deleted. You can still correct it.
+          </Text>
+        ) : null}
 
         <TextField
           label="Label (optional)"
           value={form.label}
           onChangeText={setField("label")}
           placeholder="Home, Office…"
+          editable={!busy && !locked}
         />
         <TextField
           label="Street"
           value={form.street}
           onChangeText={setField("street")}
           placeholder="123 Rizal St."
+          editable={!busy && !locked}
         />
-        <View className="flex-row gap-3">
-          <View className="flex-1">
+        <View className={isMobile ? "" : "flex-row gap-3"}>
+          <View className={isMobile ? "" : "flex-1"}>
             <TextField
               label="Barangay"
               value={form.barangay}
               onChangeText={setField("barangay")}
               placeholder="Barangay 1"
+              editable={!busy && !locked}
             />
           </View>
-          <View className="flex-1">
+          <View className={isMobile ? "" : "flex-1"}>
             <TextField
               label="City"
               value={form.city}
               onChangeText={setField("city")}
               placeholder="Quezon City"
+              editable={!busy && !locked}
             />
           </View>
         </View>
-        <View className="flex-row gap-3">
-          <View className="flex-1">
+        <View className={isMobile ? "" : "flex-row gap-3"}>
+          <View className={isMobile ? "" : "flex-1"}>
             <TextField
               label="Province"
               value={form.province}
               onChangeText={setField("province")}
               placeholder="Metro Manila"
+              editable={!busy && !locked}
             />
           </View>
-          <View className="flex-1">
+          <View className={isMobile ? "" : "flex-1"}>
             <TextField
               label="Region"
               value={form.region}
               onChangeText={setField("region")}
               placeholder="NCR"
+              editable={!busy && !locked}
             />
           </View>
         </View>
-        <View className="flex-row gap-3">
-          <View className="flex-1">
+        <View className={isMobile ? "" : "flex-row gap-3"}>
+          <View className={isMobile ? "" : "flex-1"}>
             <TextField
               label="Postal code"
               value={form.postal_code}
@@ -168,14 +318,16 @@ export default function Addresses() {
               placeholder="1100"
               keyboardType="number-pad"
               inputMode="numeric"
+              editable={!busy && !locked}
             />
           </View>
-          <View className="flex-1">
+          <View className={isMobile ? "" : "flex-1"}>
             <TextField
               label="Country"
               value={form.country}
               onChangeText={setField("country")}
               placeholder="Philippines"
+              editable={!busy && !locked}
             />
           </View>
         </View>

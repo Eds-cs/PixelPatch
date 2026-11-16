@@ -97,12 +97,13 @@ export default function BusinessProfile() {
           label="Days"
           value={shop?.days_from && shop?.days_to ? `${shop.days_from} - ${shop.days_to}` : null}
         />
-        <Row icon="call-outline" label="Contact" value={shop?.contact_number || user?.phone} />
+        <Row icon="call-outline" label="Shop phone" value={shop?.phone_number} />
+        <Row icon="mail-outline" label="Shop email" value={shop?.email} />
       </View>
 
       <View className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
         <Row icon="person-outline" label="Owner" value={[user?.first_name, user?.last_name].filter(Boolean).join(" ")} />
-        <Row icon="mail-outline" label="Email" value={user?.email} />
+        <Row icon="mail-outline" label="Owner email" value={user?.email} />
       </View>
 
       <Button title="Sign out" variant="outline" onPress={confirmLogout} />

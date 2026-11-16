@@ -571,6 +571,21 @@ Photo uploads.
 
 Xendit payment callbacks.
 
+```text
+/admin
+```
+
+Admin portal (admin role only, enforced by `server/middleware/adminMiddleware.js`,
+which re-checks `users.role_id` in the database on every request). Currently:
+summary counts and shop-service review:
+
+* `GET /admin/services/shops?status=&q=&limit=&offset=` (shops with per-status counts, most waiting first)
+* `GET /admin/services?status=&shop_id=&q=&limit=&offset=` (paged, `{ services, total, counts }`)
+* `POST /admin/services/bulk { ids, action: "approve" | "reject", note }` (max 200; reject needs a note)
+* `POST /admin/services/:id/approve`, `POST /admin/services/:id/reject`
+
+Admin lists are paged server-side; use `lib/usePagedFetch.js` for new long lists.
+
 Always inspect the mounted router before assuming the full endpoint path from a filename.
 
 ---
@@ -583,13 +598,32 @@ PixelPatch uses MySQL through:
 mysql2
 ```
 
-The current database configuration uses a MySQL connection rather than a connection pool.
+`server/config/db.js` exports a `mysql2` connection pool (since 2026-11-16;
+it was a single connection before). `db.query(...)` and
+`db.promise().query(...)` work as before.
 
 Controllers currently use a mixture of:
 
 * callbacks
 * `db.promise().query`
 * promise wrappers
+
+Because each pooled query may run on a different connection, never send
+`START TRANSACTION`, `BEGIN`, `COMMIT`, or `ROLLBACK` through `db.query`, and
+never call `db.beginTransaction`. For any multi-step write, use:
+
+```js
+import { withTransaction } from "../utils/transaction.js";
+
+const result = await withTransaction(async (conn) => {
+  const [rows] = await conn.query("...", [params]);
+  // every query in here runs on one connection; throw to roll back
+  return value;
+});
+```
+
+Do external calls (OpenAI, Xendit, email) before opening the transaction, not
+inside it.
 
 SQL queries should continue to use parameter placeholders such as:
 
@@ -646,10 +680,13 @@ shop_employees
 reviews
 disputes
 chats
-messages
+chat_messages
 ```
 
-Additional related tables may exist.
+Chat messages live in `chat_messages` (there is no `messages` table).
+
+Additional related tables exist; see the Database Schema Reference at the end
+of this file for the full verified list.
 
 Always inspect database usage before assuming exact names or columns.
 
@@ -745,10 +782,17 @@ After receiving the quotation, the client decides whether to continue.
 
 The client may:
 
-* approve the quotation
-* cancel the repair
+* approve the quotation (`client_approved = 1`)
+* cancel the repair (`client_approved = 0`)
 
 The repair must not proceed directly from quotation creation to active repair without the required client action.
+
+Cancellation is allowed while the client has not yet decided
+(`client_approved IS NULL`), the request is not rejected, `status` is
+`PENDING` or `REVIEW`, and `payment_status` is not `PAID`. Cancelling also sets
+a `PENDING` quotation to `CANCELLED`. A cancelled request must not continue:
+the business cannot accept, reject, assess, quote, add services, or generate a
+payment link for it.
 
 ---
 
@@ -862,21 +906,21 @@ FAILED
 
 ## `client_approved`
 
-Expected behavior:
+Column: `tinyint(1) NULL DEFAULT NULL` (made nullable on 2026-11-16, see
+`server/sql/2026-11-16_client_approved_nullable.sql`).
 
 ```text
-NULL
+NULL = client has not decided yet (default for new requests)
+1    = client approved the quotation
+0    = client cancelled the request
 ```
 
-means the client has not yet approved.
+The Xendit webhook also sets `client_approved = 1` when it marks a payment
+`PAID`.
 
-```text
-1
-```
-
-means the client approved.
-
-Inspect existing database/controller behavior before assuming other representations.
+In JavaScript, check for `null` before using `Number(...)`, because
+`Number(null) === 0` would make an undecided request look cancelled. Use
+`isClientCancelled` from `components/RepairSummary.jsx` on the frontend.
 
 ---
 
@@ -962,7 +1006,17 @@ The verified `user_roles` mapping is:
 ```
 
 Role IDs come from the database and are included in the JWT. Preserve this
-mapping in frontend and backend authorization checks. Before changing it,
+mapping in frontend and backend authorization checks.
+
+Each role has its own portal and they are kept separate:
+
+* client (1): `app/(tabs)/` and client screens
+* admin (2): `app/admin/` (the root layout redirects admins there and keeps
+  them out of client and business screens, except settings/help/about)
+* business (3): `app/business/` (also requires owning a shop)
+
+Admin APIs must use `adminRequired`, never just the JWT's `role_id`. An admin is
+not a business: business routes refuse role 2 even if the admin owns a shop. Before changing it,
 inspect the live `user_roles` and `users` tables and confirm the affected
 ownership and authorization behavior.
 
@@ -1536,29 +1590,23 @@ Never reproduce or add logging that exposes:
 
 ## Transactions
 
-Some multi-step database operations use one MySQL connection and have incomplete transaction safety.
+As of 2026-11-16 the multi-step writes that matter (business registration,
+Xendit settlement, client cancellation, AI chat persistence, AI conversation
+delete) run through `utils/transaction.js` `withTransaction`. Other multi-write
+paths (for example payment-link creation, quotation create/update with parts
+and warranty) still run as separate statements and are not atomic.
 
-Do not assume all existing multi-write operations are atomic.
-
-When modifying transaction-sensitive functionality, inspect:
-
-```text
-BEGIN
-COMMIT
-ROLLBACK
-```
-
-behavior carefully.
+Do not assume an existing multi-write operation is atomic unless it uses
+`withTransaction`. See section 12 for the rule.
 
 ---
 
 ## AI transactions
 
-Some AI controller logic may hold a transaction while performing an external OpenAI request.
-
-This is potentially unsafe.
-
-Do not copy this approach into new code.
+`analyzeIssue` used to hold an open transaction across the OpenAI request. It
+now calls OpenAI first and opens the transaction only for the writes. Keep it
+that way: never hold a pooled connection or open transaction across an
+external call.
 
 ---
 
@@ -1574,15 +1622,11 @@ Inspect this behavior before modifying retry logic.
 
 ## Upload controller
 
-Some upload/backend code may incorrectly reference:
-
-```text
-import.meta.env.VITE_API_URL
-```
-
-Node backend code must not depend on Vite's `import.meta.env`.
-
-Use server environment variables through Node's environment configuration instead.
+Node backend code must not depend on Vite's `import.meta.env` (a leftover
+`import.meta.env.VITE_API_URL` in the upload controller was removed on
+2026-11-16). Upload endpoints return relative `/uploads/...` paths; the
+frontend resolves them with `mediaUrl()` from `lib/api.js`. Use server
+environment variables through Node's environment configuration instead.
 
 ---
 
@@ -1696,631 +1740,504 @@ Preserve working behavior, make focused changes, and never invent business rules
 
 # PixelPatch Database Schema Reference
 
-This section contains database structure that has been previously confirmed or observed in PixelPatch.
+Verified against the live local database with `SHOW CREATE TABLE` on
+2026-11-16 (MariaDB 10.4.32, database `pixelpatchdb`). Re-verify before
+schema-dependent changes, because the database may have changed since then.
 
-Treat this as a working schema reference, not a substitute for inspecting the actual MySQL database.
+Backend access uses a `mysql2` connection pool (no ORM). Transactions go
+through `server/utils/transaction.js`.
 
-Before changing schema-dependent code, verify the live/current database with `DESCRIBE`, `SHOW CREATE TABLE`, or equivalent queries.
+Schema changes made from this project are recorded as SQL files in
+`server/sql/`. There is no migration runner: apply them manually and keep the
+files in date order.
 
----
-
-## Database
-
-Primary database:
-
-```text
-pixelpatchdb
-```
-
-Database engine currently used locally:
-
-```text
-MySQL / MariaDB
-```
-
-Backend access uses:
-
-```text
-mysql2
-```
+Conventions: tables are InnoDB, `utf8mb4`, and every table has an
+`id INT AUTO_INCREMENT` primary key unless noted. "FK" means a real
+foreign-key constraint exists. "No FK" means the relationship is only
+enforced by application code.
 
 ---
 
-# 1. users
+## Repair workflow tables
 
-Known fields include:
+### service_requests
 
 ```text
 id
-role_id
-first_name
-middle_name
-last_name
-email
-phone
-password_hash
-photo_url
-created_at
+client_id            NOT NULL   FK -> users.id
+shop_id              NOT NULL   FK -> shops.id
+delivery_method      enum('PICKUP','DROPOFF','ONSITE') NOT NULL
+device_id            NOT NULL   FK -> devices.id
+issue_description    text NOT NULL
+pickup_address_id    NULL       FK -> addresses.id
+preferred_date       datetime NOT NULL
+notes                text NULL
+rejection_reason     text NULL
+client_approved      tinyint(1) NULL DEFAULT NULL
+payment_status       enum('PENDING','PAID','FAILED') NOT NULL DEFAULT 'PENDING'
+is_received          tinyint(1) NOT NULL DEFAULT 0
+received_at          datetime NULL
+received_method      enum('PICKUP','DELIVERY') NULL
+                     (set by POST /business/repairs/:id/received: PICKUP = shop collected it,
+                      DELIVERY = client dropped it off; on-site repairs are never received;
+                      allowed once the request is ACCEPTED and before COMPLETED; gates nothing)
+estimated_price      decimal(10,2) NOT NULL   (always written as 0.00 today)
+status               enum('PENDING','REVIEW','IN_PROGRESS','COMPLETED') NOT NULL
+decision             enum('PENDING','ACCEPTED','REJECTED') NOT NULL DEFAULT 'PENDING'
+created_at, updated_at   datetime NOT NULL
+completed_at         datetime NULL
 ```
 
-Exact nullable/default constraints should be verified in the current database.
+`client_approved`: `NULL` = undecided, `1` = approved, `0` = cancelled by the
+client (see section 16). There is no CANCELLED value in `status`.
 
-Known relationship:
+Do not collapse `status`, `decision`, `payment_status`, and `client_approved`
+into one field.
 
-```text
-users.role_id -> user_roles.id
-```
-
-Role mapping has historically been inconsistent in the codebase.
-
-Do not assume role IDs from frontend constants alone.
-
----
-
-# 2. user_roles
-
-Known purpose:
-
-Stores application role definitions.
-
-Typical relationship:
-
-```text
-user_roles.id
-    ↓
-users.role_id
-```
-
-IMPORTANT:
-
-The current mapping must be verified from the database.
-
-Previously observed code has conflicting assumptions involving role IDs `1`, `2`, and `3`.
-
-Do not normalize or rewrite role IDs until checking:
-
-```sql
-SELECT * FROM user_roles;
-```
-
-and:
-
-```sql
-SELECT id, email, role_id
-FROM users
-ORDER BY role_id, id;
-```
-
----
-
-# 3. shops
-
-Known fields include:
+### service_request_items
 
 ```text
 id
-user_id
-name
-description
-address_id
-phone
-email
-open_time
-closing_time
-days_from
-days_to
-is_verified
-rating_average
+request_id   FK -> service_requests.id  ON DELETE CASCADE
+service_id   FK -> shop_services.id
 ```
 
-Known relationship:
-
-```text
-shops.user_id -> users.id
-```
-
-Shop ownership is based on `user_id`.
-
-Verification state:
-
-```text
-is_verified = 0
-```
-
-means pending.
-
-```text
-is_verified = 1
-```
-
-means approved/verified.
-
-The intended business-registration behavior is:
-
-* new shop is created with `is_verified = 0`
-* admin approval changes it to verified
-* rejected shops may be deleted
-
-Do not assume business authorization solely from `shops.user_id`; also inspect the applicable role and ownership checks.
-
----
-
-# 4. addresses
-
-Known purpose:
-
-Stores user/shop/request address information.
-
-Known relationship:
-
-```text
-service_requests.pickup_address_id -> addresses.id
-```
-
-Shops may also reference an address through:
-
-```text
-shops.address_id
-```
-
-Exact columns should be verified before schema changes.
-
----
-
-# 5. devices
-
-Known purpose:
-
-Stores client devices.
-
-Known relationship:
-
-```text
-service_requests.device_id -> devices.id
-```
-
-Exact device columns should be inspected in the current database.
-
----
-
-# 6. shop_services
-
-Known fields include:
+### service_request_attachments
 
 ```text
 id
-shop_id
-name
-base_price
-timeframe
-category
-accepts_pickup
-accepts_onsite
-accepts_dropoff
+attachment_id        varchar(255) NOT NULL   (an uploaded file name, e.g. "1765720598745-182152142.png")
+service_request_id   int NOT NULL            No FK
 ```
 
-Known relationship:
+`attachment_id` is a file name, not a reference to the `attachments` table.
 
-```text
-shop_services.shop_id -> shops.id
-```
-
-Known category values previously used include:
-
-```text
-SMARTPHONE
-DESKTOP
-CONTROLLER
-TABLET
-SMARTWATCH
-LAPTOP
-OTHER
-```
-
-Do not change enum values without checking the live schema.
-
----
-
-# 7. service_requests
-
-This is the primary repair-request table.
-
-Known fields include:
+### request_status_history
 
 ```text
 id
-client_id
-shop_id
-device_id
-issue_description
-delivery_method
-pickup_address_id
-preferred_date
-notes
-rejection_reason
-client_approved
-payment_status
-is_received
-received_at
-received_method
-estimated_price
-status
-decision
-completed_at
-created_at
-updated_at
+request_id   FK -> service_requests.id
+status       varchar(30) NOT NULL
+updated_by   int NOT NULL   (No FK)
+remarks      text NOT NULL
+updated_at   datetime NOT NULL
 ```
 
-Some current versions may not contain every historical field listed above.
+Currently only the initial `PENDING` row is written when a request is created.
+Later transitions are not recorded.
 
-Verify before relying on a field.
-
-Known relationships:
-
-```text
-service_requests.client_id -> users.id
-service_requests.shop_id -> shops.id
-service_requests.device_id -> devices.id
-service_requests.pickup_address_id -> addresses.id
-```
-
-Known workflow-related values:
-
-### decision
-
-```text
-PENDING
-ACCEPTED
-REJECTED
-```
-
-### status
-
-Known values include:
-
-```text
-PENDING
-REVIEW
-IN_PROGRESS
-COMPLETED
-```
-
-### payment_status
-
-```text
-PENDING
-PAID
-FAILED
-```
-
-### client_approved
-
-Expected meaning:
-
-```text
-NULL = client has not decided
-1    = client approved
-```
-
-Do not collapse these fields into one unified state.
-
----
-
-# 8. service_request_items
-
-Known fields:
+### request_assessments
 
 ```text
 id
-request_id
-service_id
+request_id         FK -> service_requests.id   (NOT unique)
+device_condition   text NULL
+observed_issues    text NULL
+recommendation     text NULL
+is_remote          tinyint(1) NOT NULL
+created_at         datetime NOT NULL
+updated_at         datetime NULL
 ```
 
-Known relationships:
+### request_assessment_attachments
 
 ```text
-service_request_items.request_id -> service_requests.id
-service_request_items.service_id -> shop_services.id
+attachment_id           (PK part, AUTO_INCREMENT)
+request_assessment_id   (PK part)   No FK
 ```
 
-Previously observed behavior indicated request items are deleted when their repair request is deleted.
+Unused (0 rows).
 
-Verify the actual foreign-key action in the current database.
-
----
-
-# 9. service_request_attachments
-
-Known purpose:
-
-Stores uploaded files/images attached to repair requests.
-
-Known relationship:
-
-```text
-service_request_attachments.request_id -> service_requests.id
-```
-
-Exact columns should be inspected before changes.
-
----
-
-# 10. request_status_history
-
-Known purpose:
-
-Stores repair/request status history.
-
-Exact columns and constraints were not fully confirmed.
-
-Do not invent history fields without inspecting the current table.
-
----
-
-# 11. request_assessments
-
-Known purpose:
-
-Stores the business assessment performed after accepting a repair request.
-
-Known fields previously used include:
+### request_quotations
 
 ```text
 id
-request_id
-device_condition
-observed_issues
-recommendation
-is_remote
+request_id                  FK -> service_requests.id   (NOT unique)
+assessment_id               FK -> request_assessments.id
+labor_fee                   decimal(10,0) NOT NULL
+estimated_cost              decimal(10,2) NOT NULL
+estimated_completion_time   datetime NULL
+is_parts_needed             tinyint(1) NOT NULL
+status                      enum('PENDING','PAID','CANCELLED') NOT NULL
+discount_id                 int NULL   (No FK; discounts are unused)
+created_at, updated_at      datetime NOT NULL
 ```
 
-Assessment must exist before quotation creation according to the intended PixelPatch repair workflow.
+Business rules:
 
-Known relationship:
+* one quotation per repair request, created only after an assessment
+* `estimated_cost` = sum of selected `shop_services.base_price` + sum of part
+  costs; `labor_fee` is not included
+
+There is NO unique constraint on `request_id`. The one-quotation rule is
+enforced only in `createQuotation`.
+
+Quotation `status` lifecycle:
 
 ```text
-request_assessments.request_id -> service_requests.id
+PENDING   = created; editable by the business; can be approved and paid
+PAID      = set by the Xendit webhook when the payment is verified
+CANCELLED = set when the client cancels the request
 ```
 
-Verify actual constraints before schema changes.
+Only `PENDING` quotations can be edited, approved, or get a payment link.
+Paid quotations created before 2026-11-16 were backfilled by
+`server/sql/2026-11-16_backfill_paid_quotations.sql`.
 
----
-
-# 12. request_quotations
-
-Known fields include:
-
-```text
-id
-request_id
-assessment_id
-labor_fee
-estimated_cost
-status
-estimated_completion_time
-is_parts_needed
-warranty_value
-warranty_unit
-```
-
-Not every field above was confirmed in every project version.
-
-Previously confirmed fields include:
+### request_quotation_parts
 
 ```text
 id
-request_id
-assessment_id
-labor_fee
-estimated_cost
-status
+request_quotation_id   int NOT NULL   No FK
+name                   varchar(255) NOT NULL
+cost                   decimal(10,0) NOT NULL   (whole pesos only)
 ```
 
-Known relationships:
-
-```text
-request_quotations.request_id -> service_requests.id
-request_quotations.assessment_id -> request_assessments.id
-```
-
-Intended PixelPatch behavior:
-
-* one quotation per repair request
-* quotation is created after assessment
-* estimated repair cost should be based on selected service prices plus quotation-part costs
-* labor fee is not intended to be part of the final computed total in the current business rule
-
-IMPORTANT:
-
-The database was not previously confirmed to contain a unique constraint enforcing one quotation per request.
-
-Do not assume that uniqueness is enforced at database level without checking.
-
----
-
-# 13. request_quotation_parts
-
-Known fields include:
+### request_quotation_warranties
 
 ```text
 id
-request_quotation_id
-name
-cost
+request_quotation_id   int NOT NULL   No FK
+is_warranty_covered    tinyint(1) NOT NULL
+warranty_value         int NOT NULL
+warranty_unit          enum('YEAR','DAY','MONTH','WEEK') NOT NULL
 ```
 
-Previously confirmed relationship intent:
+Warranty data lives here, not on `request_quotations`. The table holds orphan
+rows for deleted quotations (ids 3, 4, 5 as of 2026-11-16).
 
-```text
-request_quotation_parts.request_quotation_id -> request_quotations.id
-```
-
-A foreign-key constraint was not previously confirmed.
-
-Verify with:
-
-```sql
-SHOW CREATE TABLE request_quotation_parts;
-```
-
-before relying on cascade or constraint behavior.
-
----
-
-# 14. payments
-
-Known fields include:
+### request_assignments
 
 ```text
 id
-request_id
-client_id
-shop_id
-amount
-paid_at
-payment_link
-gateway
-status
+request_id    FK -> service_requests.id   UNIQUE (one assignment per request)
+employee_id   FK -> shop_employees.id
+assigned_by   FK -> users.id
+assigned_at   datetime NOT NULL
+updated_at    datetime NULL
 ```
 
-Known gateway:
-
-```text
-XENDIT
-```
-
-Known status values:
-
-```text
-PENDING
-PAID
-FAILED
-```
-
-Known relationship:
-
-```text
-payments.request_id -> service_requests.id
-```
-
-Payment status may also be reflected on `service_requests.payment_status`.
-
-Do not assume those two values are always synchronized without checking the controller/webhook logic.
-
----
-
-# 15. payment_details
-
-Known purpose:
-
-Stores additional payment information related to payment processing.
-
-Exact columns were not fully confirmed.
-
-Inspect the live database before modifying it.
-
----
-
-# 16. shop_employees
-
-Known fields include:
+### payments
 
 ```text
 id
-shop_id
-first_name
-last_name
-role
-phone
-email
-is_active
-created_at
-updated_at
+request_id     FK -> service_requests.id   (NOT unique)
+client_id      FK -> users.id
+shop_id        FK -> shops.id
+amount         decimal(10,2) NULL
+paid_at        datetime NULL
+payment_link   varchar(500) NULL
+gateway        enum('XENDIT') DEFAULT 'XENDIT'
+status         enum('PENDING','PAID','FAILED') DEFAULT 'PENDING'
 ```
 
-Known relationship:
+The webhook updates both `payments.status` and `service_requests.payment_status`.
+
+### payment_details
 
 ```text
-shop_employees.shop_id -> shops.id
+id
+payment_id        FK -> payments.id  ON DELETE CASCADE ON UPDATE CASCADE
+type              enum('PARTIAL','FULL') NOT NULL
+status            enum('PAID','PROCESSING','PARTIALLY_PAID') NOT NULL
+method            enum('GCASH','MAYA','CARD') NOT NULL
+transaction_ref   varchar(255) NOT NULL
+created_at        datetime NOT NULL DEFAULT current_timestamp()
+updated_at        datetime NULL
 ```
 
-This replaced or superseded older references to an `employees` table in some parts of the project.
+### reviews
 
-Prefer the currently implemented `shop_employees` table unless the live database proves otherwise.
+```text
+id
+request_id   NULL   FK -> service_requests.id
+client_id    NULL   FK -> users.id
+shop_id      NULL   FK -> shops.id
+rating       int NULL
+feedback     text NULL
+created_at   datetime NULL
+```
+
+Reviews are for completed repairs. There is no unique constraint per request.
+
+### disputes
+
+```text
+id
+request_id            FK -> service_requests.id   UNIQUE (one dispute per request)
+client_id             FK -> users.id
+shop_id               FK -> shops.id
+status                enum('OPEN','SHOP_PROPOSED','RESOLVED','REJECTED') NOT NULL DEFAULT 'OPEN'
+proposed_resolution   enum('REFUND','RESERVICE') NULL
+shop_response         text NULL
+created_at            datetime NOT NULL DEFAULT current_timestamp()
+updated_at            datetime NOT NULL (auto-updated)
+resolved_at           datetime NULL
+```
+
+Disputes happen after completion: the client explains, the shop proposes a
+resolution, and the client accepts or rejects it.
+
+### dispute_edits
+
+```text
+id
+dispute_id   FK -> disputes.id  ON DELETE CASCADE
+edited_by    enum('CLIENT','BUSINESS') NOT NULL
+content      text NOT NULL
+created_at   datetime NOT NULL DEFAULT current_timestamp()
+```
+
+The message history of a dispute.
 
 ---
 
-# 17. request_assignments
+## Users, shops, and catalog
 
-Known fields include:
-
-```text
-request_id
-employee_id
-assigned_by
-assigned_at
-```
-
-Known relationships:
+### users
 
 ```text
-request_assignments.request_id -> service_requests.id
-request_assignments.employee_id -> shop_employees.id
-request_assignments.assigned_by -> users.id
+id
+role_id         int NOT NULL DEFAULT 1   FK -> user_roles.id
+first_name      varchar(100) NOT NULL
+middle_name     varchar(255) NULL
+last_name       varchar(255) NOT NULL
+suffix          varchar(50) NULL
+birthdate       date NULL      (not collected by the app; nullable since 2026-11-16)
+email           varchar(100) NOT NULL UNIQUE
+phone           varchar(20) NULL   (optional; nullable since 2026-11-16)
+password_hash   varchar(255) NOT NULL
+photo_url       longtext NULL
+created_at, updated_at   datetime (defaults / auto-update)
 ```
 
-Known intended rule:
+### user_roles
 
 ```text
-one assignment per repair request
+id
+role_name   varchar(50) NOT NULL
 ```
 
-Previously, `request_id` was intended to be unique.
+Verified rows: `1 = user`, `2 = admin`, `3 = business` (see section 20).
 
-Verify the actual unique constraint in the current database before relying on it.
+### shops
+
+```text
+id
+user_id                  FK -> users.id   (owner; NOT unique)
+name                     varchar(100) NOT NULL
+description              text NOT NULL
+address_id               FK -> addresses.id  NOT NULL
+phone_number             varchar(20) NOT NULL     (NOT "phone")
+email                    varchar(100) NOT NULL
+open_time, closing_time  time NOT NULL
+days_from, days_to       varchar(255) NOT NULL
+is_verified              tinyint(1) NOT NULL   (0 = pending, 1 = verified)
+rating_average           decimal(3,2) NOT NULL
+current_customer_count   int NOT NULL DEFAULT 0
+created_at, updated_at   datetime NOT NULL
+```
+
+* A user can own several shops. The seed admin user (role 2) owns four. The
+  business middleware takes the first shop (`LIMIT 1`) and requires role 3.
+* `rating_average` is NOT recomputed by any code, so it can disagree with
+  `reviews`. Compute from `reviews` if accuracy matters.
+* Intended registration flow: a new shop is created with `is_verified = 0`, an
+  admin verifies it, and rejected shops may be deleted.
+
+### addresses
+
+```text
+id
+user_id               NULL   FK -> users.id
+country, region, province, city, barangay   varchar(255) NOT NULL
+street                varchar(255) NULL
+postal_code           varchar(50) NULL
+label                 varchar(50) NULL
+latitude, longitude   decimal(10,7) NULL   (NULL = unknown; no screen collects them yet)
+is_default            tinyint(1) NOT NULL DEFAULT 0
+created_at, updated_at   datetime NOT NULL
+```
+
+Referenced by `shops.address_id` and `service_requests.pickup_address_id`.
+
+### devices
+
+```text
+id
+user_id         int NOT NULL   No FK
+name, model, serial_number, model_number, brand   varchar(255) NOT NULL
+photo_url       longtext NULL
+created_at, updated_at   datetime NOT NULL
+```
+
+### shop_services
+
+```text
+id
+shop_id               FK -> shops.id
+name                  varchar(100) NOT NULL
+category              enum('SMARTPHONE','DESKTOP','CONTROLLER','TABLET','SMARTWATCH','LAPTOP','OTHER') NOT NULL
+description           text NOT NULL
+base_price            decimal(10,2) NOT NULL
+estimated_timeframe   varchar(255) NOT NULL     (NOT "timeframe")
+accepts_pickup        tinyint(1) NOT NULL
+accepts_onsite        tinyint(1) NOT NULL
+accepts_dropoff       tinyint(1) NOT NULL DEFAULT 0
+created_at, updated_at   datetime NOT NULL
+review_status         enum('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING'
+review_note           text NULL     (admin's rejection reason, shown to the shop)
+reviewed_by           NULL FK -> users.id
+reviewed_at           datetime NULL
+```
+
+Service review (since 2026-11-16, `server/sql/2026-11-16_service_review.sql`):
+
+* New services (registration or the business catalog) start `PENDING`.
+* Clients only ever see `APPROVED` services: public listings, shop pages, the
+  request screen, AI suggestions, derived delivery methods and request
+  creation all filter on it. Keep that filter on any new client-facing query.
+* A shop editing name, category or description, or editing a `REJECTED`
+  service, sends it back to `PENDING`. Price, turnaround and service methods
+  change without review.
+* Services already on a repair request stay on it whatever their status.
+* Repair requests also require `shops.is_verified = 1`.
+
+### shop_service_types
+
+```text
+id
+shop_id      FK -> shops.id
+Is_onsite    tinyint(1) NOT NULL   (capital "I")
+is_dropoff   tinyint(1) NOT NULL
+is_pickup    tinyint(1) NOT NULL
+created_at, updated_at   datetime NOT NULL
+```
+
+An explicit per-shop delivery setting. It overlaps with, and can disagree
+with, the `accepts_*` columns on `shop_services` (shop 4's row says on-site +
+drop-off while its services say pickup).
+
+Resolve a shop's delivery methods with `server/utils/shopDeliveryTypes.js`:
+an explicit row wins; otherwise a method is accepted when any of the shop's
+services accepts it. Business registration does not write this table.
+
+### shop_payouts
+
+```text
+id
+shop_id          FK -> shops.id
+method           enum('CARD','GCASH','MAYA','BANK') NOT NULL   (BANK added 2026-11-16)
+account_name     varchar(100) NOT NULL
+account_number   varchar(50) NOT NULL
+tin              varchar(20) NULL
+status           enum('VERIFIED','PENDING','FAILED') NOT NULL
+```
+
+Written by business registration (one row per new shop, status `PENDING`)
+since 2026-11-16. Shops registered before then have no row. The app offers
+GCASH, MAYA and BANK; CARD exists only for older data. Nothing verifies or
+pays out to these accounts yet.
+
+### shop_employees
+
+```text
+id
+shop_id      FK -> shops.id
+first_name   varchar(100) NOT NULL
+last_name    varchar(100) NOT NULL
+role         varchar(100) NOT NULL
+phone        varchar(20) NULL
+email        varchar(150) NULL
+is_active    tinyint(1) NOT NULL DEFAULT 1
+created_at   datetime NOT NULL DEFAULT current_timestamp()
+updated_at   datetime NULL
+```
+
+There is no `employees` table. Use `shop_employees`.
 
 ---
 
-# 18. reviews
+## Chat and AI
 
-Known fields/relationships include:
-
-```text
-request_id
-client_id
-shop_id
-```
-
-Known relationships:
+### chats
 
 ```text
-reviews.request_id -> service_requests.id
-reviews.client_id -> users.id
-reviews.shop_id -> shops.id
+id
+request_id        NULL   FK -> service_requests.id   (currently always NULL)
+client_id         FK -> users.id
+shop_id           FK -> shops.id
+started_at        datetime NOT NULL
+last_message_at   datetime NOT NULL
+is_active         tinyint(1) NOT NULL
 ```
 
-Reviews are intended for completed repair transactions.
+### chat_messages
 
-`shops.rating_average` may store or cache aggregate rating information.
+```text
+id
+chat_id          FK -> chats.id
+sender_id        int NOT NULL   No FK
+message_text     text NOT NULL
+attachment_url   text NULL
+is_read          tinyint(1) NOT NULL
+timestamp        datetime NOT NULL
+```
+
+There is no `messages` table.
+
+### ai_conversations
+
+```text
+id
+user_id          FK -> users.id
+issue_category   varchar(100) NOT NULL
+ai_confidence    decimal(5,4) NOT NULL
+title            varchar(255) DEFAULT 'New Chat'
+created_at, updated_at   datetime NOT NULL
+```
+
+### ai_messages
+
+```text
+id
+conversation_id   FK -> ai_conversations.id
+message_text      text NOT NULL
+sender            enum('user','ai') NOT NULL DEFAULT 'user'
+timestamp         datetime NOT NULL
+```
 
 ---
 
-# 19. disputes
-
-Known purpose:
-
-Stores repair disputes.
-
-Known relationships include:
+## Tables that exist but are unused (0 rows, no active code path)
 
 ```text
-request_id
-client_id
-shop_id
+activity_logs              (user_id FK -> users)
+attachments                (file_name, file_path, mime_type)
+auth_sessions              (user_id FK -> users, token, expires_at)
+conversation_suggestions   (conversation_id FK -> ai_conversations, reason)
+shop_suggestions           (PK shop_id + conversation_suggestion FK -> conversation_suggestions)
+discounts                  (shop_id FK -> shops, discount_code, unit, value, count, limit, valid_from, valid_until, is_active)
+notifications              (user_id FK -> users, message, is_read)
+shop_documents             (shop_id FK -> shops, status enum('SUCCESS','FAILED','PENDING'))
+shop_documents_attachments (shop_documents_id, type; No FK)
+subscription_plans         (plan_name, description, price, duration_days, customer_limit, features JSON, is_active)
+subscriptions              (shop_id FK -> shops, plan_id FK -> subscription_plans, renewal_date)
 ```
 
-Intended dispute behavior previously discussed includes:
+Confirm the intended behavior before building on these.
 
-* disputes happen after completion
-* client provides an explanation
-* shop can propose a resolution
+---
+
+## Known schema gaps
+
+* No unique constraint on `request_quotations.request_id` or
+  `request_assessments.request_id`. Application code must enforce one of each
+  per request.
+* No foreign keys on `request_quotation_parts`, `request_quotation_warranties`,
+  `service_request_attachments`, `shop_documents_attachments`,
+  `request_assessment_attachments`, `devices.user_id`,
+  `chat_messages.sender_id`, or `request_status_history.updated_by`.
+* Deleting rows does not cascade to these tables. Clean up child rows
+  explicitly.
+* No triggers, views, or stored routines exist.

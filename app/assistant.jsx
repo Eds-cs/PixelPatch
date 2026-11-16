@@ -13,6 +13,7 @@ import api from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import { useResponsive } from "../lib/useResponsive";
 import { chatDate } from "../lib/chat";
+import { confirmAction } from "../lib/confirm";
 import { COLORS } from "../constants/theme";
 
 const SUGGESTIONS = [
@@ -35,27 +36,195 @@ function ReplyText({ text }) {
     const heading = /^#{1,6}\s+(.+)/.exec(line);
     const bullet = /^\s*[-*]\s+(.+)/.exec(line);
     const numbered = /^\s*(\d+[.)])\s+(.+)/.exec(line);
-    if (bullet || numbered) return <View key={index} className="my-1 flex-row items-start gap-2"><Text className="text-base leading-6 text-blue-600">{numbered ? numbered[1] : "•"}</Text><Text selectable className="flex-1 text-base leading-6 text-gray-800"><BoldText text={numbered ? numbered[2] : bullet[1]} /></Text></View>;
+    if (bullet || numbered) return <View key={index} className="my-1 flex-row items-start gap-2"><Text className="text-base leading-6 text-blue-600">{numbered ? numbered[1] : "•"}</Text><Text selectable className="text-base leading-6 text-gray-800" style={{ flexShrink: 1 }}><BoldText text={numbered ? numbered[2] : bullet[1]} /></Text></View>;
     return <Text key={index} selectable className={heading ? "mb-1 mt-3 text-base font-bold leading-6 text-gray-900" : "text-base leading-6 text-gray-800"}><BoldText text={heading ? heading[1] : line} /></Text>;
   });
 }
 
-function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, activeId, onSelect, disabled, loadingId, query, setQuery }) {
+// Matches the server's limit in aiHistoryController.renameConversation.
+const TITLE_MAX = 50;
+const titleOf = (item) => item.title || `Conversation #${item.id}`;
+
+// Rename/delete appear on hover only where a mouse can hover. Touch screens
+// (phones, tablets, touch laptops) have no hover, so there they stay visible.
+const CAN_HOVER =
+  Platform.OS === "web" &&
+  typeof window !== "undefined" &&
+  Boolean(window.matchMedia?.("(hover: hover) and (pointer: fine)").matches);
+
+function IconAction({ icon, label, onPress, disabled, danger, onFocus, onBlur }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      hitSlop={4}
+      className={`h-11 w-11 items-center justify-center rounded-lg active:bg-gray-100 ${disabled ? "opacity-40" : ""}`}
+    >
+      <Ionicons name={icon} size={18} color={danger ? COLORS.danger : COLORS.textMuted} />
+    </Pressable>
+  );
+}
+
+function NewChatButton({ onPress, disabled }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel="Start a new chat"
+      accessibilityState={{ disabled }}
+      className={`min-h-12 flex-row items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 active:bg-blue-100 ${disabled ? "opacity-50" : ""}`}
+    >
+      <Ionicons name="add" size={20} color={COLORS.primary} />
+      <Text className="text-sm font-semibold text-blue-700">New chat</Text>
+    </Pressable>
+  );
+}
+
+function HeaderIcon({ icon, label, onPress, disabled }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      className={`h-11 w-11 items-center justify-center rounded-lg border border-gray-200 active:bg-gray-100 ${disabled ? "opacity-50" : ""}`}
+    >
+      <Ionicons name={icon} size={20} color={COLORS.primary} />
+    </Pressable>
+  );
+}
+
+function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, activeId, onSelect, onRename, onDelete, disabled, loadingId, query, setQuery }) {
   const needle = query.trim().toLowerCase();
-  const filtered = conversations.filter((item) => String(item.title || `Conversation #${item.id}`).toLowerCase().includes(needle));
+  const filtered = conversations.filter((item) => titleOf(item).toLowerCase().includes(needle));
+  // Rename is edited in place: on phones this panel already sits inside a
+  // Modal, and stacking a second Modal is unreliable on iOS.
+  const [editingId, setEditingId] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [savingId, setSavingId] = useState(null);
+  const [rowError, setRowError] = useState(null);
+  // Row whose actions are revealed by mouse hover or keyboard focus.
+  const [revealedId, setRevealedId] = useState(null);
+  const locked = disabled || savingId !== null;
+  const conceal = (id) => setRevealedId((current) => (current === id ? null : current));
+
+  const startRename = (item) => {
+    setRevealedId(null);
+    setRowError(null);
+    setDraft(item.title || "");
+    setEditingId(item.id);
+  };
+  const cancelRename = () => { setEditingId(null); setRowError(null); };
+  const saveRename = async (item) => {
+    const title = draft.trim();
+    if (!title) { setRowError({ id: item.id, text: "Enter a name." }); return; }
+    if (title === item.title) { cancelRename(); return; }
+    setSavingId(item.id);
+    setRowError(null);
+    try {
+      await onRename(item.id, title);
+      setEditingId(null);
+    } catch (e) {
+      setRowError({ id: item.id, text: e.message || "Couldn't rename this conversation." });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   return (
     <View>
       <TextField label="Search conversations" placeholder="Conversation title" value={query} onChangeText={setQuery} autoCapitalize="none" />
       <View className="mb-3 flex-row items-center justify-between gap-2">
-        <Text className="text-xs text-gray-400">Recent saved conversations</Text>
+        <Text className="flex-1 text-xs text-gray-400">{CAN_HOVER ? "Recent saved conversations" : "Press and hold a conversation to rename or delete it"}</Text>
         <Pressable onPress={onRefresh} disabled={refreshing || disabled} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-xs font-semibold text-blue-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
       </View>
-      {loading ? <ActivityIndicator color={COLORS.primary} /> : error ? <View className="rounded-xl bg-red-50 p-3"><Text accessibilityRole="alert" className="text-sm leading-5 text-red-700">{error}</Text><Button title="Try again" variant="ghost" onPress={onRefresh} loading={refreshing} /></View> : filtered.map((item) => (
-        <Pressable key={item.id} onPress={() => onSelect(item.id)} disabled={disabled} accessibilityRole="button" accessibilityLabel={`Open ${item.title || "saved conversation"}`} accessibilityState={{ selected: String(activeId) === String(item.id), disabled }} className={`mb-2 min-h-12 rounded-xl border p-3 ${String(activeId) === String(item.id) ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-white"} ${disabled ? "opacity-60" : ""}`}>
-          <View className="flex-row items-start gap-2"><Ionicons name="chatbubble-outline" size={16} color={COLORS.primary} /><Text numberOfLines={2} className="flex-1 text-sm font-semibold text-gray-800">{item.title || `Conversation #${item.id}`}</Text>{String(loadingId) === String(item.id) ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}</View>
-          <Text className="mt-2 text-xs text-gray-400">{chatDate(item.updated_at)}</Text>
-        </Pressable>
-      ))}
+      {loading ? <ActivityIndicator color={COLORS.primary} /> : error ? <View className="rounded-xl bg-red-50 p-3"><Text accessibilityRole="alert" className="text-sm leading-5 text-red-700">{error}</Text><Button title="Try again" variant="ghost" onPress={onRefresh} loading={refreshing} /></View> : filtered.map((item) => {
+        const active = String(activeId) === String(item.id);
+        const editing = editingId === item.id;
+        const saving = savingId === item.id;
+        // Mouse: revealed on hover/focus. Touch: revealed by press-and-hold.
+        const showActions = revealedId === item.id;
+        return (
+          // Plain pointerenter/pointerleave, not Pressable's onHoverIn: on web,
+          // Pressable uses "contained" hover, so entering the nested title or
+          // icon buttons (which fill the row) would end the row's hover.
+          <View
+            key={item.id}
+            onPointerEnter={CAN_HOVER ? () => setRevealedId(item.id) : undefined}
+            onPointerLeave={CAN_HOVER ? () => conceal(item.id) : undefined}
+            className={`mb-2 rounded-xl border ${active ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-white"}`}
+          >
+            {editing ? (
+              <View className="p-2">
+                <TextInput
+                  value={draft}
+                  onChangeText={setDraft}
+                  autoFocus
+                  maxLength={TITLE_MAX}
+                  editable={!saving}
+                  onSubmitEditing={() => saveRename(item)}
+                  returnKeyType="done"
+                  accessibilityLabel="Conversation name"
+                  placeholder="Conversation name"
+                  placeholderTextColor="#9ca3af"
+                  className="h-11 rounded-lg border border-blue-300 bg-white px-3 text-sm text-gray-900"
+                />
+                <View className="mt-1 flex-row items-center justify-between">
+                  <Text className="text-xs text-gray-400">{draft.trim().length}/{TITLE_MAX}</Text>
+                  <View className="flex-row">
+                    <Pressable onPress={cancelRename} disabled={saving} accessibilityRole="button" className="min-h-11 justify-center px-3"><Text className="text-sm font-semibold text-gray-600">Cancel</Text></Pressable>
+                    <Pressable onPress={() => saveRename(item)} disabled={saving} accessibilityRole="button" accessibilityState={{ busy: saving }} className="min-h-11 justify-center px-3">
+                      {saving ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text className="text-sm font-semibold text-blue-600">Save</Text>}
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View className="flex-row items-start">
+                <Pressable
+                  onPress={() => { setRevealedId(null); onSelect(item.id); }}
+                  // Touch has no hover: press and hold toggles rename/delete.
+                  onLongPress={CAN_HOVER ? undefined : () => setRevealedId((current) => (current === item.id ? null : item.id))}
+                  delayLongPress={400}
+                  disabled={locked}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${titleOf(item)}`}
+                  accessibilityHint={CAN_HOVER ? undefined : "Press and hold for rename and delete"}
+                  accessibilityState={{ selected: active, disabled: locked }}
+                  // Screen readers can't easily press and hold; expose the same actions directly.
+                  accessibilityActions={[{ name: "rename", label: "Rename" }, { name: "delete", label: "Delete" }]}
+                  onAccessibilityAction={({ nativeEvent }) => {
+                    if (locked) return;
+                    if (nativeEvent.actionName === "rename") startRename(item);
+                    if (nativeEvent.actionName === "delete") onDelete(item);
+                  }}
+                  className={`min-h-12 flex-1 p-3 pr-1 ${locked ? "opacity-60" : ""}`}
+                >
+                  <View className="flex-row items-start gap-2"><Ionicons name="chatbubble-outline" size={16} color={COLORS.primary} /><Text numberOfLines={2} className="flex-1 text-sm font-semibold text-gray-800">{titleOf(item)}</Text>{String(loadingId) === String(item.id) ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}</View>
+                  <Text className="mt-2 text-xs text-gray-400">{chatDate(item.updated_at)}</Text>
+                </Pressable>
+                {/* Mouse: kept in the layout (just invisible and not clickable) so the
+                    title never reflows on hover. Touch: only rendered once revealed,
+                    so hidden buttons can't be tapped by accident. */}
+                {CAN_HOVER || showActions ? (
+                  <View className="flex-row pr-1 pt-1" style={{ opacity: showActions ? 1 : 0 }} pointerEvents={showActions ? "auto" : "none"}>
+                    <IconAction icon="create-outline" label={`Rename ${titleOf(item)}`} disabled={locked} onPress={() => startRename(item)} onFocus={() => setRevealedId(item.id)} onBlur={CAN_HOVER ? () => conceal(item.id) : undefined} />
+                    <IconAction icon="trash-outline" label={`Delete ${titleOf(item)}`} disabled={locked} danger onPress={() => { setRevealedId(null); onDelete(item); }} onFocus={() => setRevealedId(item.id)} onBlur={CAN_HOVER ? () => conceal(item.id) : undefined} />
+                  </View>
+                ) : null}
+              </View>
+            )}
+            {rowError?.id === item.id ? <Text accessibilityRole="alert" className="px-3 pb-2 text-xs text-red-700">{rowError.text}</Text> : null}
+          </View>
+        );
+      })}
       {!loading && !error && !filtered.length ? <Text className="py-4 text-sm leading-5 text-gray-500">{conversations.length ? "No saved conversations match that search." : "Your conversations will appear here after you send a message."}</Text> : null}
     </View>
   );
@@ -155,10 +324,47 @@ export default function Assistant() {
     stickToBottom.current = true;
     inputRef.current?.focus();
   };
+  const startNewFromSidebar = () => {
+    if (busy.current) return;
+    setHistoryOpen(false);
+    startNew();
+  };
   const openHistory = () => { if (!busy.current) { setHistoryOpen(true); history.refresh(); } };
   const fillPrompt = (text) => { if (!busy.current) { setDraft(text); inputRef.current?.focus(); } };
+
+  // PUT /api/ai/conversations/:id/rename { newTitle } — owner-only on the server.
+  // Throws so the history row can show the error next to the name.
+  const renameConversation = async (id, title) => {
+    await api.put(`/ai/conversations/${id}/rename`, { newTitle: title });
+    await history.refresh();
+  };
+
+  // DELETE /api/ai/conversations/:id — removes the conversation and its messages.
+  const deleteConversation = (item) => {
+    if (busy.current) return;
+    confirmAction(
+      "Delete conversation",
+      `Delete "${item.title || `Conversation #${item.id}`}"? Its messages will be removed for good.`,
+      async () => {
+        setError(null);
+        try {
+          await api.delete(`/ai/conversations/${item.id}`);
+          // Deleting the open conversation clears the chat back to a new one.
+          if (String(item.id) === String(conversationId)) {
+            setMessages([]); setShops([]); setConversationId(null); setNewReply(false);
+            stickToBottom.current = true;
+          }
+          await history.refresh();
+        } catch (e) {
+          setError(e.message || "Couldn't delete that conversation.");
+        }
+      },
+      { confirmLabel: "Delete", destructive: true }
+    );
+  };
+
   const historyPanel = (
-    <HistoryPanel conversations={history.data ?? []} loading={history.loading} error={history.error} refreshing={history.refreshing} onRefresh={history.refresh} activeId={conversationId} onSelect={loadConversation} disabled={disabled} loadingId={loadingId} query={historyQuery} setQuery={setHistoryQuery} />
+    <HistoryPanel conversations={history.data ?? []} loading={history.loading} error={history.error} refreshing={history.refreshing} onRefresh={history.refresh} activeId={conversationId} onSelect={loadConversation} onRename={renameConversation} onDelete={deleteConversation} disabled={disabled} loadingId={loadingId} query={historyQuery} setQuery={setHistoryQuery} />
   );
   const conversationTitle = (history.data ?? []).find((item) => String(item.id) === String(conversationId))?.title;
   const empty = messages.length === 0;
@@ -166,24 +372,39 @@ export default function Assistant() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["bottom", "left", "right"]}>
       <Stack.Screen options={{ title: "AI assistant", headerShown: false }} />
-      <View className="border-b border-gray-200 bg-white">
-        <View className="w-full self-center py-4" style={{ maxWidth: 1280, paddingHorizontal: horizontalPadding }}>
-          <View className={isMobile ? "gap-3" : "flex-row items-center justify-between gap-3"}>
-            <View className="flex-row items-center gap-3">
-              <View className="h-11 w-11 items-center justify-center rounded-xl bg-blue-50"><Ionicons name="sparkles-outline" size={23} color={COLORS.primary} /></View>
-              <View style={{ flexShrink: 1 }}><Text accessibilityRole="header" className="text-xl font-bold text-gray-900">PixelPatch assistant</Text><Text className="mt-1 text-xs text-gray-500">Troubleshoot your device, one step at a time.</Text></View>
+      {/* Phones and tablets have no sidebar, so a slim bar carries the title and
+          the history / new-chat icons. On desktop all of this lives in the sidebar. */}
+      {!isDesktop ? (
+        <View className="border-b border-gray-200 bg-white">
+          <View className="w-full flex-row items-center justify-between gap-3 self-center py-2.5" style={{ maxWidth: 1280, paddingHorizontal: horizontalPadding }}>
+            <View className="flex-1 flex-row items-center gap-2.5">
+              <View className="h-9 w-9 items-center justify-center rounded-lg bg-blue-50"><Ionicons name="sparkles-outline" size={19} color={COLORS.primary} /></View>
+              <Text accessibilityRole="header" numberOfLines={1} className="flex-shrink text-base font-bold text-gray-900">PixelPatch assistant</Text>
             </View>
-            <View className="flex-row flex-wrap gap-2">
-              <Button title="New chat" variant="outline" disabled={disabled} onPress={startNew} />
-              {!isDesktop ? <Button title="History" variant="ghost" disabled={disabled} onPress={openHistory} /> : null}
+            <View className="flex-row gap-2">
+              <HeaderIcon icon="list-outline" label="Open past conversations" disabled={disabled} onPress={openHistory} />
+              <HeaderIcon icon="create-outline" label="Start a new chat" disabled={disabled} onPress={startNew} />
             </View>
           </View>
         </View>
-      </View>
+      ) : null}
 
-      <View className="w-full flex-1 self-center" style={{ maxWidth: 1280, flexDirection: "row" }}>
+      {/* Desktop: full width so the sidebar sits against the left edge; the
+          message list and composer keep their own 960px cap. */}
+      <View className="w-full flex-1 self-center" style={{ maxWidth: isDesktop ? undefined : 1280, flexDirection: "row" }}>
         {isDesktop ? (
           <View style={{ width: 280 }} className="border-r border-gray-200 bg-white">
+            {/* Sidebar top: assistant title, then New chat (pinned above the list). */}
+            <View className="border-b border-gray-100 p-4">
+              <View className="mb-4 flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-blue-50"><Ionicons name="sparkles-outline" size={21} color={COLORS.primary} /></View>
+                <View style={{ flexShrink: 1 }}>
+                  <Text accessibilityRole="header" className="text-base font-bold text-gray-900">PixelPatch assistant</Text>
+                  <Text className="mt-0.5 text-xs leading-4 text-gray-500">Troubleshoot your device, one step at a time.</Text>
+                </View>
+              </View>
+              <NewChatButton onPress={startNew} disabled={disabled} />
+            </View>
             <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
               <Text className="mb-4 text-base font-bold text-gray-900">Past conversations</Text>
               {historyPanel}
@@ -222,8 +443,9 @@ export default function Assistant() {
               }
               renderItem={({ item }) => {
                 const mine = item.sender === "user";
+                // Both bubbles size to their content, capped so long replies still wrap.
                 return (
-                  <View className={`mb-5 ${mine ? "self-end" : "self-start"}`} style={{ maxWidth: mine ? isMobile ? "90%" : "80%" : "100%", width: mine ? undefined : "100%" }}>
+                  <View className={`mb-5 ${mine ? "self-end" : "self-start"}`} style={{ maxWidth: mine ? (isMobile ? "90%" : "80%") : (isMobile ? "100%" : "85%") }}>
                     <Text className={`mb-2 text-xs font-semibold text-gray-400 ${mine ? "text-right" : ""}`}>{mine ? "You" : "PixelPatch assistant"}</Text>
                     <View className={`rounded-2xl p-4 ${mine ? "bg-blue-600" : "border border-gray-200 bg-white"}`}>
                       {mine ? <Text selectable className="text-base leading-6 text-white">{item.text}</Text> : <ReplyText text={item.text} />}
@@ -272,6 +494,9 @@ export default function Assistant() {
       </View>
 
       <Modal visible={historyOpen && !isDesktop} onClose={() => { if (!disabled) setHistoryOpen(false); }} title="Past conversations">
+        <View className="mb-4">
+          <NewChatButton onPress={startNewFromSidebar} disabled={disabled} />
+        </View>
         {historyPanel}
       </Modal>
     </SafeAreaView>

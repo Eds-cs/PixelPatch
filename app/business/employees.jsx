@@ -1,4 +1,5 @@
-// Active shop employee directory. Assignment stays in the repair workspace.
+// Shop employee directory: add, edit, deactivate and reactivate team members.
+// Assignment to repairs stays in the repair workspace and only offers active staff.
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,13 +10,16 @@ import TextField from "../../components/TextField";
 import Modal from "../../components/Modal";
 import api from "../../lib/api";
 import { useFetch } from "../../lib/useFetch";
+import { confirmAction } from "../../lib/confirm";
 import { useResponsive } from "../../lib/useResponsive";
 import { COLORS } from "../../constants/theme";
 
 const EMPTY = { firstName: "", lastName: "", role: "", phone: "", email: "" };
+const STATUSES = [["active", "Active"], ["inactive", "Inactive"], ["all", "Everyone"]];
 const nameOf = (employee) => [employee.first_name, employee.last_name].filter(Boolean).join(" ") || "Employee";
 const roleOf = (employee) => (employee.role || "").trim();
 const roleKey = (employee) => roleOf(employee).toLowerCase();
+const isActive = (employee) => Number(employee?.is_active) === 1;
 function joinedDate(value) {
   if (!value) return "Date not recorded";
   const date = new Date(String(value).replace(" ", "T"));
@@ -24,7 +28,13 @@ function joinedDate(value) {
 
 function Avatar({ employee }) {
   const initials = [employee.first_name, employee.last_name].filter(Boolean).map((value) => value.charAt(0).toUpperCase()).join("");
-  return <View className="h-12 w-12 items-center justify-center rounded-xl bg-blue-50"><Text className="text-base font-bold text-blue-700">{initials || "?"}</Text></View>;
+  return <View className={`h-12 w-12 items-center justify-center rounded-xl ${isActive(employee) ? "bg-blue-50" : "bg-gray-100"}`}><Text className={`text-base font-bold ${isActive(employee) ? "text-blue-700" : "text-gray-500"}`}>{initials || "?"}</Text></View>;
+}
+
+function StatusText({ employee }) {
+  return isActive(employee)
+    ? <Text className="mt-1 text-xs text-emerald-700">Active employee</Text>
+    : <Text className="mt-1 text-xs text-gray-500">Inactive · not assignable</Text>;
 }
 
 function Contact({ icon, value, fallback }) {
@@ -38,30 +48,45 @@ function Contact({ icon, value, fallback }) {
 
 export default function Employees() {
   const { isMobile, isDesktop } = useResponsive();
-  const { data, error, loading, refreshing, refresh } = useFetch("/business/employees", (d) => d.employees ?? []);
-  const [open, setOpen] = useState(false);
+  const { data, error, loading, refreshing, refresh } = useFetch("/business/employees/all", (d) => d.employees ?? []);
+  // Form modal: null = closed, "new" = adding, otherwise the employee being edited.
+  const [editing, setEditing] = useState(null);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [profileError, setProfileError] = useState(null);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("");
+  const [status, setStatus] = useState("active");
   const [sort, setSort] = useState("name");
 
-  const employees = data ?? [];
-  const roles = [...new Map(employees.filter((item) => roleOf(item)).map((item) => [roleKey(item), roleOf(item)])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const everyone = data ?? [];
+  const active = everyone.filter(isActive);
+  const byStatus = status === "all" ? everyone : status === "active" ? active : everyone.filter((employee) => !isActive(employee));
+  const roles = [...new Map(byStatus.filter((item) => roleOf(item)).map((item) => [roleKey(item), roleOf(item)])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const needle = query.trim().toLowerCase();
-  const filtered = employees.filter((employee) =>
+  const filtered = byStatus.filter((employee) =>
     (!role || roleKey(employee) === role) &&
     (!needle || [nameOf(employee), employee.role, employee.phone, employee.email].join(" ").toLowerCase().includes(needle))
   ).sort((a, b) => sort === "newest"
     ? (new Date(String(b.created_at || "").replace(" ", "T")).getTime() || 0) - (new Date(String(a.created_at || "").replace(" ", "T")).getTime() || 0) || Number(b.id) - Number(a.id)
     : nameOf(a).localeCompare(nameOf(b)) || Number(a.id) - Number(b.id)
   );
-  const contactCount = employees.filter((employee) => employee.phone || employee.email).length;
+  const activeRoles = new Set(active.map(roleKey).filter(Boolean)).size;
+  const contactCount = active.filter((employee) => employee.phone || employee.email).length;
   const setField = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
-  const openForm = () => { setFormError(null); setOpen(true); };
-  const closeForm = () => { if (!busy) setOpen(false); };
+  const isNew = editing === "new";
+
+  const openNew = () => { setForm(EMPTY); setFormError(null); setEditing("new"); };
+  const openEdit = (employee) => {
+    setForm({ firstName: employee.first_name ?? "", lastName: employee.last_name ?? "", role: employee.role ?? "", phone: employee.phone ?? "", email: employee.email ?? "" });
+    setFormError(null);
+    setSelected(null);
+    setEditing(employee);
+  };
+  const closeForm = () => { if (!busy) setEditing(null); };
+  const openProfile = (employee) => { setProfileError(null); setSelected(employee); };
 
   const submit = async () => {
     if (busy) return;
@@ -76,21 +101,51 @@ export default function Employees() {
     setBusy(true);
     setFormError(null);
     try {
-      await api.post("/business/employees", {
+      const payload = {
         firstName: form.firstName.trim(), lastName: form.lastName.trim(), role: form.role.trim(),
         phone: form.phone.trim() || null, email: form.email.trim() || null,
-      });
-      setOpen(false);
+      };
+      if (isNew) {
+        await api.post("/business/employees", payload);
+        setQuery("");
+        setRole("");
+        setStatus("active");
+        setSort("newest");
+      } else {
+        await api.put(`/business/employees/${editing.id}`, payload);
+      }
+      setEditing(null);
       setForm(EMPTY);
-      setQuery("");
-      setRole("");
-      setSort("newest");
       await refresh();
     } catch (e) {
-      setFormError(e.message || "Couldn't add this employee.");
+      setFormError(e.message || "Couldn't save this employee.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const changeStatus = (employee) => {
+    const deactivating = isActive(employee);
+    const run = async () => {
+      setBusy(true);
+      setProfileError(null);
+      try {
+        await api.post(`/business/employees/${employee.id}/${deactivating ? "deactivate" : "reactivate"}`);
+        setSelected(null);
+        await refresh();
+      } catch (e) {
+        setProfileError(e.message || "Couldn't update this employee.");
+      } finally {
+        setBusy(false);
+      }
+    };
+    if (!deactivating) { void run(); return; }
+    confirmAction(
+      "Deactivate employee",
+      `${nameOf(employee)} will no longer be offered for repair assignment. You can reactivate them later.`,
+      run,
+      { confirmLabel: "Deactivate", destructive: true }
+    );
   };
 
   return (
@@ -102,7 +157,7 @@ export default function Employees() {
         onRefresh={refresh}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
-        emptyText={employees.length ? "No team members match these filters. Try another name, contact, or role." : "Your team starts here. Add an employee to make them available for repair assignment."}
+        emptyText={everyone.length ? "No team members match these filters. Try another name, contact, role, or status." : "Your team starts here. Add an employee to make them available for repair assignment."}
         ListHeaderComponent={
           <View>
             <View className="mb-5 flex-row flex-wrap items-center justify-between gap-3">
@@ -110,14 +165,14 @@ export default function Employees() {
                 <Text accessibilityRole="header" className="text-2xl font-bold text-gray-900">Your team</Text>
                 <Text className="mt-1 text-sm leading-5 text-gray-500">People, roles, and contact details in one place.</Text>
               </View>
-              <Button title="Add employee" onPress={openForm} />
+              <Button title="Add employee" onPress={openNew} />
             </View>
 
             <View className="mb-5 flex-row flex-wrap justify-between gap-y-3">
               {[
-                { label: "Active employees", value: employees.length, note: "Listed in your shop", icon: "people-outline" },
-                { label: "Team roles", value: roles.length, note: "Distinct roles across your team", icon: "briefcase-outline" },
-                { label: "Contact available", value: contactCount, note: "Has a phone number or email", icon: "call-outline" },
+                { label: "Active employees", value: active.length, note: everyone.length > active.length ? `${everyone.length - active.length} inactive` : "Available for assignment", icon: "people-outline" },
+                { label: "Team roles", value: activeRoles, note: "Distinct roles across active staff", icon: "briefcase-outline" },
+                { label: "Contact available", value: contactCount, note: "Active staff with a phone or email", icon: "call-outline" },
               ].map((stat) => (
                 <View key={stat.label} style={{ width: isMobile ? "100%" : "32%" }} className={`rounded-xl border border-gray-200 bg-white p-4 ${isMobile ? "flex-row items-center gap-4" : ""}`}>
                   <View className="h-10 w-10 items-center justify-center rounded-lg bg-blue-50"><Ionicons name={stat.icon} size={20} color={COLORS.primary} /></View>
@@ -132,11 +187,19 @@ export default function Employees() {
 
             <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
               <TextField label="Search your team" placeholder="Name, role, phone, or email" value={query} onChangeText={setQuery} autoCapitalize="none" />
+              <Text className="mb-2 text-xs font-semibold uppercase text-gray-500">Status</Text>
+              <View className="mb-4 flex-row flex-wrap gap-2">
+                {STATUSES.map(([key, label]) => (
+                  <Pressable key={key} onPress={() => { setStatus(key); setRole(""); }} accessibilityRole="button" accessibilityState={{ selected: status === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${status === key ? "bg-blue-600" : "bg-gray-50"}`}>
+                    <Text className={`text-sm font-semibold ${status === key ? "text-white" : "text-gray-600"}`}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <Text className="mb-2 text-xs font-semibold uppercase text-gray-500">Filter by role</Text>
               <View className="flex-row flex-wrap gap-2">
                 {[["", "All roles"], ...roles].map(([key, label]) => (
-                  <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="button" accessibilityLabel={`Filter role: ${label}`} accessibilityState={{ selected: role === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${role === key ? "bg-blue-600" : "bg-gray-50"}`}>
-                    <Text className={`text-sm font-semibold ${role === key ? "text-white" : "text-gray-600"}`}>{label}</Text>
+                  <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="button" accessibilityLabel={`Filter role: ${label}`} accessibilityState={{ selected: role === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${role === key ? "bg-blue-50" : "bg-gray-50"}`}>
+                    <Text className={`text-sm font-semibold ${role === key ? "text-blue-700" : "text-gray-600"}`}>{label}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -151,9 +214,9 @@ export default function Employees() {
             </View>
 
             <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
-              <Text className="text-sm text-gray-500">{filtered.length} of {employees.length} active employees</Text>
+              <Text className="text-sm text-gray-500">{filtered.length} of {byStatus.length} {status === "all" ? "team members" : `${status} employees`}</Text>
               <View className="flex-row flex-wrap gap-3">
-                {query || role || sort !== "name" ? <Pressable onPress={() => { setQuery(""); setRole(""); setSort("name"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">Reset filters</Text></Pressable> : null}
+                {query || role || status !== "active" || sort !== "name" ? <Pressable onPress={() => { setQuery(""); setRole(""); setStatus("active"); setSort("name"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">Reset filters</Text></Pressable> : null}
                 <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
               </View>
             </View>
@@ -165,13 +228,13 @@ export default function Employees() {
           </View>
         }
         renderItem={({ item }) => (
-          <Pressable onPress={() => setSelected(item)} accessibilityRole="button" accessibilityLabel={`View employee profile: ${nameOf(item)}`} className="mb-3 rounded-xl border border-gray-200 bg-white p-4 active:bg-blue-50">
+          <Pressable onPress={() => openProfile(item)} accessibilityRole="button" accessibilityLabel={`View employee profile: ${nameOf(item)}`} className={`mb-3 rounded-xl border bg-white p-4 active:bg-blue-50 ${isActive(item) ? "border-gray-200" : "border-dashed border-gray-300"}`}>
             <View className={isDesktop ? "flex-row items-center gap-5" : ""}>
               <View className="flex-row items-center gap-3" style={isDesktop ? { flex: 3, minWidth: 0 } : undefined}>
                 <Avatar employee={item} />
                 <View className="flex-1">
-                  <Text className="text-base font-bold text-gray-900">{nameOf(item)}</Text>
-                  <Text className="mt-1 text-xs text-emerald-700">Active employee</Text>
+                  <Text className={`text-base font-bold ${isActive(item) ? "text-gray-900" : "text-gray-500"}`}>{nameOf(item)}</Text>
+                  <StatusText employee={item} />
                 </View>
                 {!isDesktop ? <Ionicons name="chevron-forward-outline" size={18} color={COLORS.textMuted} /> : null}
               </View>
@@ -191,8 +254,8 @@ export default function Employees() {
         )}
       />
 
-      <Modal visible={open} onClose={closeForm} title="Add employee" footer={<Button title="Save employee" loading={busy} onPress={submit} />}>
-        <Text className="mb-4 text-sm leading-5 text-gray-500">Add a team member to your shop. Assign them to a repair from the repair workspace after the required approval and payment.</Text>
+      <Modal visible={editing !== null} onClose={closeForm} title={isNew ? "Add employee" : "Edit employee"} footer={<Button title="Save employee" loading={busy} onPress={submit} />}>
+        {isNew ? <Text className="mb-4 text-sm leading-5 text-gray-500">Add a team member to your shop. Assign them to a repair from the repair workspace after the required approval and payment.</Text> : null}
         {formError ? <Text accessibilityRole="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{formError}</Text> : null}
         <View className={isMobile ? "" : "flex-row gap-3"}>
           <View style={isMobile ? undefined : { flex: 1 }}><TextField label="First name *" value={form.firstName} onChangeText={setField("firstName")} placeholder="Juan" maxLength={100} editable={!busy} /></View>
@@ -204,14 +267,28 @@ export default function Employees() {
         <Text className="text-xs text-gray-400">* Required fields. Contact details can be left empty.</Text>
       </Modal>
 
-      <Modal visible={Boolean(selected)} onClose={() => setSelected(null)} title="Employee profile">
+      <Modal
+        visible={Boolean(selected)}
+        onClose={() => { if (!busy) setSelected(null); }}
+        title="Employee profile"
+        footer={selected ? (
+          <View className={isMobile ? "gap-3" : "flex-row gap-3"}>
+            <View className={isMobile ? "" : "flex-1"}><Button title="Edit details" variant="outline" disabled={busy} onPress={() => openEdit(selected)} /></View>
+            <View className={isMobile ? "" : "flex-1"}>
+              <Button title={isActive(selected) ? "Deactivate" : "Reactivate"} variant={isActive(selected) ? "outline" : "primary"} loading={busy} onPress={() => changeStatus(selected)} />
+            </View>
+          </View>
+        ) : null}
+      >
         {selected ? (
           <View>
+            {profileError ? <Text accessibilityRole="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{profileError}</Text> : null}
             <View className="mb-4 flex-row items-center gap-3">
               <Avatar employee={selected} />
               <View className="flex-1"><Text className="text-lg font-bold text-gray-900">{nameOf(selected)}</Text><Text className="mt-1 text-sm text-gray-500">{roleOf(selected) || "Role not specified"}</Text></View>
             </View>
-            <Text className="mb-4 text-xs font-semibold text-emerald-700">Active employee · #{selected.id}</Text>
+            <Text className={`mb-4 text-xs font-semibold ${isActive(selected) ? "text-emerald-700" : "text-gray-500"}`}>{isActive(selected) ? "Active employee" : "Inactive employee"} · #{selected.id}</Text>
+            {Number(selected.open_assignment_count) ? <Text className="mb-4 rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-800">Assigned to {selected.open_assignment_count} unfinished repair{Number(selected.open_assignment_count) === 1 ? "" : "s"}. Reassign {Number(selected.open_assignment_count) === 1 ? "it" : "them"} before deactivating this employee.</Text> : null}
             <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Contact details</Text>
             <Contact icon="call-outline" value={selected.phone} fallback="No phone recorded" />
             <Contact icon="mail-outline" value={selected.email} fallback="No email recorded" />

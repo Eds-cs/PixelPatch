@@ -1,6 +1,6 @@
 // lib/auth.jsx
-import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
-import api from "./api";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
+import api, { setUnauthorizedHandler } from "./api";
 import { storage, KEYS } from "./storage";
 
 const AuthContext = createContext(null);
@@ -15,6 +15,8 @@ export function AuthProvider({ children }) {
   // Distinguishes "still reading storage" from "definitely signed out", so the
   // route guard does not bounce a logged-in user to /login on cold start.
   const [loading, setLoading] = useState(true);
+  // Shown once on the login screen after an automatic sign-out.
+  const [sessionNotice, setSessionNotice] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -35,6 +37,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const persist = useCallback(async (nextToken, nextUser, remember) => {
+    setSessionNotice(null);
     setToken(nextToken);
     setUser(nextUser);
     await Promise.all([
@@ -80,6 +83,26 @@ export function AuthProvider({ children }) {
     await Promise.all([storage.remove(KEYS.TOKEN), storage.remove(KEYS.USER)]);
   }, []);
 
+  // A 401 on an authenticated request means the stored token expired or was
+  // revoked: clear it so the route guard returns the user to /login.
+  // Several in-flight requests can fail together, so sign out only once.
+  const signingOut = useRef(false);
+  const tokenRef = useRef(token);
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+  useEffect(() => {
+    setUnauthorizedHandler((failedToken) => {
+      if (signingOut.current || !tokenRef.current || failedToken !== tokenRef.current) return;
+      signingOut.current = true;
+      setSessionNotice("Your session has expired. Please sign in again.");
+      logout().finally(() => {
+        signingOut.current = false;
+      });
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
+
   const value = useMemo(
     () => ({
       user,
@@ -87,13 +110,17 @@ export function AuthProvider({ children }) {
       loading,
       isLoggedIn: Boolean(token),
       isBusiness: user?.role_id === ROLE.BUSINESS,
+      // Admins get their own portal (/admin). The server re-checks the role
+      // against the database on every admin request; this only drives routing.
+      isAdmin: user?.role_id === ROLE.ADMIN,
+      sessionNotice,
       login,
       loginWithGoogle,
       setSession,
       signup,
       logout,
     }),
-    [user, token, loading, login, loginWithGoogle, setSession, signup, logout]
+    [user, token, loading, sessionNotice, login, loginWithGoogle, setSession, signup, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
