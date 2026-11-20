@@ -5,9 +5,9 @@ const PESO = "₱";
 
 const REPAIR_STATUS_STYLES = {
   pending: ["bg-amber-100", "text-amber-800", "Pending"],
-  review: ["bg-blue-100", "text-blue-800", "In review"],
-  accepted: ["bg-blue-100", "text-blue-800", "Accepted"],
-  in_progress: ["bg-indigo-100", "text-indigo-800", "In progress"],
+  review: ["bg-brand-100", "text-brand-800", "In review"],
+  accepted: ["bg-brand-100", "text-brand-800", "Accepted"],
+  in_progress: ["bg-brand-600", "text-white", "In progress"],
   completed: ["bg-emerald-100", "text-emerald-800", "Completed"],
   rejected: ["bg-red-100", "text-red-800", "Rejected"],
   cancelled: ["bg-gray-200", "text-gray-700", "Cancelled"],
@@ -181,7 +181,7 @@ export function getRepairLocation({ deliveryMethod, serviceAddress, shopAddress 
 export function RepairCancelledNotice({ message }) {
   return (
     <View className="mb-4 flex-row rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <Ionicons name="ban-outline" size={22} color="#4b5563" />
+      <Ionicons name="ban-outline" size={22} color="#57534e" />
       <View className="ml-3 flex-1">
         <Text className="text-base font-bold text-gray-800">Repair request cancelled</Text>
         <Text className="mt-1 text-sm text-gray-600">

@@ -36,7 +36,7 @@ export default function BusinessLayout() {
         swipeEnabled: Platform.OS !== "web" && !permanent,
         drawerActiveTintColor: COLORS.primary,
         drawerInactiveTintColor: COLORS.textMuted,
-        drawerActiveBackgroundColor: "#eff6ff",
+        drawerActiveBackgroundColor: "#efebe5",
         headerShown: Platform.OS !== "web",
         headerStyle: { backgroundColor: COLORS.surface },
         headerTintColor: COLORS.text,

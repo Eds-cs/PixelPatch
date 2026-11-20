@@ -1,0 +1,131 @@
+-- 2026-11-20: standardize existing addresses for the Zamboanga City service area.
+--
+-- PixelPatch only serves Zamboanga City. Addresses used to be typed by hand,
+-- so the same place was stored many ways (city left blank, "ZAMBOANGA CITY",
+-- the city written into "province", "Sta. Maria" for Santa Maria). From now on
+-- the server stores every address with the values below and an official
+-- barangay name (server/utils/serviceArea.js).
+--
+-- This rewrites addresses whose barangay is a Zamboanga City barangay and whose
+-- city is Zamboanga City or blank. Anything else is left unchanged; those users
+-- are asked by the app to add a Zamboanga City address. Safe to re-run.
+
+SET NAMES utf8mb4;
+
+CREATE TEMPORARY TABLE zc_barangays (name VARCHAR(100) NOT NULL PRIMARY KEY)
+  DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+INSERT INTO zc_barangays (name) VALUES
+  ('Arena Blanco'),
+  ('Ayala'),
+  ('Baliwasan'),
+  ('Baluno'),
+  ('Boalan'),
+  ('Bolong'),
+  ('Buenavista'),
+  ('Bunguiao'),
+  ('Busay (Sacol Island)'),
+  ('Cabaluay'),
+  ('Cabatangan'),
+  ('Cacao'),
+  ('Calabasa'),
+  ('Calarian'),
+  ('Camino Nuevo'),
+  ('Campo Islam'),
+  ('Canelar'),
+  ('Capisan'),
+  ('Cawit'),
+  ('Culianan'),
+  ('Curuan'),
+  ('Dita'),
+  ('Divisoria'),
+  ('Dulian (Upper Bunguiao)'),
+  ('Dulian (Upper Pasonanca)'),
+  ('Guisao'),
+  ('Guiwan'),
+  ('Kasanyangan'),
+  ('La Paz'),
+  ('Labuan'),
+  ('Lamisahan'),
+  ('Landang Gua'),
+  ('Landang Laum'),
+  ('Lanzones'),
+  ('Lapakan'),
+  ('Latuan (Curuan)'),
+  ('Licomo'),
+  ('Limaong'),
+  ('Limpapa'),
+  ('Lubigan'),
+  ('Lumayang'),
+  ('Lumbangan'),
+  ('Lunzuran'),
+  ('Maasin'),
+  ('Malagutay'),
+  ('Mampang'),
+  ('Manalipa'),
+  ('Mangusu'),
+  ('Manicahan'),
+  ('Mariki'),
+  ('Mercedes'),
+  ('Muti'),
+  ('Pamucutan'),
+  ('Pangapuyan'),
+  ('Panubigan'),
+  ('Pasilmanta (Sacol Island)'),
+  ('Pasobolong'),
+  ('Pasonanca'),
+  ('Patalon'),
+  ('Putik'),
+  ('Quiniput'),
+  ('Recodo'),
+  ('Rio Hondo'),
+  ('Salaan'),
+  ('San Jose Cawa-Cawa'),
+  ('San Jose Gusu'),
+  ('San Ramon'),
+  ('San Roque'),
+  ('Sangali'),
+  ('Santa Barbara'),
+  ('Santa Catalina'),
+  ('Santa Maria'),
+  ('Santo Niño'),
+  ('Sibulao (Caruan)'),
+  ('Sinubung'),
+  ('Sinunoc'),
+  ('Tagasilay'),
+  ('Taguiti'),
+  ('Talabaan'),
+  ('Talisayan'),
+  ('Talon-Talon'),
+  ('Taluksangay'),
+  ('Tetuan'),
+  ('Tictapul'),
+  ('Tigbalabag'),
+  ('Tigtabon'),
+  ('Tolosa'),
+  ('Tugbungan'),
+  ('Tulungatung'),
+  ('Tumaga'),
+  ('Tumalutab'),
+  ('Tumitus'),
+  ('Victoria'),
+  ('Vitali'),
+  ('Zambowood'),
+  ('Zone I (Poblacion)'),
+  ('Zone II (Poblacion)'),
+  ('Zone III (Poblacion)'),
+  ('Zone IV (Poblacion)');
+
+UPDATE addresses a
+JOIN zc_barangays b
+  ON b.name = REPLACE(REPLACE(TRIM(a.barangay), 'Sta. ', 'Santa '), 'Sto. ', 'Santo ')
+SET a.country = 'Philippines',
+    a.region = 'Region IX',
+    a.province = 'Zamboanga del Sur',
+    a.city = 'Zamboanga City',
+    a.barangay = b.name,
+    a.postal_code = COALESCE(NULLIF(TRIM(a.postal_code), ''), '7000'),
+    a.updated_at = NOW()
+WHERE TRIM(COALESCE(a.city, '')) IN ('', 'Zamboanga City', 'Zamboanga');
+
+DROP TEMPORARY TABLE zc_barangays;

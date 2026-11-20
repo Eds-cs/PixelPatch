@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Button from "../components/Button";
 import TextField from "../components/TextField";
 import DateField from "../components/DateField";
+import BarangayPicker from "../components/BarangayPicker";
 import api from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import { COLORS } from "../constants/theme";
@@ -44,7 +45,7 @@ function Chip({ label, selected, onPress }) {
       accessibilityRole="button"
       accessibilityState={{ selected }}
       className={`mb-2 mr-2 rounded-full border px-3.5 py-2 ${
-        selected ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
+        selected ? "border-brand-600 bg-brand-600" : "border-gray-300 bg-white"
       }`}
     >
       <Text className={`text-xs font-semibold ${selected ? "text-white" : "text-gray-700"}`}>
@@ -78,9 +79,6 @@ export default function BecomePartner() {
     business_phone: "",
   });
   const [loc, setLoc] = useState({
-    region: "",
-    province: "",
-    city: "",
     barangay: "",
     street: "",
     postal_code: "",
@@ -112,9 +110,8 @@ export default function BecomePartner() {
       if (!biz.business_phone.trim()) return "Business phone is required.";
     }
     if (step === 1) {
-      for (const k of ["region", "province", "city", "barangay", "street"]) {
-        if (!loc[k].trim()) return `${k[0].toUpperCase() + k.slice(1)} is required.`;
-      }
+      if (!loc.street.trim()) return "Street is required.";
+      if (!loc.barangay) return "Choose your shop's barangay in Zamboanga City.";
       if (!loc.open_time.trim() || !loc.close_time.trim()) return "Opening hours are required.";
     }
     if (step === 2) {
@@ -193,7 +190,7 @@ export default function BecomePartner() {
             <View key={label} className="flex-1 flex-row items-center">
               <View
                 className={`h-8 w-8 items-center justify-center rounded-full ${
-                  i <= step ? "bg-blue-600" : "bg-gray-200"
+                  i <= step ? "bg-brand-600" : "bg-gray-200"
                 }`}
               >
                 {i < step ? (
@@ -207,7 +204,7 @@ export default function BecomePartner() {
                 )}
               </View>
               {i < STEPS.length - 1 ? (
-                <View className={`h-0.5 flex-1 ${i < step ? "bg-blue-600" : "bg-gray-200"}`} />
+                <View className={`h-0.5 flex-1 ${i < step ? "bg-brand-600" : "bg-gray-200"}`} />
               ) : null}
             </View>
           ))}
@@ -253,47 +250,20 @@ export default function BecomePartner() {
                 onChangeText={setLocField("street")}
                 placeholder="123 Rizal St."
               />
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <TextField
-                    label="Barangay"
-                    value={loc.barangay}
-                    onChangeText={setLocField("barangay")}
-                    placeholder="Barangay 1"
-                  />
-                </View>
-                <View className="flex-1">
-                  <TextField
-                    label="City"
-                    value={loc.city}
-                    onChangeText={setLocField("city")}
-                    placeholder="Quezon City"
-                  />
-                </View>
-              </View>
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <TextField
-                    label="Province"
-                    value={loc.province}
-                    onChangeText={setLocField("province")}
-                    placeholder="Metro Manila"
-                  />
-                </View>
-                <View className="flex-1">
-                  <TextField
-                    label="Region"
-                    value={loc.region}
-                    onChangeText={setLocField("region")}
-                    placeholder="NCR"
-                  />
-                </View>
-              </View>
+              <BarangayPicker
+                label="Barangay (Zamboanga City)"
+                value={loc.barangay}
+                onChange={setLocField("barangay")}
+                placeholder="Select your shop's barangay"
+              />
+              <Text className="-mt-2 mb-4 text-xs text-gray-500">
+                PixelPatch is only available in Zamboanga City, so shops must be located there.
+              </Text>
               <TextField
                 label="Postal code (optional)"
                 value={loc.postal_code}
                 onChangeText={setLocField("postal_code")}
-                placeholder="1100"
+                placeholder="7000"
                 keyboardType="number-pad"
                 inputMode="numeric"
               />

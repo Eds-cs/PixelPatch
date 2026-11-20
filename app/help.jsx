@@ -71,7 +71,7 @@ export default function Help() {
       <View className="mb-6">
         {STEPS.map((s, i) => (
           <View key={s.title} className="mb-3 flex-row rounded-xl border border-gray-200 bg-white p-4">
-            <View className="mr-3 h-9 w-9 items-center justify-center rounded-full bg-blue-100">
+            <View className="mr-3 h-9 w-9 items-center justify-center rounded-full bg-brand-100">
               <Ionicons name={s.icon} size={18} color={COLORS.primary} />
             </View>
             <View className="flex-1">
@@ -94,9 +94,9 @@ export default function Help() {
         ))}
       </View>
 
-      <View className="mb-8 rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <Text className="mb-1 text-base font-semibold text-blue-900">Still stuck?</Text>
-        <Text className="mb-3 text-sm text-blue-800">
+      <View className="mb-8 rounded-xl border border-brand-200 bg-brand-50 p-4">
+        <Text className="mb-1 text-base font-semibold text-brand-900">Still stuck?</Text>
+        <Text className="mb-3 text-sm text-brand-800">
           Describe the problem to our assistant and it will help you troubleshoot and find a shop.
         </Text>
         <Button title="Open the AI assistant" onPress={() => router.push("/assistant")} />

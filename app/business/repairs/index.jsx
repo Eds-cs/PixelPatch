@@ -16,8 +16,8 @@ import { COLORS } from "../../../constants/theme";
 const FILTERS = [
   { key: "all", label: "All requests" },
   { key: "new", label: "Needs decision", icon: "file-tray-outline", note: "Accept or reject", color: "#d97706" },
-  { key: "review", label: "In review", icon: "clipboard-outline", note: "Assessment, quote & payment", color: "#2563eb" },
-  { key: "progress", label: "In progress", icon: "construct-outline", note: "Repair work underway", color: "#4f46e5" },
+  { key: "review", label: "In review", icon: "clipboard-outline", note: "Assessment, quote & payment", color: "#6f685f" },
+  { key: "progress", label: "In progress", icon: "construct-outline", note: "Repair work underway", color: "#2b2724" },
   { key: "completed", label: "Completed", icon: "checkmark-circle-outline", note: "Finished repairs", color: "#059669" },
   { key: "rejected", label: "Rejected" },
   { key: "cancelled", label: "Cancelled" },
@@ -77,12 +77,12 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${action} #${repair.id}, ${device}, ${repair.client || "Client"}`}
-      className={`mb-3 rounded-xl border bg-white p-4 active:bg-blue-50 ${stage === "new" ? "border-amber-200" : "border-gray-200"}`}
+      className={`mb-3 rounded-xl border bg-white p-4 active:bg-brand-50 ${stage === "new" ? "border-amber-200" : "border-gray-200"}`}
     >
       <View className={desktop ? "flex-row items-center gap-4" : ""}>
         <View style={desktop ? { flex: 3, minWidth: 0 } : undefined}>
           <View className="flex-row items-start gap-3">
-            <View className={`h-11 w-11 items-center justify-center rounded-xl ${stage === "new" ? "bg-amber-50" : "bg-blue-50"}`}>
+            <View className={`h-11 w-11 items-center justify-center rounded-xl ${stage === "new" ? "bg-amber-50" : "bg-brand-50"}`}>
               <Ionicons name="build-outline" size={20} color={stage === "new" ? "#d97706" : COLORS.primary} />
             </View>
             <View className="flex-1">
@@ -99,7 +99,7 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
 
         <View style={desktop ? { flex: 3, minWidth: 0 } : undefined} className={desktop ? "" : "mt-4"}>
           <Text numberOfLines={2} className="text-sm leading-5 text-gray-700">{repair.issue_description || "No issue description provided."}</Text>
-          <Text numberOfLines={1} className="mt-2 text-xs font-medium text-blue-600">{repair.services || "Services not specified"}</Text>
+          <Text numberOfLines={1} className="mt-2 text-xs font-medium text-brand-600">{repair.services || "Services not specified"}</Text>
         </View>
 
         {desktop ? (
@@ -111,7 +111,7 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
             <View style={{ flex: 2, minWidth: 0 }}>
               <Text className="text-xs text-gray-500">{date}</Text>
               <View className="mt-3 flex-row items-center gap-1">
-                <Text className="flex-shrink text-sm font-semibold text-blue-600">{action}</Text>
+                <Text className="flex-shrink text-sm font-semibold text-brand-600">{action}</Text>
                 <Ionicons name="arrow-forward-outline" size={16} color={COLORS.primary} />
               </View>
             </View>
@@ -123,7 +123,7 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
               <Text className="text-xs text-gray-400">Requested {date}</Text>
             </View>
             <View className={`mt-3 flex-row items-center ${mobile ? "justify-between" : "justify-end gap-2"}`}>
-              <Text className="text-sm font-semibold text-blue-600">{action}</Text>
+              <Text className="text-sm font-semibold text-brand-600">{action}</Text>
               <Ionicons name="arrow-forward-outline" size={18} color={COLORS.primary} />
             </View>
           </View>
@@ -203,7 +203,7 @@ export default function BusinessRepairs() {
                 accessibilityLabel={`${item.label}: ${counts[item.key] || 0} requests`}
                 accessibilityState={{ selected: filter === item.key }}
                 style={{ width: isMobile ? "48%" : "24%" }}
-                className={`rounded-xl border p-4 ${filter === item.key ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white"}`}
+                className={`rounded-xl border p-4 ${filter === item.key ? "border-brand-500 bg-brand-50" : "border-gray-200 bg-white"}`}
               >
                 <Ionicons name={item.icon} size={22} color={item.color} />
                 <Text className="mt-3 text-2xl font-bold text-gray-900">{counts[item.key] || 0}</Text>
@@ -216,9 +216,9 @@ export default function BusinessRepairs() {
           <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
             <View className="flex-row flex-wrap gap-2">
               {FILTERS.map((item) => (
-                <Pressable key={item.key} onPress={() => setFilter(item.key)} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} className={`min-h-11 flex-row items-center gap-2 rounded-lg px-3 py-2 ${filter === item.key ? "bg-blue-600" : "bg-gray-50"}`}>
+                <Pressable key={item.key} onPress={() => setFilter(item.key)} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} className={`min-h-11 flex-row items-center gap-2 rounded-lg px-3 py-2 ${filter === item.key ? "bg-brand-600" : "bg-gray-50"}`}>
                   <Text className={`text-sm font-semibold ${filter === item.key ? "text-white" : "text-gray-600"}`}>{item.label}</Text>
-                  <Text className={`text-xs ${filter === item.key ? "text-blue-100" : "text-gray-400"}`}>{counts[item.key] || 0}</Text>
+                  <Text className={`text-xs ${filter === item.key ? "text-brand-100" : "text-gray-400"}`}>{counts[item.key] || 0}</Text>
                 </Pressable>
               ))}
             </View>
@@ -228,8 +228,8 @@ export default function BusinessRepairs() {
             <View className="mt-3 flex-row flex-wrap items-center gap-2">
               <Text className="mr-1 text-xs font-medium text-gray-500">Sort by</Text>
               {SORTS.map((item) => (
-                <Pressable key={item.key} onPress={() => setSort(item.key)} accessibilityRole="button" accessibilityLabel={`Sort by ${item.label}`} accessibilityState={{ selected: sort === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === item.key ? "bg-blue-50" : ""}`}>
-                  <Text className={`text-xs font-semibold ${sort === item.key ? "text-blue-700" : "text-gray-500"}`}>{item.label}</Text>
+                <Pressable key={item.key} onPress={() => setSort(item.key)} accessibilityRole="button" accessibilityLabel={`Sort by ${item.label}`} accessibilityState={{ selected: sort === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === item.key ? "bg-brand-50" : ""}`}>
+                  <Text className={`text-xs font-semibold ${sort === item.key ? "text-brand-700" : "text-gray-500"}`}>{item.label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -239,7 +239,7 @@ export default function BusinessRepairs() {
             <Text className="text-sm font-medium text-gray-500">{filtered.length} of {counts.all || 0} requests</Text>
             {filter !== "all" || query || sort !== "newest" ? (
               <Pressable onPress={() => { setFilter("all"); setQuery(""); setSort("newest"); }} accessibilityRole="button" className="min-h-11 justify-center px-2">
-                <Text className="text-sm font-semibold text-blue-600">Reset filters</Text>
+                <Text className="text-sm font-semibold text-brand-600">Reset filters</Text>
               </Pressable>
             ) : null}
           </View>

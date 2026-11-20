@@ -28,7 +28,7 @@ function joinedDate(value) {
 
 function Avatar({ employee }) {
   const initials = [employee.first_name, employee.last_name].filter(Boolean).map((value) => value.charAt(0).toUpperCase()).join("");
-  return <View className={`h-12 w-12 items-center justify-center rounded-xl ${isActive(employee) ? "bg-blue-50" : "bg-gray-100"}`}><Text className={`text-base font-bold ${isActive(employee) ? "text-blue-700" : "text-gray-500"}`}>{initials || "?"}</Text></View>;
+  return <View className={`h-12 w-12 items-center justify-center rounded-xl ${isActive(employee) ? "bg-brand-50" : "bg-gray-100"}`}><Text className={`text-base font-bold ${isActive(employee) ? "text-brand-700" : "text-gray-500"}`}>{initials || "?"}</Text></View>;
 }
 
 function StatusText({ employee }) {
@@ -175,7 +175,7 @@ export default function Employees() {
                 { label: "Contact available", value: contactCount, note: "Active staff with a phone or email", icon: "call-outline" },
               ].map((stat) => (
                 <View key={stat.label} style={{ width: isMobile ? "100%" : "32%" }} className={`rounded-xl border border-gray-200 bg-white p-4 ${isMobile ? "flex-row items-center gap-4" : ""}`}>
-                  <View className="h-10 w-10 items-center justify-center rounded-lg bg-blue-50"><Ionicons name={stat.icon} size={20} color={COLORS.primary} /></View>
+                  <View className="h-10 w-10 items-center justify-center rounded-lg bg-brand-50"><Ionicons name={stat.icon} size={20} color={COLORS.primary} /></View>
                   <View className={isMobile ? "flex-1" : "mt-3"}>
                     <Text className="text-xs font-medium text-gray-500">{stat.label}</Text>
                     <Text className="mt-1 text-2xl font-bold text-gray-900">{stat.value}</Text>
@@ -190,7 +190,7 @@ export default function Employees() {
               <Text className="mb-2 text-xs font-semibold uppercase text-gray-500">Status</Text>
               <View className="mb-4 flex-row flex-wrap gap-2">
                 {STATUSES.map(([key, label]) => (
-                  <Pressable key={key} onPress={() => { setStatus(key); setRole(""); }} accessibilityRole="button" accessibilityState={{ selected: status === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${status === key ? "bg-blue-600" : "bg-gray-50"}`}>
+                  <Pressable key={key} onPress={() => { setStatus(key); setRole(""); }} accessibilityRole="button" accessibilityState={{ selected: status === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${status === key ? "bg-brand-600" : "bg-gray-50"}`}>
                     <Text className={`text-sm font-semibold ${status === key ? "text-white" : "text-gray-600"}`}>{label}</Text>
                   </Pressable>
                 ))}
@@ -198,16 +198,16 @@ export default function Employees() {
               <Text className="mb-2 text-xs font-semibold uppercase text-gray-500">Filter by role</Text>
               <View className="flex-row flex-wrap gap-2">
                 {[["", "All roles"], ...roles].map(([key, label]) => (
-                  <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="button" accessibilityLabel={`Filter role: ${label}`} accessibilityState={{ selected: role === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${role === key ? "bg-blue-50" : "bg-gray-50"}`}>
-                    <Text className={`text-sm font-semibold ${role === key ? "text-blue-700" : "text-gray-600"}`}>{label}</Text>
+                  <Pressable key={key} onPress={() => setRole(key)} accessibilityRole="button" accessibilityLabel={`Filter role: ${label}`} accessibilityState={{ selected: role === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${role === key ? "bg-brand-50" : "bg-gray-50"}`}>
+                    <Text className={`text-sm font-semibold ${role === key ? "text-brand-700" : "text-gray-600"}`}>{label}</Text>
                   </Pressable>
                 ))}
               </View>
               <View className="mt-3 flex-row flex-wrap items-center gap-2">
                 <Text className="mr-1 text-xs text-gray-500">Sort by</Text>
                 {[["name", "Name A–Z"], ["newest", "Newest added"]].map(([key, label]) => (
-                  <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-blue-50" : ""}`}>
-                    <Text className={`text-xs font-semibold ${sort === key ? "text-blue-700" : "text-gray-500"}`}>{label}</Text>
+                  <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-brand-50" : ""}`}>
+                    <Text className={`text-xs font-semibold ${sort === key ? "text-brand-700" : "text-gray-500"}`}>{label}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -216,8 +216,8 @@ export default function Employees() {
             <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
               <Text className="text-sm text-gray-500">{filtered.length} of {byStatus.length} {status === "all" ? "team members" : `${status} employees`}</Text>
               <View className="flex-row flex-wrap gap-3">
-                {query || role || status !== "active" || sort !== "name" ? <Pressable onPress={() => { setQuery(""); setRole(""); setStatus("active"); setSort("name"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">Reset filters</Text></Pressable> : null}
-                <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
+                {query || role || status !== "active" || sort !== "name" ? <Pressable onPress={() => { setQuery(""); setRole(""); setStatus("active"); setSort("name"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
+                <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
               </View>
             </View>
             {isDesktop && filtered.length ? (
@@ -228,7 +228,7 @@ export default function Employees() {
           </View>
         }
         renderItem={({ item }) => (
-          <Pressable onPress={() => openProfile(item)} accessibilityRole="button" accessibilityLabel={`View employee profile: ${nameOf(item)}`} className={`mb-3 rounded-xl border bg-white p-4 active:bg-blue-50 ${isActive(item) ? "border-gray-200" : "border-dashed border-gray-300"}`}>
+          <Pressable onPress={() => openProfile(item)} accessibilityRole="button" accessibilityLabel={`View employee profile: ${nameOf(item)}`} className={`mb-3 rounded-xl border bg-white p-4 active:bg-brand-50 ${isActive(item) ? "border-gray-200" : "border-dashed border-gray-300"}`}>
             <View className={isDesktop ? "flex-row items-center gap-5" : ""}>
               <View className="flex-row items-center gap-3" style={isDesktop ? { flex: 3, minWidth: 0 } : undefined}>
                 <Avatar employee={item} />
@@ -247,7 +247,7 @@ export default function Employees() {
               </View>
               <View style={isDesktop ? { flex: 2, minWidth: 0 } : undefined} className={isDesktop ? "" : "mt-4 flex-row flex-wrap items-center justify-between gap-2"}>
                 <Text className="text-xs text-gray-500">Added {joinedDate(item.created_at)}</Text>
-                <Text className="mt-2 text-sm font-semibold text-blue-600">View profile</Text>
+                <Text className="mt-2 text-sm font-semibold text-brand-600">View profile</Text>
               </View>
             </View>
           </Pressable>
@@ -288,7 +288,7 @@ export default function Employees() {
               <View className="flex-1"><Text className="text-lg font-bold text-gray-900">{nameOf(selected)}</Text><Text className="mt-1 text-sm text-gray-500">{roleOf(selected) || "Role not specified"}</Text></View>
             </View>
             <Text className={`mb-4 text-xs font-semibold ${isActive(selected) ? "text-emerald-700" : "text-gray-500"}`}>{isActive(selected) ? "Active employee" : "Inactive employee"} · #{selected.id}</Text>
-            {Number(selected.open_assignment_count) ? <Text className="mb-4 rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-800">Assigned to {selected.open_assignment_count} unfinished repair{Number(selected.open_assignment_count) === 1 ? "" : "s"}. Reassign {Number(selected.open_assignment_count) === 1 ? "it" : "them"} before deactivating this employee.</Text> : null}
+            {Number(selected.open_assignment_count) ? <Text className="mb-4 rounded-lg bg-brand-50 p-3 text-xs leading-5 text-brand-800">Assigned to {selected.open_assignment_count} unfinished repair{Number(selected.open_assignment_count) === 1 ? "" : "s"}. Reassign {Number(selected.open_assignment_count) === 1 ? "it" : "them"} before deactivating this employee.</Text> : null}
             <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Contact details</Text>
             <Contact icon="call-outline" value={selected.phone} fallback="No phone recorded" />
             <Contact icon="mail-outline" value={selected.email} fallback="No email recorded" />

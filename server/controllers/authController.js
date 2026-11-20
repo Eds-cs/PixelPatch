@@ -1,7 +1,16 @@
+import { randomUUID } from "crypto";
 import db from "../config/db.js";
 import jwt from "jsonwebtoken";
 import { hashPassword, comparePassword } from "../utils/hash.js";
 import { OAuth2Client } from "google-auth-library";
+import { withTransaction } from "../utils/transaction.js";
+import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
+import { normalizePhone, PHONE_MESSAGE } from "../utils/phone.js";
+import {
+  normalizeEmail,
+  verifySignupCodes,
+  consumeSignupCodes,
+} from "./signupVerificationController.js";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -18,6 +27,21 @@ const GOOGLE_AUDIENCES = (process.env.GOOGLE_CLIENT_IDS || process.env.GOOGLE_CL
   .map((id) => id.trim())
   .filter(Boolean);
 
+/*
+  Accepts "YYYY-MM-DD" for a real calendar day between 1900 and today.
+  Returns the normalized string, or null when it is missing or invalid.
+*/
+const parseBirthdate = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? "").trim());
+  if (!match) return null;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const isRealDay =
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  if (!isRealDay || year < 1900 || date > new Date()) return null;
+  return `${match[1]}-${match[2]}-${match[3]}`;
+};
+
 /* =====================================
                 REGISTER
 ====================================== */
@@ -31,7 +55,11 @@ export const register = async (req, res) => {
       email,
       phone,
       password,
-      photo_url
+      photo_url,
+      barangay,
+      street,
+      email_code,
+      phone_code
     } = req.body;
 
     if (
@@ -46,51 +74,99 @@ export const register = async (req, res) => {
       });
     }
 
+    const validBirthdate = parseBirthdate(birthdate);
+    if (!validBirthdate) {
+      return res.status(400).json({ error: "Please enter a valid birthday." });
+    }
+
+    // PixelPatch only serves Zamboanga City, so every new client starts with an
+    // address there (where they live or are staying).
+    const homeBarangay = canonicalBarangay(barangay);
+    if (!homeBarangay) {
+      return res.status(400).json({ error: SERVICE_AREA_MESSAGE });
+    }
+
+    const cleanEmail = normalizeEmail(email);
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone) {
+      return res.status(400).json({ error: PHONE_MESSAGE });
+    }
+
+    // The email (and phone, once SMS is set up) must be proven with the code
+    // from POST /auth/signup/start before the account is created.
+    const codeProblem = verifySignupCodes({
+      email: cleanEmail,
+      phone: cleanPhone,
+      emailCode: email_code,
+      phoneCode: phone_code,
+    });
+    if (codeProblem) {
+      return res.status(400).json({ error: codeProblem.error, field: codeProblem.field });
+    }
+
     const hashedPassword = await hashPassword(password);
 
-    const sql = `
-      INSERT INTO users 
-      (role_id, first_name, middle_name, last_name, birthdate, email, phone, password_hash, photo_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    db.query(
-      sql,
-      [
+    // The account and its address are saved together or not at all.
+    const userId = await withTransaction(async (conn) => {
+      const [result] = await conn.query(
+        `INSERT INTO users
+         (role_id, first_name, middle_name, last_name, birthdate, email, phone, password_hash, photo_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
         1,
         String(first_name).trim(),
-        middle_name || null,
+        // Optional: not everyone has a middle name.
+        String(middle_name ?? "").trim() || null,
         String(last_name).trim(),
-        // Optional: the app does not collect a birthdate, and phone is optional.
-        birthdate || null,
-        String(email).trim(),
-        String(phone ?? "").trim() || null,
+        // Required for app signups. The column stays nullable because Google
+        // sign-in and older accounts have no birthdate.
+        validBirthdate,
+        cleanEmail,
+        cleanPhone,
         hashedPassword,
         photo_url || null,
-      ],
-      (err, result) => {
-        if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
-            return res.status(409).json({ error: "An account with this email already exists" });
-          }
-          console.error("register error:", { code: err.code });
-          return res.status(500).json({ error: "Registration failed. Please try again." });
-        }
+      ]
+      );
+      await conn.query(
+        `INSERT INTO addresses
+         (user_id, country, region, province, city, barangay, street, postal_code, label, is_default, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Home', 1, NOW(), NOW())`,
+        [
+          result.insertId,
+          SERVICE_AREA.country,
+          SERVICE_AREA.region,
+          SERVICE_AREA.province,
+          SERVICE_AREA.city,
+          homeBarangay,
+          String(street ?? "").trim() || null,
+          SERVICE_AREA.postal_code,
+        ]
+      );
+      return result.insertId;
+    });
 
-        res.json({ 
-          message: "Registration successful", 
-          user_id: result.insertId 
-        });
-      }
-    );
+    consumeSignupCodes({ email: cleanEmail, phone: cleanPhone });
+
+    res.json({
+      message: "Registration successful",
+      user_id: userId
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "An account with this email already exists" });
+    }
+    console.error("register error:", { code: err.code });
+    res.status(500).json({ error: "Registration failed. Please try again." });
   }
 };
 
 /* =====================================
                   LOGIN
 ====================================== */
+
+// A bcrypt hash of a random throwaway password, compared against when the email
+// has no account so that path takes as long as a real password check.
+const dummyPasswordHash = hashPassword(randomUUID());
 
 export const login = (req, res) => {
   const { email, password } = req.body;
@@ -101,14 +177,18 @@ export const login = (req, res) => {
     async (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
 
-      if (result.length === 0)
-        return res.status(400).json({ error: "Email not found" });
-
+      // One message for an unknown email and a wrong password, and a password
+      // check either way, so neither the reply nor its timing reveals which
+      // emails have accounts.
+      // Accounts created with Google may have no usable password hash.
       const user = result[0];
-
-      const isMatch = await comparePassword(password, user.password_hash);
-      if (!isMatch)
-        return res.status(400).json({ error: "Invalid credentials" });
+      const hasPassword = /^\$2[aby]\$/.test(String(user?.password_hash ?? ""));
+      const isMatch = await comparePassword(
+        typeof password === "string" ? password : "",
+        hasPassword ? user.password_hash : await dummyPasswordHash
+      );
+      if (!user || !hasPassword || !isMatch)
+        return res.status(400).json({ error: "Incorrect email or password." });
 
       const token = jwt.sign(
         { id: user.id, role_id: user.role_id },

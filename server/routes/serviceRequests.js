@@ -4,6 +4,7 @@ import db from "../config/db.js";
 import { upload } from "../middleware/upload.js";
 import { authRequired } from "../middleware/authMiddleware.js";
 import { resolveShopDeliveryTypes } from "../utils/shopDeliveryTypes.js";
+import { SERVICE_AREA_MESSAGE, isInServiceArea } from "../utils/serviceArea.js";
 
 const router = express.Router();
 
@@ -45,6 +46,20 @@ router.post(
 
         if (delivery_method !== "DROPOFF" && !pickup_address_id) {
           return res.status(400).json({ message: "Pickup and on-site service require an address." });
+      }
+
+      // The address must be one of the client's own, inside Zamboanga City.
+      if (delivery_method !== "DROPOFF") {
+        const [[address]] = await db.promise().query(
+          "SELECT barangay, city, province FROM addresses WHERE id = ? AND user_id = ? LIMIT 1",
+          [pickup_address_id, client_id]
+        );
+        if (!address) {
+          return res.status(400).json({ message: "Choose one of your saved addresses." });
+        }
+        if (!isInServiceArea(address)) {
+          return res.status(400).json({ message: SERVICE_AREA_MESSAGE });
+        }
       }
 
 

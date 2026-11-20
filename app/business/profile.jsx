@@ -64,7 +64,7 @@ export default function BusinessProfile() {
       ) : null}
 
       <View className="mb-6 items-center rounded-xl border border-gray-200 bg-white p-6">
-        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-blue-100">
+        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-brand-100">
           <Ionicons name="storefront" size={32} color={COLORS.primary} />
         </View>
         <Text className="text-lg font-bold text-gray-900">{shop?.name || "Your shop"}</Text>

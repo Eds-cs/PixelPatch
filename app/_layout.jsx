@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AuthProvider, useAuth } from "../lib/auth";
 import { SocketProvider } from "../lib/socket";
+import { ServiceAreaProvider, useServiceArea } from "../lib/serviceArea";
 import { COLORS } from "../constants/theme";
 import WebHeader from "../components/WebHeader";
 
@@ -18,6 +19,8 @@ const PUBLIC_GROUP = "(auth)";
 const ADMIN_GROUP = "admin";
 // Shared informational screens an admin may still open outside the portal.
 const ADMIN_SHARED = ["settings", "help", "about"];
+// Screens a client without a Zamboanga City address may still open.
+const NO_ADDRESS_ALLOWED = ["addresses", "settings", "help", "about"];
 
 function homeFor({ isAdmin, isBusiness }) {
   if (isAdmin) return "/admin/dashboard";
@@ -27,6 +30,7 @@ function homeFor({ isAdmin, isBusiness }) {
 
 function RootNavigator() {
   const { isLoggedIn, loading, isBusiness, isAdmin } = useAuth();
+  const { needsAddress } = useServiceArea();
   const segments = useSegments();
   const router = useRouter();
 
@@ -50,8 +54,11 @@ function RootNavigator() {
     } else if (isLoggedIn && isAdmin && !inAdminGroup && !ADMIN_SHARED.includes(segments[0])) {
       // Admin accounts are not client or business accounts.
       router.replace("/admin/dashboard");
+    } else if (isLoggedIn && needsAddress && !NO_ADDRESS_ALLOWED.includes(segments[0])) {
+      // PixelPatch only serves Zamboanga City: clients add an address there first.
+      router.replace("/addresses");
     }
-  }, [isLoggedIn, loading, isBusiness, isAdmin, segments, router]);
+  }, [isLoggedIn, loading, isBusiness, isAdmin, needsAddress, segments, router]);
 
   const inPublicGroup = segments[0] === PUBLIC_GROUP;
   // Native business and admin routes use their drawer header; every other
@@ -89,10 +96,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <SocketProvider>
-            <StatusBar style="dark" />
-            <RootNavigator />
-          </SocketProvider>
+          <ServiceAreaProvider>
+            <SocketProvider>
+              <StatusBar style="dark" />
+              <RootNavigator />
+            </SocketProvider>
+          </ServiceAreaProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

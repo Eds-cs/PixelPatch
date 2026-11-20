@@ -3,6 +3,7 @@ import db from "../config/db.js";
 import { withTransaction } from "../utils/transaction.js";
 import jwt from "jsonwebtoken";
 import { resolveShopIdForUser } from "./repairController.js";
+import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
 
 
 // Payout methods offered by app/become-partner.jsx (shop_payouts.method also
@@ -18,9 +19,6 @@ export const registerBusiness = async (req, res) => {
     business_name,
     business_email,
     business_phone,
-    region,
-    province,
-    city,
     barangay,
     street,
     postal_code,
@@ -40,11 +38,8 @@ export const registerBusiness = async (req, res) => {
       !business_name ||
       !business_email ||
       !business_phone ||
-      !region ||
-      !province ||
-      !city ||
       !barangay ||
-      !street ||
+      !String(street ?? "").trim() ||
       !days_from ||
       !days_to ||
       !open_time ||
@@ -54,6 +49,12 @@ export const registerBusiness = async (req, res) => {
         success: false,
         message: "Business information is incomplete"
       });
+    }
+
+    // Shops must be in Zamboanga City, the only area PixelPatch serves.
+    const shopBarangay = canonicalBarangay(barangay);
+    if (!shopBarangay) {
+      return res.status(400).json({ success: false, message: SERVICE_AREA_MESSAGE });
     }
 
     // --------------------------------------------------
@@ -150,13 +151,13 @@ export const registerBusiness = async (req, res) => {
         `,
         [
           userId,
-          "",                 // country placeholder
-          region,
-          province,
-          city,
-          barangay,
-          street,
-          postal_code || null,
+          SERVICE_AREA.country,
+          SERVICE_AREA.region,
+          SERVICE_AREA.province,
+          SERVICE_AREA.city,
+          shopBarangay,
+          String(street).trim(),
+          String(postal_code ?? "").trim() || SERVICE_AREA.postal_code,
           null,              // latitude: not collected yet (unknown)
           null               // longitude: not collected yet (unknown)
         ]

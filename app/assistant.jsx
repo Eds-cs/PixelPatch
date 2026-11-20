@@ -36,7 +36,7 @@ function ReplyText({ text }) {
     const heading = /^#{1,6}\s+(.+)/.exec(line);
     const bullet = /^\s*[-*]\s+(.+)/.exec(line);
     const numbered = /^\s*(\d+[.)])\s+(.+)/.exec(line);
-    if (bullet || numbered) return <View key={index} className="my-1 flex-row items-start gap-2"><Text className="text-base leading-6 text-blue-600">{numbered ? numbered[1] : "•"}</Text><Text selectable className="text-base leading-6 text-gray-800" style={{ flexShrink: 1 }}><BoldText text={numbered ? numbered[2] : bullet[1]} /></Text></View>;
+    if (bullet || numbered) return <View key={index} className="my-1 flex-row items-start gap-2"><Text className="text-base leading-6 text-brand-600">{numbered ? numbered[1] : "•"}</Text><Text selectable className="text-base leading-6 text-gray-800" style={{ flexShrink: 1 }}><BoldText text={numbered ? numbered[2] : bullet[1]} /></Text></View>;
     return <Text key={index} selectable className={heading ? "mb-1 mt-3 text-base font-bold leading-6 text-gray-900" : "text-base leading-6 text-gray-800"}><BoldText text={heading ? heading[1] : line} /></Text>;
   });
 }
@@ -78,10 +78,10 @@ function NewChatButton({ onPress, disabled }) {
       accessibilityRole="button"
       accessibilityLabel="Start a new chat"
       accessibilityState={{ disabled }}
-      className={`min-h-12 flex-row items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 active:bg-blue-100 ${disabled ? "opacity-50" : ""}`}
+      className={`min-h-12 flex-row items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 active:bg-brand-100 ${disabled ? "opacity-50" : ""}`}
     >
       <Ionicons name="add" size={20} color={COLORS.primary} />
-      <Text className="text-sm font-semibold text-blue-700">New chat</Text>
+      <Text className="text-sm font-semibold text-brand-700">New chat</Text>
     </Pressable>
   );
 }
@@ -143,7 +143,7 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
       <TextField label="Search conversations" placeholder="Conversation title" value={query} onChangeText={setQuery} autoCapitalize="none" />
       <View className="mb-3 flex-row items-center justify-between gap-2">
         <Text className="flex-1 text-xs text-gray-400">{CAN_HOVER ? "Recent saved conversations" : "Press and hold a conversation to rename or delete it"}</Text>
-        <Pressable onPress={onRefresh} disabled={refreshing || disabled} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-xs font-semibold text-blue-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
+        <Pressable onPress={onRefresh} disabled={refreshing || disabled} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-xs font-semibold text-brand-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
       </View>
       {loading ? <ActivityIndicator color={COLORS.primary} /> : error ? <View className="rounded-xl bg-red-50 p-3"><Text accessibilityRole="alert" className="text-sm leading-5 text-red-700">{error}</Text><Button title="Try again" variant="ghost" onPress={onRefresh} loading={refreshing} /></View> : filtered.map((item) => {
         const active = String(activeId) === String(item.id);
@@ -159,7 +159,7 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
             key={item.id}
             onPointerEnter={CAN_HOVER ? () => setRevealedId(item.id) : undefined}
             onPointerLeave={CAN_HOVER ? () => conceal(item.id) : undefined}
-            className={`mb-2 rounded-xl border ${active ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-white"}`}
+            className={`mb-2 rounded-xl border ${active ? "border-brand-200 bg-brand-50" : "border-gray-200 bg-white"}`}
           >
             {editing ? (
               <View className="p-2">
@@ -173,15 +173,15 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
                   returnKeyType="done"
                   accessibilityLabel="Conversation name"
                   placeholder="Conversation name"
-                  placeholderTextColor="#9ca3af"
-                  className="h-11 rounded-lg border border-blue-300 bg-white px-3 text-sm text-gray-900"
+                  placeholderTextColor="#a8a29e"
+                  className="h-11 rounded-lg border border-brand-300 bg-white px-3 text-sm text-gray-900"
                 />
                 <View className="mt-1 flex-row items-center justify-between">
                   <Text className="text-xs text-gray-400">{draft.trim().length}/{TITLE_MAX}</Text>
                   <View className="flex-row">
                     <Pressable onPress={cancelRename} disabled={saving} accessibilityRole="button" className="min-h-11 justify-center px-3"><Text className="text-sm font-semibold text-gray-600">Cancel</Text></Pressable>
                     <Pressable onPress={() => saveRename(item)} disabled={saving} accessibilityRole="button" accessibilityState={{ busy: saving }} className="min-h-11 justify-center px-3">
-                      {saving ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text className="text-sm font-semibold text-blue-600">Save</Text>}
+                      {saving ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text className="text-sm font-semibold text-brand-600">Save</Text>}
                     </Pressable>
                   </View>
                 </View>
@@ -378,7 +378,7 @@ export default function Assistant() {
         <View className="border-b border-gray-200 bg-white">
           <View className="w-full flex-row items-center justify-between gap-3 self-center py-2.5" style={{ maxWidth: 1280, paddingHorizontal: horizontalPadding }}>
             <View className="flex-1 flex-row items-center gap-2.5">
-              <View className="h-9 w-9 items-center justify-center rounded-lg bg-blue-50"><Ionicons name="sparkles-outline" size={19} color={COLORS.primary} /></View>
+              <View className="h-9 w-9 items-center justify-center rounded-lg bg-brand-50"><Ionicons name="sparkles-outline" size={19} color={COLORS.primary} /></View>
               <Text accessibilityRole="header" numberOfLines={1} className="flex-shrink text-base font-bold text-gray-900">PixelPatch assistant</Text>
             </View>
             <View className="flex-row gap-2">
@@ -397,7 +397,7 @@ export default function Assistant() {
             {/* Sidebar top: assistant title, then New chat (pinned above the list). */}
             <View className="border-b border-gray-100 p-4">
               <View className="mb-4 flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-xl bg-blue-50"><Ionicons name="sparkles-outline" size={21} color={COLORS.primary} /></View>
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-50"><Ionicons name="sparkles-outline" size={21} color={COLORS.primary} /></View>
                 <View style={{ flexShrink: 1 }}>
                   <Text accessibilityRole="header" className="text-base font-bold text-gray-900">PixelPatch assistant</Text>
                   <Text className="mt-0.5 text-xs leading-4 text-gray-500">Troubleshoot your device, one step at a time.</Text>
@@ -427,12 +427,12 @@ export default function Assistant() {
               onContentSizeChange={() => { if (stickToBottom.current) listRef.current?.scrollToEnd({ animated: false }); }}
               ListEmptyComponent={
                 <View className="flex-1 justify-center py-3">
-                  <View className="mb-5 h-16 w-16 items-center justify-center self-center rounded-2xl bg-blue-50"><Ionicons name="sparkles" size={30} color={COLORS.primary} /></View>
+                  <View className="mb-5 h-16 w-16 items-center justify-center self-center rounded-2xl bg-brand-50"><Ionicons name="sparkles" size={30} color={COLORS.primary} /></View>
                   <Text className="text-center text-2xl font-bold text-gray-900">What is happening with your device?</Text>
                   <Text className="mb-6 mt-3 text-center text-sm leading-6 text-gray-500">Share the symptoms, device model, and what you have tried. Start with a prompt below or write your own question.</Text>
                   <View className="flex-row flex-wrap justify-between gap-y-3">
                     {SUGGESTIONS.map((suggestion) => (
-                      <Pressable key={suggestion.title} onPress={() => fillPrompt(suggestion.text)} accessibilityRole="button" accessibilityLabel={`Use prompt: ${suggestion.title}`} disabled={disabled} style={{ width: isMobile ? "100%" : "48.5%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-blue-50">
+                      <Pressable key={suggestion.title} onPress={() => fillPrompt(suggestion.text)} accessibilityRole="button" accessibilityLabel={`Use prompt: ${suggestion.title}`} disabled={disabled} style={{ width: isMobile ? "100%" : "48.5%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50">
                         <View className="flex-row items-center gap-3"><Ionicons name={suggestion.icon} size={22} color={COLORS.primary} /><Text className="flex-1 text-sm font-bold text-gray-800">{suggestion.title}</Text><Ionicons name="add-outline" size={18} color={COLORS.textMuted} /></View>
                         <Text className="mt-2 text-xs leading-5 text-gray-500">{suggestion.text}</Text>
                       </Pressable>
@@ -447,7 +447,7 @@ export default function Assistant() {
                 return (
                   <View className={`mb-5 ${mine ? "self-end" : "self-start"}`} style={{ maxWidth: mine ? (isMobile ? "90%" : "80%") : (isMobile ? "100%" : "85%") }}>
                     <Text className={`mb-2 text-xs font-semibold text-gray-400 ${mine ? "text-right" : ""}`}>{mine ? "You" : "PixelPatch assistant"}</Text>
-                    <View className={`rounded-2xl p-4 ${mine ? "bg-blue-600" : "border border-gray-200 bg-white"}`}>
+                    <View className={`rounded-2xl p-4 ${mine ? "bg-brand-600" : "border border-gray-200 bg-white"}`}>
                       {mine ? <Text selectable className="text-base leading-6 text-white">{item.text}</Text> : <ReplyText text={item.text} />}
                     </View>
                     {item.pending || item.failed ? <Text className="mt-2 text-right text-xs text-gray-500">{item.pending ? "Waiting for response…" : "Response not confirmed"}</Text> : null}
@@ -463,12 +463,12 @@ export default function Assistant() {
                       <Text className="mb-4 mt-1 text-sm leading-5 text-gray-500">Open a suggested shop to review its services and details.</Text>
                       <View className="flex-row flex-wrap justify-between gap-y-3">
                         {shops.map((shop) => (
-                          <Pressable key={shop.id} onPress={() => router.push(`/shop/${shop.id}`)} accessibilityRole="button" accessibilityLabel={`View suggested shop ${shop.name}`} style={{ width: isMobile ? "100%" : "48.5%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-blue-50">
+                          <Pressable key={shop.id} onPress={() => router.push(`/shop/${shop.id}`)} accessibilityRole="button" accessibilityLabel={`View suggested shop ${shop.name}`} style={{ width: isMobile ? "100%" : "48.5%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50">
                             <Ionicons name="storefront-outline" size={22} color={COLORS.primary} />
                             <Text className="mb-2 mt-3 text-base font-bold text-gray-900">{shop.name}</Text>
                             <ServiceRating rating={shop.rating_average} />
                             {shop.address ? <Text className="mt-3 text-xs leading-5 text-gray-500">{shop.address}</Text> : null}
-                            <Text className="mt-4 text-sm font-semibold text-blue-600">View shop →</Text>
+                            <Text className="mt-4 text-sm font-semibold text-brand-600">View shop →</Text>
                           </Pressable>
                         ))}
                       </View>
@@ -479,13 +479,13 @@ export default function Assistant() {
             />
           )}
 
-          {newReply ? <Pressable onPress={() => { stickToBottom.current = true; setNewReply(false); listRef.current?.scrollToEnd({ animated: true }); }} accessibilityRole="button" className="mb-3 min-h-11 justify-center self-center rounded-full border border-blue-200 bg-blue-50 px-4 py-2"><Text className="text-sm font-semibold text-blue-700">Jump to latest reply ↓</Text></Pressable> : null}
+          {newReply ? <Pressable onPress={() => { stickToBottom.current = true; setNewReply(false); listRef.current?.scrollToEnd({ animated: true }); }} accessibilityRole="button" className="mb-3 min-h-11 justify-center self-center rounded-full border border-brand-200 bg-brand-50 px-4 py-2"><Text className="text-sm font-semibold text-brand-700">Jump to latest reply ↓</Text></Pressable> : null}
           {error ? <View className="w-full self-center px-4 pb-3" style={{ maxWidth: 960 }}><Text accessibilityRole="alert" className="rounded-xl bg-red-50 p-3 text-sm leading-5 text-red-700">{error}</Text></View> : null}
           <View className="border-t border-gray-200 bg-white">
             <View className="w-full self-center py-3" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
               <View className="flex-row items-end gap-3">
-                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#9ca3af" className="max-h-32 min-h-12 flex-1 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900" />
-                <Pressable onPress={send} disabled={draft.trim().length < 2 || disabled} accessibilityRole="button" accessibilityLabel="Send question" accessibilityState={{ disabled: draft.trim().length < 2 || disabled, busy: sending }} className={`h-12 w-12 items-center justify-center rounded-xl ${draft.trim().length >= 2 && !disabled ? "bg-blue-600" : "bg-gray-200"}`}><Ionicons name="send" size={20} color={draft.trim().length >= 2 && !disabled ? "#fff" : COLORS.textMuted} /></Pressable>
+                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#a8a29e" className="max-h-32 min-h-12 flex-1 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900" />
+                <Pressable onPress={send} disabled={draft.trim().length < 2 || disabled} accessibilityRole="button" accessibilityLabel="Send question" accessibilityState={{ disabled: draft.trim().length < 2 || disabled, busy: sending }} className={`h-12 w-12 items-center justify-center rounded-xl ${draft.trim().length >= 2 && !disabled ? "bg-brand-600" : "bg-gray-200"}`}><Ionicons name="send" size={20} color={draft.trim().length >= 2 && !disabled ? "#fff" : COLORS.textMuted} /></Pressable>
               </View>
               <Text className="mt-2 text-xs leading-4 text-gray-400">Include your device model, symptoms, and any steps you have already tried.</Text>
             </View>

@@ -196,7 +196,7 @@ export default function RepairDetail() {
 
       <Pressable onPress={() => router.push("/repairs")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
         <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
-        <Text className="text-sm font-semibold text-blue-600">Back to my repairs</Text>
+        <Text className="text-sm font-semibold text-brand-600">Back to my repairs</Text>
       </Pressable>
       <View className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
         <View className="flex-row flex-wrap items-start justify-between gap-3">
@@ -207,7 +207,7 @@ export default function RepairDetail() {
           </View>
           <RepairStatusBadge status={repair.status} decision={repair.decision} clientApproved={repair.client_approved} />
         </View>
-        {!isRejected && !isCancelled ? <View className="mt-4 rounded-xl bg-blue-50 p-4"><Text className="text-xs font-bold uppercase text-blue-700">Your repair update</Text><Text className="mt-1 text-sm leading-6 text-blue-800">{nextUpdate}</Text></View> : null}
+        {!isRejected && !isCancelled ? <View className="mt-4 rounded-xl bg-brand-50 p-4"><Text className="text-xs font-bold uppercase text-brand-700">Your repair update</Text><Text className="mt-1 text-sm leading-6 text-brand-800">{nextUpdate}</Text></View> : null}
         <View className="mt-4 flex-row flex-wrap gap-3">
           {repair.shop_id ? <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${repair.shop_id}`)} /> : null}
           <Button title="My messages" variant="outline" onPress={() => router.push("/chat")} />

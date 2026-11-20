@@ -1,23 +1,26 @@
 // app/(auth)/login.jsx — ported from legacy-web/src/components/Login.jsx
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import { Link } from "expo-router";
+import { Link, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../../components/Button";
 import TextField from "../../components/TextField";
+import PasswordField from "../../components/PasswordField";
 import { useAuth } from "../../lib/auth";
+import { COLORS } from "../../constants/theme";
 import { useGoogleAuth, idTokenFrom, isGoogleConfigured } from "../../lib/google";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
   const { login, loginWithGoogle, sessionNotice } = useAuth();
+  // Set by the forgot-password screen after a successful reset.
+  const { reset } = useLocalSearchParams();
 
   const [form, setForm] = useState({ email: "", password: "", rememberMe: false });
   const [errors, setErrors] = useState({ email: "", password: "" });
-  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const googleEnabled = isGoogleConfigured();
@@ -67,10 +70,11 @@ export default function Login() {
       console.error("Login failed:", error);
       // Same server-error mapping the legacy component used.
       const message = error.message || "";
-      if (message.includes("Email not found")) {
-        setErrors({ email: "Email does not exist.", password: "" });
-      } else if (message.includes("Invalid credentials") || message.includes("Wrong password")) {
-        setErrors({ email: "", password: "Incorrect password." });
+      // The server deliberately doesn't say whether the email exists.
+      if (message.includes("Incorrect email or password")) {
+        setErrors({ email: "", password: "Incorrect email or password." });
+      } else if (message.startsWith("Too many")) {
+        setErrors({ email: "", password: message });
       } else {
         setErrors({ email: "", password: "Login failed. Try again." });
       }
@@ -90,10 +94,14 @@ export default function Login() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="w-full max-w-md self-center">
-            <Text className="mb-2 text-3xl font-extrabold text-blue-600">PixelPatch</Text>
-            <Text className="mb-8 text-base text-gray-500">
+            <Text className="mb-2 text-3xl font-extrabold text-brand-600">PixelPatch</Text>
+            <Text className="mb-3 text-base text-gray-500">
               Sign in to book and track your repairs.
             </Text>
+            <View className="mb-8 flex-row items-center gap-2 self-start rounded-full bg-brand-50 px-3 py-1.5">
+              <Ionicons name="location-outline" size={14} color={COLORS.primary} />
+              <Text className="text-xs font-medium text-brand-800">Available in Zamboanga City only</Text>
+            </View>
 
             {sessionNotice ? (
               <Text
@@ -101,6 +109,15 @@ export default function Login() {
                 className="mb-6 rounded-lg bg-amber-50 p-3 text-sm text-amber-800"
               >
                 {sessionNotice}
+              </Text>
+            ) : null}
+
+            {reset === "1" && !sessionNotice ? (
+              <Text
+                accessibilityRole="alert"
+                className="mb-6 rounded-lg bg-green-50 p-3 text-sm text-green-800"
+              >
+                Your password has been reset. Sign in with your new password.
               </Text>
             ) : null}
 
@@ -116,15 +133,13 @@ export default function Login() {
               inputMode="email"
             />
 
-            <TextField
+            <PasswordField
               label="Password"
               value={form.password}
               onChangeText={setField("password")}
               error={errors.password}
               placeholder="Your password"
-              autoCapitalize="none"
               autoComplete="current-password"
-              secureTextEntry={!showPassword}
               onSubmitEditing={onSubmit}
               returnKeyType="go"
             />
@@ -138,7 +153,7 @@ export default function Login() {
               >
                 <View
                   className={`mr-2 h-5 w-5 items-center justify-center rounded border ${
-                    form.rememberMe ? "border-blue-600 bg-blue-600" : "border-gray-400 bg-white"
+                    form.rememberMe ? "border-brand-600 bg-brand-600" : "border-gray-400 bg-white"
                   }`}
                 >
                   {form.rememberMe ? (
@@ -148,14 +163,15 @@ export default function Login() {
                 <Text className="text-sm text-gray-700">Remember me</Text>
               </Pressable>
 
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowPassword((s) => !s)}
+              <Link
+                href={{
+                  pathname: "/forgot-password",
+                  params: form.email.trim() ? { email: form.email.trim() } : {},
+                }}
+                className="text-sm font-medium text-brand-600"
               >
-                <Text className="text-sm font-medium text-blue-600">
-                  {showPassword ? "Hide password" : "Show password"}
-                </Text>
-              </Pressable>
+                Forgot password?
+              </Link>
             </View>
 
             <Button title="Sign in" onPress={onSubmit} loading={submitting} />
@@ -190,7 +206,7 @@ export default function Login() {
 
             <View className="mt-6 flex-row justify-center">
               <Text className="text-sm text-gray-600">Don&apos;t have an account? </Text>
-              <Link href="/signup" className="text-sm font-semibold text-blue-600">
+              <Link href="/signup" className="text-sm font-semibold text-brand-600">
                 Sign up
               </Link>
             </View>

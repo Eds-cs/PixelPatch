@@ -50,7 +50,7 @@ export default function BusinessDisputes() {
           </View>
           <View className="mb-5 flex-row flex-wrap justify-between gap-y-3">
             {DISPUTE_STATUSES.map((item, index) => (
-              <Pressable key={item.key} onPress={() => setStatus(status === item.key ? "" : item.key)} accessibilityRole="button" accessibilityLabel={`${item.label}: ${counts[item.key]} disputes`} accessibilityState={{ selected: status === item.key }} style={{ width: isMobile ? "48%" : "24%" }} className={`rounded-xl border p-4 ${status === item.key ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white"}`}>
+              <Pressable key={item.key} onPress={() => setStatus(status === item.key ? "" : item.key)} accessibilityRole="button" accessibilityLabel={`${item.label}: ${counts[item.key]} disputes`} accessibilityState={{ selected: status === item.key }} style={{ width: isMobile ? "48%" : "24%" }} className={`rounded-xl border p-4 ${status === item.key ? "border-brand-500 bg-brand-50" : "border-gray-200 bg-white"}`}>
                 <Ionicons name={["chatbubble-ellipses-outline", "hourglass-outline", "checkmark-circle-outline", "close-circle-outline"][index]} size={22} color={item.color} />
                 <Text className="mt-3 text-2xl font-bold text-gray-900">{counts[item.key]}</Text>
                 <Text className="mt-1 text-sm font-semibold text-gray-700">{item.label}</Text>
@@ -61,7 +61,7 @@ export default function BusinessDisputes() {
             <TextField label="Search disputes" value={query} onChangeText={setQuery} autoCapitalize="none" placeholder="Customer, device, complaint, or repair #" />
             <View className="flex-row flex-wrap gap-2">
               {[{ key: "", label: "All disputes" }, ...DISPUTE_STATUSES].map((item) => (
-                <Pressable key={item.key} onPress={() => setStatus(item.key)} accessibilityRole="button" accessibilityState={{ selected: status === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${status === item.key ? "bg-blue-600" : "bg-gray-50"}`}>
+                <Pressable key={item.key} onPress={() => setStatus(item.key)} accessibilityRole="button" accessibilityState={{ selected: status === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${status === item.key ? "bg-brand-600" : "bg-gray-50"}`}>
                   <Text className={`text-sm font-semibold ${status === item.key ? "text-white" : "text-gray-600"}`}>{item.label}</Text>
                 </Pressable>
               ))}
@@ -69,19 +69,19 @@ export default function BusinessDisputes() {
             <View className="mt-3 flex-row flex-wrap items-center gap-2">
               <Text className="text-xs text-gray-500">Sort by</Text>
               {[["newest", "Newest"], ["oldest", "Oldest"], ["response", "Needs response first"]].map(([key, label]) => (
-                <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-blue-50" : ""}`}><Text className={`text-xs font-semibold ${sort === key ? "text-blue-700" : "text-gray-500"}`}>{label}</Text></Pressable>
+                <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-brand-50" : ""}`}><Text className={`text-xs font-semibold ${sort === key ? "text-brand-700" : "text-gray-500"}`}>{label}</Text></Pressable>
               ))}
             </View>
           </View>
           <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
             <Text className="text-sm text-gray-500">{filtered.length} of {disputes.length} disputes</Text>
-            {query || status || sort !== "newest" ? <Pressable onPress={() => { setQuery(""); setStatus(""); setSort("newest"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">Reset filters</Text></Pressable> : null}
+            {query || status || sort !== "newest" ? <Pressable onPress={() => { setQuery(""); setStatus(""); setSort("newest"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
           </View>
           {isDesktop && filtered.length ? <View className="mb-2 flex-row gap-5 px-4">{[["Customer & repair", 3], ["Client's concern", 4], ["Resolution", 3]].map(([label, flex]) => <Text key={label} style={{ flex }} className="text-xs font-semibold uppercase text-gray-400">{label}</Text>)}</View> : null}
         </View>
       }
       renderItem={({ item }) => (
-        <Pressable onPress={() => router.push(`/business/disputes/${item.id}`)} accessibilityRole="button" accessibilityLabel={`Open dispute #${item.id} for repair #${item.request_id}`} className={`mb-3 rounded-xl border bg-white p-4 active:bg-blue-50 ${item.status === "OPEN" ? "border-amber-200" : "border-gray-200"}`}>
+        <Pressable onPress={() => router.push(`/business/disputes/${item.id}`)} accessibilityRole="button" accessibilityLabel={`Open dispute #${item.id} for repair #${item.request_id}`} className={`mb-3 rounded-xl border bg-white p-4 active:bg-brand-50 ${item.status === "OPEN" ? "border-amber-200" : "border-gray-200"}`}>
           <View className={isDesktop ? "flex-row items-start gap-5" : ""}>
             <View style={isDesktop ? { flex: 3, minWidth: 0 } : undefined}>
               <View className="flex-row flex-wrap items-start justify-between gap-2">
@@ -95,13 +95,13 @@ export default function BusinessDisputes() {
             <View style={isDesktop ? { flex: 4, minWidth: 0 } : undefined} className={isDesktop ? "" : "mt-4"}>
               <Text className="mb-1 text-xs font-semibold uppercase text-gray-400">Client concern</Text>
               <Text numberOfLines={3} className="text-sm leading-5 text-gray-700">{item.complaint || "Open the dispute to review the client's explanation."}</Text>
-              {item.proposed_resolution ? <Text className="mt-3 text-xs font-medium text-blue-600">Proposed: {resolutionLabel(item.proposed_resolution)}</Text> : null}
+              {item.proposed_resolution ? <Text className="mt-3 text-xs font-medium text-brand-600">Proposed: {resolutionLabel(item.proposed_resolution)}</Text> : null}
             </View>
             <View style={isDesktop ? { flex: 3, minWidth: 0 } : undefined} className={isDesktop ? "" : "mt-4 border-t border-gray-100 pt-3"}>
               {isDesktop ? <DisputeStatusBadge status={item.status} /> : null}
               <Text className="mt-2 text-xs leading-5 text-gray-500">{item.status === "OPEN" ? "Your response is needed." : item.status === "SHOP_PROPOSED" ? "The client reviews your proposal next." : item.status === "REJECTED" ? "The client declined the proposal." : item.status === "RESOLVED" ? "The client accepted the resolution." : "Open this case to review its status."}</Text>
               <View className="mt-3 flex-row items-center gap-2">
-                <Text className="text-sm font-semibold text-blue-600">{item.status === "OPEN" ? "Review & respond" : "View dispute"}</Text>
+                <Text className="text-sm font-semibold text-brand-600">{item.status === "OPEN" ? "Review & respond" : "View dispute"}</Text>
                 <Ionicons name="arrow-forward-outline" size={16} color={COLORS.primary} />
               </View>
             </View>
