@@ -3,6 +3,14 @@ import db from "../config/db.js";
 import jwt from "jsonwebtoken";
 import { hashPassword, comparePassword } from "../utils/hash.js";
 import { OAuth2Client } from "google-auth-library";
+import { withTransaction } from "../utils/transaction.js";
+import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
+import { normalizePhone, PHONE_MESSAGE } from "../utils/phone.js";
+import {
+  normalizeEmail,
+  verifySignupCodes,
+  consumeSignupCodes,
+} from "./signupVerificationController.js";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -47,7 +55,11 @@ export const register = async (req, res) => {
       email,
       phone,
       password,
-      photo_url
+      photo_url,
+      barangay,
+      street,
+      email_code,
+      phone_code
     } = req.body;
 
     if (
@@ -67,17 +79,40 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: "Please enter a valid birthday." });
     }
 
+    // PixelPatch only serves Zamboanga City, so every new client starts with an
+    // address there (where they live or are staying).
+    const homeBarangay = canonicalBarangay(barangay);
+    if (!homeBarangay) {
+      return res.status(400).json({ error: SERVICE_AREA_MESSAGE });
+    }
+
+    const cleanEmail = normalizeEmail(email);
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone) {
+      return res.status(400).json({ error: PHONE_MESSAGE });
+    }
+
+    // The email (and phone, once SMS is set up) must be proven with the code
+    // from POST /auth/signup/start before the account is created.
+    const codeProblem = verifySignupCodes({
+      email: cleanEmail,
+      phone: cleanPhone,
+      emailCode: email_code,
+      phoneCode: phone_code,
+    });
+    if (codeProblem) {
+      return res.status(400).json({ error: codeProblem.error, field: codeProblem.field });
+    }
+
     const hashedPassword = await hashPassword(password);
 
-    const sql = `
-      INSERT INTO users 
-      (role_id, first_name, middle_name, last_name, birthdate, email, phone, password_hash, photo_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    db.query(
-      sql,
-      [
+    // The account and its address are saved together or not at all.
+    const userId = await withTransaction(async (conn) => {
+      const [result] = await conn.query(
+        `INSERT INTO users
+         (role_id, first_name, middle_name, last_name, birthdate, email, phone, password_hash, photo_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
         1,
         String(first_name).trim(),
         // Optional: not everyone has a middle name.
@@ -86,28 +121,42 @@ export const register = async (req, res) => {
         // Required for app signups. The column stays nullable because Google
         // sign-in and older accounts have no birthdate.
         validBirthdate,
-        String(email).trim(),
-        String(phone ?? "").trim() || null,
+        cleanEmail,
+        cleanPhone,
         hashedPassword,
         photo_url || null,
-      ],
-      (err, result) => {
-        if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
-            return res.status(409).json({ error: "An account with this email already exists" });
-          }
-          console.error("register error:", { code: err.code });
-          return res.status(500).json({ error: "Registration failed. Please try again." });
-        }
+      ]
+      );
+      await conn.query(
+        `INSERT INTO addresses
+         (user_id, country, region, province, city, barangay, street, postal_code, label, is_default, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Home', 1, NOW(), NOW())`,
+        [
+          result.insertId,
+          SERVICE_AREA.country,
+          SERVICE_AREA.region,
+          SERVICE_AREA.province,
+          SERVICE_AREA.city,
+          homeBarangay,
+          String(street ?? "").trim() || null,
+          SERVICE_AREA.postal_code,
+        ]
+      );
+      return result.insertId;
+    });
 
-        res.json({ 
-          message: "Registration successful", 
-          user_id: result.insertId 
-        });
-      }
-    );
+    consumeSignupCodes({ email: cleanEmail, phone: cleanPhone });
+
+    res.json({
+      message: "Registration successful",
+      user_id: userId
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "An account with this email already exists" });
+    }
+    console.error("register error:", { code: err.code });
+    res.status(500).json({ error: "Registration failed. Please try again." });
   }
 };
 

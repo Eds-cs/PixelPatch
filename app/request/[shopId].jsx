@@ -20,6 +20,7 @@ import Button from "../../components/Button";
 import TextField from "../../components/TextField";
 import DateField, { toDateString } from "../../components/DateField";
 import api from "../../lib/api";
+import { isInServiceArea } from "../../constants/serviceArea";
 import { useFetch } from "../../lib/useFetch";
 import { appendImage, pickImages, multipartConfig } from "../../lib/upload";
 import { formatAddress } from "../../lib/format";
@@ -79,6 +80,8 @@ export default function NewRequest() {
 
   const devices = useFetch("/user/devices", (d) => d.devices ?? []);
   const addresses = useFetch("/addresses", (d) => d.addresses ?? []);
+  // Pickup and on-site repairs are only offered inside Zamboanga City.
+  const serviceAddresses = (addresses.data ?? []).filter(isInServiceArea);
   const shopServices = useFetch(`/shops/${shopId}/services`, (d) => d.services ?? []);
   const types = useFetch(`/shop-services/types/${shopId}`, (d) => d.serviceTypes ?? {});
 
@@ -287,9 +290,11 @@ export default function NewRequest() {
               </Pressable>
             }
           >
-            {(addresses.data ?? []).length === 0 ? (
+            {serviceAddresses.length === 0 ? (
               <View>
-                <Text className="mb-3 text-sm text-gray-500">No saved addresses.</Text>
+                <Text className="mb-3 text-sm text-gray-500">
+                  No saved address in Zamboanga City. PixelPatch only serves Zamboanga City.
+                </Text>
                 <Button
                   title="Add an address"
                   variant="outline"
@@ -297,7 +302,7 @@ export default function NewRequest() {
                 />
               </View>
             ) : (
-              (addresses.data ?? []).map((a) => (
+              serviceAddresses.map((a) => (
                 <SelectRow
                   key={a.id}
                   selected={addressId === a.id}

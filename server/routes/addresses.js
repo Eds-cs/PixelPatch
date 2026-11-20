@@ -3,6 +3,7 @@ import express from "express";
 import db from "../config/db.js";
 import { authRequired } from "../middleware/authMiddleware.js";
 import { withTransaction } from "../utils/transaction.js";
+import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
 
 const router = express.Router();
 
@@ -11,22 +12,15 @@ const router = express.Router();
 ------------------------------------------------ */
 router.post("/", authRequired, async (req, res) => {
   try {
-    const {
-      country,
-      region,
-      province,
-      city,
-      barangay,
-      street,
-      postal_code,
-      label,
-      latitude,
-      longitude,
-    } = req.body;
+    const { barangay, street, postal_code, label, latitude, longitude } = req.body;
 
-    if (!region || !province || !city || !barangay) {
-      return res.status(400).json({ message: "Required address fields missing." });
+    // PixelPatch only serves Zamboanga City: the barangay must be one of its
+    // barangays, and the city, province, region and country are always ours.
+    const validBarangay = canonicalBarangay(barangay);
+    if (!validBarangay) {
+      return res.status(400).json({ message: SERVICE_AREA_MESSAGE });
     }
+    const text = (value) => String(value ?? "").trim();
 
     const user_id = req.user.id;
 
@@ -40,22 +34,29 @@ router.post("/", authRequired, async (req, res) => {
     const lat = coordinate(latitude, 90);
     const lng = coordinate(longitude, 180);
 
+    // A user's first address becomes their default.
+    const [[{ hasDefault }]] = await db.promise().query(
+      "SELECT EXISTS (SELECT 1 FROM addresses WHERE user_id = ? AND is_default = 1) AS hasDefault",
+      [user_id]
+    );
+
     const [result] = await db.promise().query(
-      `INSERT INTO addresses 
-        (user_id, country, region, province, city, barangay, street, postal_code, label, latitude, longitude, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      `INSERT INTO addresses
+        (user_id, country, region, province, city, barangay, street, postal_code, label, latitude, longitude, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         user_id,
-        country,
-        region,
-        province,
-        city,
-        barangay,
-        street,
-        postal_code,
-        label,
+        SERVICE_AREA.country,
+        SERVICE_AREA.region,
+        SERVICE_AREA.province,
+        SERVICE_AREA.city,
+        validBarangay,
+        text(street) || null,
+        text(postal_code) || SERVICE_AREA.postal_code,
+        text(label) || null,
         lat === null || lng === null ? null : lat,
-        lat === null || lng === null ? null : lng
+        lat === null || lng === null ? null : lng,
+        Number(hasDefault) ? 0 : 1,
       ]
     );
 
@@ -130,10 +131,9 @@ const SHOP_ADDRESS_MESSAGE =
 router.put("/:id", authRequired, async (req, res) => {
   try {
     const text = (value) => String(value ?? "").trim();
-    const { region, province, city, barangay } = req.body;
-
-    if (!text(region) || !text(province) || !text(city) || !text(barangay)) {
-      return res.status(400).json({ message: "Required address fields missing." });
+    const validBarangay = canonicalBarangay(req.body.barangay);
+    if (!validBarangay) {
+      return res.status(400).json({ message: SERVICE_AREA_MESSAGE });
     }
 
     const address = await findOwnAddress(req.params.id, req.user.id);
@@ -146,13 +146,13 @@ router.put("/:id", authRequired, async (req, res) => {
            street = ?, postal_code = ?, label = ?, updated_at = NOW()
        WHERE id = ? AND user_id = ?`,
       [
-        text(req.body.country),
-        text(region),
-        text(province),
-        text(city),
-        text(barangay),
+        SERVICE_AREA.country,
+        SERVICE_AREA.region,
+        SERVICE_AREA.province,
+        SERVICE_AREA.city,
+        validBarangay,
         text(req.body.street) || null,
-        text(req.body.postal_code) || null,
+        text(req.body.postal_code) || SERVICE_AREA.postal_code,
         text(req.body.label) || null,
         req.params.id,
         req.user.id,

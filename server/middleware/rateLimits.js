@@ -55,3 +55,11 @@ export const passwordResetLimiter = rateLimit({
   limit: 15,
   ...tooMany("Too many password reset attempts. Please wait 15 minutes and try again."),
 });
+
+// Requests for signup verification codes (each one sends an email, and a text
+// once SMS is set up). Each email can also only get one code a minute.
+export const signupCodeLimiter = rateLimit({
+  windowMs: 15 * MINUTE,
+  limit: 10,
+  ...tooMany("Too many verification codes requested. Please wait 15 minutes and try again."),
+});

@@ -1,17 +1,19 @@
 // app/addresses.jsx
 // GET    /api/addresses              (includes request_count, is_shop_address)
-// POST   /api/addresses              (region, province, city, barangay required)
-// PUT    /api/addresses/:id          (same fields; locked for a shop's address)
+// POST   /api/addresses              (barangay must be in Zamboanga City; the server
+//                                     fills in city, province, region and country)
+// PUT    /api/addresses/:id          (same rules; locked for a shop's address)
 // POST   /api/addresses/:id/default
 // DELETE /api/addresses/:id          (refused while a repair or shop uses it)
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import AsyncList from "../components/AsyncList";
 import Button from "../components/Button";
 import TextField from "../components/TextField";
+import BarangayPicker from "../components/BarangayPicker";
 import Modal from "../components/Modal";
 import api from "../lib/api";
 import { useFetch } from "../lib/useFetch";
@@ -19,16 +21,14 @@ import { formatAddress } from "../lib/format";
 import { confirmAction } from "../lib/confirm";
 import { useResponsive } from "../lib/useResponsive";
 import { COLORS } from "../constants/theme";
+import { SERVICE_AREA, canonicalBarangay, isInServiceArea } from "../constants/serviceArea";
+import { useServiceArea } from "../lib/serviceArea";
 
 const EMPTY = {
   label: "",
   street: "",
   barangay: "",
-  city: "",
-  province: "",
-  region: "",
-  postal_code: "",
-  country: "Philippines",
+  postal_code: SERVICE_AREA.postal_code,
 };
 
 const isShopAddress = (address) => Number(address?.is_shop_address) === 1;
@@ -36,6 +36,10 @@ const usedCount = (address) => Number(address?.request_count) || 0;
 
 export default function Addresses() {
   const { isMobile } = useResponsive();
+  const router = useRouter();
+  const { needsAddress, recheck } = useServiceArea();
+  // Set once a client who had to add an address has added one.
+  const [unlocked, setUnlocked] = useState(false);
   const { data, error, loading, refreshing, refresh } = useFetch(
     "/addresses",
     (d) => d.addresses ?? []
@@ -59,9 +63,13 @@ export default function Addresses() {
   };
 
   const openEdit = (address) => {
-    setForm(
-      Object.fromEntries(Object.keys(EMPTY).map((key) => [key, address[key] ?? (key === "country" ? "Philippines" : "")]))
-    );
+    setForm({
+      label: address.label ?? "",
+      street: address.street ?? "",
+      // An address outside Zamboanga City starts blank, so a barangay must be chosen.
+      barangay: isInServiceArea(address) ? canonicalBarangay(address.barangay) : "",
+      postal_code: address.postal_code || SERVICE_AREA.postal_code,
+    });
     setFormError(null);
     setEditing(address);
   };
@@ -71,10 +79,9 @@ export default function Addresses() {
   };
 
   const submit = async () => {
-    // Mirrors the server's own required-field check.
-    const missing = ["region", "province", "city", "barangay"].filter((k) => !String(form[k]).trim());
-    if (missing.length) {
-      setFormError(`Required: ${missing.join(", ")}.`);
+    // Mirrors the server's own check.
+    if (!form.barangay) {
+      setFormError("Choose your barangay in Zamboanga City.");
       return;
     }
 
@@ -90,6 +97,7 @@ export default function Addresses() {
       else await api.put(`/addresses/${editing.id}`, payload);
       setEditing(null);
       await refresh();
+      if (needsAddress && !(await recheck())) setUnlocked(true);
     } catch (e) {
       setFormError(e.message || "Couldn't save this address.");
     } finally {
@@ -150,6 +158,27 @@ export default function Addresses() {
         emptyText="No addresses saved yet."
         ListHeaderComponent={
           <View className="mb-4">
+            {unlocked ? (
+              <View className="mb-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                <Text className="text-sm font-semibold text-green-800">You&apos;re all set</Text>
+                <Text className="mb-3 mt-1 text-sm text-green-800">
+                  Your Zamboanga City address is saved. You can use PixelPatch now.
+                </Text>
+                <Button title="Continue" onPress={() => router.replace("/assistant")} />
+              </View>
+            ) : needsAddress ? (
+              <View className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <Text className="text-sm font-semibold text-amber-900">Add your Zamboanga City address</Text>
+                <Text className="mt-1 text-sm leading-5 text-amber-900">
+                  PixelPatch is only available in Zamboanga City. Add where you live or are staying in
+                  the city to keep using the app.
+                </Text>
+              </View>
+            ) : (
+              <Text className="mb-3 text-xs text-gray-500">
+                PixelPatch serves Zamboanga City only, so addresses must be in a Zamboanga City barangay.
+              </Text>
+            )}
             <Button title="Add address" onPress={openNew} />
             {data?.length ? (
               <Text className="mt-3 text-xs text-gray-500">Tap an address to edit or delete it.</Text>
@@ -187,6 +216,11 @@ export default function Addresses() {
                   {isShopAddress(item) ? (
                     <View className="rounded-full bg-gray-100 px-2 py-0.5">
                       <Text className="text-xs font-semibold text-gray-600">Your shop</Text>
+                    </View>
+                  ) : null}
+                  {!isInServiceArea(item) ? (
+                    <View className="rounded-full bg-amber-100 px-2 py-0.5">
+                      <Text className="text-xs font-semibold text-amber-800">Outside Zamboanga City</Text>
                     </View>
                   ) : null}
                 </View>
@@ -269,68 +303,23 @@ export default function Addresses() {
           placeholder="123 Rizal St."
           editable={!busy && !locked}
         />
-        <View className={isMobile ? "" : "flex-row gap-3"}>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="Barangay"
-              value={form.barangay}
-              onChangeText={setField("barangay")}
-              placeholder="Barangay 1"
-              editable={!busy && !locked}
-            />
-          </View>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="City"
-              value={form.city}
-              onChangeText={setField("city")}
-              placeholder="Quezon City"
-              editable={!busy && !locked}
-            />
-          </View>
-        </View>
-        <View className={isMobile ? "" : "flex-row gap-3"}>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="Province"
-              value={form.province}
-              onChangeText={setField("province")}
-              placeholder="Metro Manila"
-              editable={!busy && !locked}
-            />
-          </View>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="Region"
-              value={form.region}
-              onChangeText={setField("region")}
-              placeholder="NCR"
-              editable={!busy && !locked}
-            />
-          </View>
-        </View>
-        <View className={isMobile ? "" : "flex-row gap-3"}>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="Postal code"
-              value={form.postal_code}
-              onChangeText={setField("postal_code")}
-              placeholder="1100"
-              keyboardType="number-pad"
-              inputMode="numeric"
-              editable={!busy && !locked}
-            />
-          </View>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="Country"
-              value={form.country}
-              onChangeText={setField("country")}
-              placeholder="Philippines"
-              editable={!busy && !locked}
-            />
-          </View>
-        </View>
+        <BarangayPicker
+          value={form.barangay}
+          onChange={setField("barangay")}
+          disabled={busy || locked}
+        />
+        <Text className="-mt-2 mb-4 text-xs text-gray-500">
+          {SERVICE_AREA.city}, {SERVICE_AREA.province}, {SERVICE_AREA.country}
+        </Text>
+        <TextField
+          label="Postal code"
+          value={form.postal_code}
+          onChangeText={setField("postal_code")}
+          placeholder={SERVICE_AREA.postal_code}
+          keyboardType="number-pad"
+          inputMode="numeric"
+          editable={!busy && !locked}
+        />
       </Modal>
     </View>
   );

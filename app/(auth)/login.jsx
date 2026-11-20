@@ -9,6 +9,7 @@ import Button from "../../components/Button";
 import TextField from "../../components/TextField";
 import PasswordField from "../../components/PasswordField";
 import { useAuth } from "../../lib/auth";
+import { COLORS } from "../../constants/theme";
 import { useGoogleAuth, idTokenFrom, isGoogleConfigured } from "../../lib/google";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -94,9 +95,13 @@ export default function Login() {
         >
           <View className="w-full max-w-md self-center">
             <Text className="mb-2 text-3xl font-extrabold text-brand-600">PixelPatch</Text>
-            <Text className="mb-8 text-base text-gray-500">
+            <Text className="mb-3 text-base text-gray-500">
               Sign in to book and track your repairs.
             </Text>
+            <View className="mb-8 flex-row items-center gap-2 self-start rounded-full bg-brand-50 px-3 py-1.5">
+              <Ionicons name="location-outline" size={14} color={COLORS.primary} />
+              <Text className="text-xs font-medium text-brand-800">Available in Zamboanga City only</Text>
+            </View>
 
             {sessionNotice ? (
               <Text
