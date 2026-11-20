@@ -46,7 +46,7 @@ export default function AdminDashboard() {
       <Pressable
         onPress={() => router.push("/admin/services")}
         accessibilityRole="button"
-        className={`mb-5 flex-row items-center gap-3 rounded-xl border p-4 ${pendingServices ? "border-amber-200 bg-amber-50" : "border-blue-100 bg-blue-50"}`}
+        className={`mb-5 flex-row items-center gap-3 rounded-xl border p-4 ${pendingServices ? "border-amber-200 bg-amber-50" : "border-brand-100 bg-brand-50"}`}
       >
         <Ionicons name={pendingServices ? "hourglass-outline" : "checkmark-circle-outline"} size={24} color={pendingServices ? "#b45309" : COLORS.primary} />
         <View className="flex-1">
@@ -82,7 +82,7 @@ export default function AdminDashboard() {
             accessibilityRole="button"
             accessibilityLabel={`${section.title}${section.ready ? "" : ", coming soon"}`}
             style={{ width: isMobile ? "100%" : isDesktop ? "32%" : "48.5%" }}
-            className="rounded-xl border border-gray-200 bg-white p-4 active:bg-blue-50"
+            className="rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50"
           >
             <View className="flex-row items-center justify-between gap-2">
               <Ionicons name={section.icon} size={22} color={COLORS.primary} />

@@ -17,7 +17,7 @@ export default function AdminPlaceholder({ icon, title, summary, capabilities = 
       contentContainerStyle={{ paddingVertical: 20, paddingHorizontal: horizontalPadding, maxWidth: isDesktop ? 1200 : 960, width: "100%", alignSelf: "center" }}
     >
       <View className="mb-5 flex-row flex-wrap items-start gap-3">
-        <View className="h-12 w-12 items-center justify-center rounded-xl bg-blue-50">
+        <View className="h-12 w-12 items-center justify-center rounded-xl bg-brand-50">
           <Ionicons name={icon} size={24} color={COLORS.primary} />
         </View>
         <View className="flex-1" style={{ minWidth: 200 }}>
@@ -48,9 +48,9 @@ export default function AdminPlaceholder({ icon, title, summary, capabilities = 
       </View>
 
       {note ? (
-        <View className="flex-row items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <View className="flex-row items-start gap-3 rounded-xl border border-brand-100 bg-brand-50 p-4">
           <Ionicons name="information-circle-outline" size={20} color={COLORS.primary} />
-          <Text className="flex-1 text-sm leading-5 text-blue-800">{note}</Text>
+          <Text className="flex-1 text-sm leading-5 text-brand-800">{note}</Text>
         </View>
       ) : null}
     </ScrollView>

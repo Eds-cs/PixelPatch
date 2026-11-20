@@ -64,6 +64,8 @@ export default function DateField({
   maxDate,
   disableMonthPicker = false,
   disableYearPicker = false,
+  // Where the calendar opens while no value is set (defaults to today).
+  defaultDate,
   className = "",
 }) {
   const isTime = mode === "time";
@@ -72,10 +74,10 @@ export default function DateField({
   const pickerMaxDate = maxDate ? parseValue(maxDate, mode) : undefined;
 
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(() => parseValue(value, mode));
+  const [draft, setDraft] = useState(() => parseValue(value || defaultDate, mode));
 
   const openPicker = () => {
-    setDraft(parseValue(value, mode));
+    setDraft(parseValue(value || defaultDate, mode));
     setOpen(true);
   };
 

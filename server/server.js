@@ -12,7 +12,6 @@ import businessRoutes from "./routes/businessRoutes.js";
 import businessDashboardRoutes from "./routes/businessDashboardRoutes.js";
 import userRoutes from "./routes/users.js";
 import authRoutes from "./routes/auth.js";
-import otpRoutes from "./routes/otp.js";
 import uploadRoutes from "./routes/upload.js";
 import aiRouter from "./routes/ai.js";
 import aiHistoryRoutes from "./routes/aiHistoryRoutes.js";
@@ -74,7 +73,6 @@ app.use("/uploads", express.static("uploads"));
 /* AUTH / USER */
 app.use("/api/users", userRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/auth", otpRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/ai", aiRouter);
 app.use("/api/ai", aiHistoryRoutes);

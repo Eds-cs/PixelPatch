@@ -107,7 +107,7 @@ export default function ShopDetail() {
                   <Text className="mt-0.5 text-sm text-gray-500">{svc.category}</Text>
                 ) : null}
               </View>
-              <Text className="text-base font-bold text-blue-600">
+              <Text className="text-base font-bold text-brand-600">
                 {PESO}
                 {svc.base_price}
               </Text>

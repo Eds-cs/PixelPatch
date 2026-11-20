@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import db from "../config/db.js";
 import jwt from "jsonwebtoken";
 import { hashPassword, comparePassword } from "../utils/hash.js";
@@ -17,6 +18,21 @@ const GOOGLE_AUDIENCES = (process.env.GOOGLE_CLIENT_IDS || process.env.GOOGLE_CL
   .split(",")
   .map((id) => id.trim())
   .filter(Boolean);
+
+/*
+  Accepts "YYYY-MM-DD" for a real calendar day between 1900 and today.
+  Returns the normalized string, or null when it is missing or invalid.
+*/
+const parseBirthdate = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? "").trim());
+  if (!match) return null;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const isRealDay =
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  if (!isRealDay || year < 1900 || date > new Date()) return null;
+  return `${match[1]}-${match[2]}-${match[3]}`;
+};
 
 /* =====================================
                 REGISTER
@@ -46,6 +62,11 @@ export const register = async (req, res) => {
       });
     }
 
+    const validBirthdate = parseBirthdate(birthdate);
+    if (!validBirthdate) {
+      return res.status(400).json({ error: "Please enter a valid birthday." });
+    }
+
     const hashedPassword = await hashPassword(password);
 
     const sql = `
@@ -59,10 +80,12 @@ export const register = async (req, res) => {
       [
         1,
         String(first_name).trim(),
-        middle_name || null,
+        // Optional: not everyone has a middle name.
+        String(middle_name ?? "").trim() || null,
         String(last_name).trim(),
-        // Optional: the app does not collect a birthdate, and phone is optional.
-        birthdate || null,
+        // Required for app signups. The column stays nullable because Google
+        // sign-in and older accounts have no birthdate.
+        validBirthdate,
         String(email).trim(),
         String(phone ?? "").trim() || null,
         hashedPassword,
@@ -92,6 +115,10 @@ export const register = async (req, res) => {
                   LOGIN
 ====================================== */
 
+// A bcrypt hash of a random throwaway password, compared against when the email
+// has no account so that path takes as long as a real password check.
+const dummyPasswordHash = hashPassword(randomUUID());
+
 export const login = (req, res) => {
   const { email, password } = req.body;
 
@@ -101,14 +128,18 @@ export const login = (req, res) => {
     async (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
 
-      if (result.length === 0)
-        return res.status(400).json({ error: "Email not found" });
-
+      // One message for an unknown email and a wrong password, and a password
+      // check either way, so neither the reply nor its timing reveals which
+      // emails have accounts.
+      // Accounts created with Google may have no usable password hash.
       const user = result[0];
-
-      const isMatch = await comparePassword(password, user.password_hash);
-      if (!isMatch)
-        return res.status(400).json({ error: "Invalid credentials" });
+      const hasPassword = /^\$2[aby]\$/.test(String(user?.password_hash ?? ""));
+      const isMatch = await comparePassword(
+        typeof password === "string" ? password : "",
+        hasPassword ? user.password_hash : await dummyPasswordHash
+      );
+      if (!user || !hasPassword || !isMatch)
+        return res.status(400).json({ error: "Incorrect email or password." });
 
       const token = jwt.sign(
         { id: user.id, role_id: user.role_id },

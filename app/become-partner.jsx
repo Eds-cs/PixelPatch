@@ -44,7 +44,7 @@ function Chip({ label, selected, onPress }) {
       accessibilityRole="button"
       accessibilityState={{ selected }}
       className={`mb-2 mr-2 rounded-full border px-3.5 py-2 ${
-        selected ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
+        selected ? "border-brand-600 bg-brand-600" : "border-gray-300 bg-white"
       }`}
     >
       <Text className={`text-xs font-semibold ${selected ? "text-white" : "text-gray-700"}`}>
@@ -193,7 +193,7 @@ export default function BecomePartner() {
             <View key={label} className="flex-1 flex-row items-center">
               <View
                 className={`h-8 w-8 items-center justify-center rounded-full ${
-                  i <= step ? "bg-blue-600" : "bg-gray-200"
+                  i <= step ? "bg-brand-600" : "bg-gray-200"
                 }`}
               >
                 {i < step ? (
@@ -207,7 +207,7 @@ export default function BecomePartner() {
                 )}
               </View>
               {i < STEPS.length - 1 ? (
-                <View className={`h-0.5 flex-1 ${i < step ? "bg-blue-600" : "bg-gray-200"}`} />
+                <View className={`h-0.5 flex-1 ${i < step ? "bg-brand-600" : "bg-gray-200"}`} />
               ) : null}
             </View>
           ))}

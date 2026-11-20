@@ -53,20 +53,20 @@ export default function ServiceDetail() {
       <Stack.Screen options={{ title: service.name || "Service", headerShown: false }} />
       <Pressable onPress={() => router.push("/services")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
         <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
-        <Text className="text-sm font-semibold text-blue-600">Back to services</Text>
+        <Text className="text-sm font-semibold text-brand-600">Back to services</Text>
       </Pressable>
 
       <View className={`mb-6 gap-5 rounded-2xl border border-gray-200 bg-white p-5 ${isDesktop ? "flex-row items-center" : ""}`}>
         <View style={isDesktop ? { flex: 2, minWidth: 0 } : undefined}>
-          <View className="mb-3 h-12 w-12 items-center justify-center rounded-xl bg-blue-50"><Ionicons name={SERVICE_ICONS[service.category] || "build-outline"} size={25} color={COLORS.primary} /></View>
-          <Text className="text-xs font-semibold text-blue-600">{serviceCategory(service.category)}</Text>
+          <View className="mb-3 h-12 w-12 items-center justify-center rounded-xl bg-brand-50"><Ionicons name={SERVICE_ICONS[service.category] || "build-outline"} size={25} color={COLORS.primary} /></View>
+          <Text className="text-xs font-semibold text-brand-600">{serviceCategory(service.category)}</Text>
           <Text accessibilityRole="header" className="mt-2 text-2xl font-bold text-gray-900">{service.name}</Text>
           <Text className="mt-2 text-sm leading-6 text-gray-500">Compare shops offering this service, then open a shop to explore its details and request a repair.</Text>
         </View>
-        <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined} className="rounded-xl bg-blue-50 p-4">
-          <Text className="text-xs font-medium text-blue-700">Listed base price range</Text>
-          <Text className="mt-2 text-2xl font-bold text-blue-600">{servicePriceRange(service.min_price, service.max_price)}</Text>
-          <Text className="mt-2 text-xs leading-5 text-blue-800">Your shop assesses the device before preparing a quotation. These listed prices help you compare options.</Text>
+        <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined} className="rounded-xl bg-brand-50 p-4">
+          <Text className="text-xs font-medium text-brand-700">Listed base price range</Text>
+          <Text className="mt-2 text-2xl font-bold text-brand-600">{servicePriceRange(service.min_price, service.max_price)}</Text>
+          <Text className="mt-2 text-xs leading-5 text-brand-800">Your shop assesses the device before preparing a quotation. These listed prices help you compare options.</Text>
         </View>
       </View>
 
@@ -82,7 +82,7 @@ export default function ServiceDetail() {
         <View className="flex-row flex-wrap items-center gap-2">
           <Text className="text-xs font-medium text-gray-500">Sort by</Text>
           {[["rating", "Shop rating"], ["lowest", "Lowest base price"], ["highest", "Highest base price"]].map(([key, label]) => (
-            <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-blue-600" : "bg-gray-50"}`}>
+            <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-brand-600" : "bg-gray-50"}`}>
               <Text className={`text-xs font-semibold ${sort === key ? "text-white" : "text-gray-500"}`}>{label}</Text>
             </Pressable>
           ))}
@@ -90,7 +90,7 @@ export default function ServiceDetail() {
       </View>
       <View className="mb-4 flex-row flex-wrap items-center justify-between gap-2">
         <Text className="text-sm text-gray-500">Showing {filtered.length} of {shops.length} shops</Text>
-        {query || sort !== "rating" ? <Pressable onPress={() => { setQuery(""); setSort("rating"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">Reset filters</Text></Pressable> : null}
+        {query || sort !== "rating" ? <Pressable onPress={() => { setQuery(""); setSort("rating"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
       </View>
 
       <View className="mb-5 flex-row flex-wrap justify-between gap-y-4">
@@ -105,7 +105,7 @@ export default function ServiceDetail() {
             <View className="mt-3 flex-row items-start gap-2"><Ionicons name="location-outline" size={16} color={COLORS.textMuted} /><Text className="flex-1 text-sm leading-5 text-gray-500">{formatAddress(shop) || "Address not listed"}</Text></View>
             <View className="my-4 rounded-xl bg-gray-50 p-3">
               <Text className="text-xs text-gray-500">Listed base price</Text>
-              <Text className="mt-1 text-xl font-bold text-blue-600">{servicePrice(shop.base_price)}</Text>
+              <Text className="mt-1 text-xl font-bold text-brand-600">{servicePrice(shop.base_price)}</Text>
               <View className="mt-3 flex-row items-start gap-2"><Ionicons name="time-outline" size={16} color={COLORS.textMuted} /><Text className="flex-1 text-xs leading-5 text-gray-500">Estimated turnaround: {shop.estimated_timeframe || "Ask the shop"}</Text></View>
             </View>
             <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${shop.shop_id}`)} />

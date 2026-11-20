@@ -70,9 +70,9 @@ export default function WebHeader() {
         onPress={() => navigate(item.href)}
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
-        className={`rounded-md px-3 py-3 ${active ? "bg-blue-50" : ""}`}
+        className={`rounded-md px-3 py-3 ${active ? "bg-brand-50" : ""}`}
       >
-        <Text className={`text-sm font-semibold ${active ? "text-blue-700" : "text-gray-600"}`}>
+        <Text className={`text-sm font-semibold ${active ? "text-brand-700" : "text-gray-600"}`}>
           {item.label}
         </Text>
       </Pressable>
@@ -115,7 +115,7 @@ export default function WebHeader() {
           accessibilityRole="link"
           className="mr-4 shrink-0 py-3"
         >
-          <Text className="text-2xl font-extrabold text-blue-600">PixelPatch</Text>
+          <Text className="text-2xl font-extrabold text-brand-600">PixelPatch</Text>
         </Pressable>
 
         {isDesktop ? <View className="flex-1 flex-row items-center">{links}</View> : null}
@@ -140,7 +140,7 @@ export default function WebHeader() {
       <Modal visible={menuOpen} animationType="slide" onRequestClose={() => setMenuPath(null)} accessibilityViewIsModal supportedOrientations={["portrait", "landscape"]}>
         <SafeAreaView className="flex-1 bg-white">
           <View className="min-h-16 flex-row items-center justify-between border-b border-gray-200 px-4">
-            <Text accessibilityRole="header" className="text-xl font-bold text-blue-600">PixelPatch</Text>
+            <Text accessibilityRole="header" className="text-xl font-bold text-brand-600">PixelPatch</Text>
             <Pressable
               onPress={() => setMenuPath(null)}
               accessibilityRole="button"

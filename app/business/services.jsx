@@ -187,9 +187,9 @@ export default function BusinessServices() {
               </View>
             </View>
             {notice ? (
-              <View className="mb-4 flex-row items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+              <View className="mb-4 flex-row items-start gap-3 rounded-xl border border-brand-100 bg-brand-50 p-4">
                 <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.primary} />
-                <Text className="flex-1 text-sm leading-5 text-blue-800">{notice}</Text>
+                <Text className="flex-1 text-sm leading-5 text-brand-800">{notice}</Text>
                 <Pressable onPress={() => setNotice(null)} accessibilityRole="button" accessibilityLabel="Dismiss" className="h-8 w-8 items-center justify-center"><Ionicons name="close" size={18} color={COLORS.textMuted} /></Pressable>
               </View>
             ) : null}
@@ -221,31 +221,31 @@ export default function BusinessServices() {
               <TextField label="Search services" value={query} onChangeText={setQuery} placeholder="Service name, category, or description" autoCapitalize="none" />
               <Text className="mb-2 text-xs font-semibold uppercase text-gray-500">Device category</Text>
               <View className="flex-row flex-wrap gap-2">
-                {["", ...categories].map((value) => <Pressable key={value} onPress={() => setCategory(value)} accessibilityRole="button" accessibilityState={{ selected: category === value }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${category === value ? "bg-blue-600" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${category === value ? "text-white" : "text-gray-600"}`}>{value ? categoryLabel(value) : "All categories"}</Text></Pressable>)}
+                {["", ...categories].map((value) => <Pressable key={value} onPress={() => setCategory(value)} accessibilityRole="button" accessibilityState={{ selected: category === value }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${category === value ? "bg-brand-600" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${category === value ? "text-white" : "text-gray-600"}`}>{value ? categoryLabel(value) : "All categories"}</Text></Pressable>)}
               </View>
               <Text className="mb-2 mt-4 text-xs font-semibold uppercase text-gray-500">Service method</Text>
               <View className="flex-row flex-wrap gap-2">
-                {[{ key: "", label: "All methods" }, ...METHODS].map((item) => <Pressable key={item.key} onPress={() => setMethod(item.key)} accessibilityRole="button" accessibilityState={{ selected: method === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${method === item.key ? "bg-blue-50" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${method === item.key ? "text-blue-700" : "text-gray-600"}`}>{item.label}</Text></Pressable>)}
+                {[{ key: "", label: "All methods" }, ...METHODS].map((item) => <Pressable key={item.key} onPress={() => setMethod(item.key)} accessibilityRole="button" accessibilityState={{ selected: method === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${method === item.key ? "bg-brand-50" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${method === item.key ? "text-brand-700" : "text-gray-600"}`}>{item.label}</Text></Pressable>)}
               </View>
               <View className="mt-3 flex-row flex-wrap items-center gap-2">
                 <Text className="text-xs text-gray-500">Sort by</Text>
-                {[["name", "Name A–Z"], ["lowest", "Price: low to high"], ["highest", "Price: high to low"]].map(([key, label]) => <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-blue-50" : ""}`}><Text className={`text-xs font-semibold ${sort === key ? "text-blue-700" : "text-gray-500"}`}>{label}</Text></Pressable>)}
+                {[["name", "Name A–Z"], ["lowest", "Price: low to high"], ["highest", "Price: high to low"]].map(([key, label]) => <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-brand-50" : ""}`}><Text className={`text-xs font-semibold ${sort === key ? "text-brand-700" : "text-gray-500"}`}>{label}</Text></Pressable>)}
               </View>
             </View>
             <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
               <Text className="text-sm text-gray-500">{filtered.length} of {services.length} services · tap a service to edit it</Text>
-              {query || category || method || sort !== "name" ? <Pressable onPress={() => { setQuery(""); setCategory(""); setMethod(""); setSort("name"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-blue-600">Reset filters</Text></Pressable> : null}
+              {query || category || method || sort !== "name" ? <Pressable onPress={() => { setQuery(""); setCategory(""); setMethod(""); setSort("name"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
             </View>
             {isDesktop && filtered.length ? <View className="mb-2 flex-row gap-5 px-4">{[["Service", 4], ["Service options", 3], ["Base price", 2]].map(([label, flex]) => <Text key={label} style={{ flex }} className="text-xs font-semibold uppercase text-gray-400">{label}</Text>)}</View> : null}
           </View>
         }
         renderItem={({ item }) => (
-          <Pressable onPress={() => openEdit(item)} accessibilityRole="button" accessibilityLabel={`Edit service: ${item.name}, base price ${money(item.base_price)}`} className="mb-3 rounded-xl border border-gray-200 bg-white p-4 active:bg-blue-50">
+          <Pressable onPress={() => openEdit(item)} accessibilityRole="button" accessibilityLabel={`Edit service: ${item.name}, base price ${money(item.base_price)}`} className="mb-3 rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50">
             <View className={isDesktop ? "flex-row items-start gap-5" : ""}>
               <View style={isDesktop ? { flex: 4, minWidth: 0 } : undefined}>
                 <View className="mb-2 flex-row flex-wrap items-center gap-2">
                   <ReviewBadge status={item.review_status} />
-                  <Text className="text-xs font-semibold text-blue-600">{categoryLabel(item.category)}</Text>
+                  <Text className="text-xs font-semibold text-brand-600">{categoryLabel(item.category)}</Text>
                 </View>
                 <Text className="text-base font-bold text-gray-900">{item.name || "Unnamed service"}</Text>
                 {item.review_status === "REJECTED" && item.review_note ? <Text className="mt-2 rounded-lg bg-red-50 p-2 text-xs leading-5 text-red-700">Admin: {item.review_note}</Text> : null}
@@ -257,8 +257,8 @@ export default function BusinessServices() {
                 <Text className="mt-3 text-xs leading-5 text-gray-500">Estimated turnaround: {item.estimated_timeframe || "Not specified"}</Text>
               </View>
               <View style={isDesktop ? { flex: 2, minWidth: 0 } : undefined} className={isDesktop ? "" : "mt-4 flex-row flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3"}>
-                <View><Text className="text-xs text-gray-400">Base price</Text><Text className="mt-1 text-lg font-bold text-blue-600">{money(item.base_price)}</Text></View>
-                <Text className="mt-3 text-sm font-semibold text-blue-600">Edit →</Text>
+                <View><Text className="text-xs text-gray-400">Base price</Text><Text className="mt-1 text-lg font-bold text-brand-600">{money(item.base_price)}</Text></View>
+                <Text className="mt-3 text-sm font-semibold text-brand-600">Edit →</Text>
               </View>
             </View>
           </Pressable>
@@ -289,15 +289,15 @@ export default function BusinessServices() {
             ? "New services are reviewed by an admin before clients can see them."
             : "Changing the name, category or description sends this service back for admin review. Price, turnaround and service methods update right away."}
         </Text>
-        {!isNew && usedCount ? <Text className="mb-4 rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-800">This service is part of {usedCount} repair request{usedCount === 1 ? "" : "s"}, so it can&apos;t be deleted. You can still edit it.</Text> : null}
+        {!isNew && usedCount ? <Text className="mb-4 rounded-lg bg-brand-50 p-3 text-xs leading-5 text-brand-800">This service is part of {usedCount} repair request{usedCount === 1 ? "" : "s"}, so it can&apos;t be deleted. You can still edit it.</Text> : null}
 
         <TextField label="Service name" value={form.name} onChangeText={setField("name")} placeholder="e.g. Screen replacement" maxLength={100} editable={!busy} />
 
         <Text className="mb-2 text-sm font-medium text-gray-700">Device category</Text>
         <View className="mb-4 flex-row flex-wrap gap-2">
           {allCategories.map((value) => (
-            <Pressable key={value} onPress={() => setField("category")(value)} disabled={busy} accessibilityRole="radio" accessibilityState={{ selected: form.category === value }} className={`min-h-11 justify-center rounded-lg border px-3 py-2 ${form.category === value ? "border-blue-600 bg-blue-50" : "border-gray-200 bg-white"}`}>
-              <Text className={`text-sm font-semibold ${form.category === value ? "text-blue-700" : "text-gray-600"}`}>{categoryLabel(value)}</Text>
+            <Pressable key={value} onPress={() => setField("category")(value)} disabled={busy} accessibilityRole="radio" accessibilityState={{ selected: form.category === value }} className={`min-h-11 justify-center rounded-lg border px-3 py-2 ${form.category === value ? "border-brand-600 bg-brand-50" : "border-gray-200 bg-white"}`}>
+              <Text className={`text-sm font-semibold ${form.category === value ? "text-brand-700" : "text-gray-600"}`}>{categoryLabel(value)}</Text>
             </Pressable>
           ))}
         </View>

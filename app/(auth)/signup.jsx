@@ -7,16 +7,22 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "../../components/Button";
 import TextField from "../../components/TextField";
+import PasswordField from "../../components/PasswordField";
+import DateField, { toDateString } from "../../components/DateField";
 import { useAuth } from "../../lib/auth";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// The server accepts birthdays from 1900 up to today.
+const EARLIEST_BIRTHDAY = "1900-01-01";
 
 export default function SignUp() {
   const { signup, login } = useAuth();
 
   const [form, setForm] = useState({
     first_name: "",
+    middle_name: "",
     last_name: "",
+    birthdate: "",
     email: "",
     phone: "",
     password: "",
@@ -31,6 +37,7 @@ export default function SignUp() {
     const next = {};
     if (!form.first_name.trim()) next.first_name = "First name is required.";
     if (!form.last_name.trim()) next.last_name = "Last name is required.";
+    if (!form.birthdate) next.birthdate = "Birthday is required.";
     if (!EMAIL_RE.test(form.email.trim())) next.email = "Please enter a valid email address.";
     if (form.password.length < 8) next.password = "Password must be at least 8 characters.";
     if (form.password !== form.confirmPassword) next.confirmPassword = "Passwords do not match.";
@@ -45,9 +52,9 @@ export default function SignUp() {
       await signup({
         role_id: 1, // client account
         first_name: form.first_name.trim(),
-        middle_name: null,
+        middle_name: form.middle_name.trim() || null,
         last_name: form.last_name.trim(),
-        birthdate: null,
+        birthdate: form.birthdate,
         email: form.email.trim(),
         phone: form.phone.trim() || null,
         password: form.password,
@@ -58,6 +65,8 @@ export default function SignUp() {
       const message = error.message || "";
       if (message.toLowerCase().includes("duplicate") || message.toLowerCase().includes("exists")) {
         setErrors({ email: "An account with this email already exists." });
+      } else if (message.toLowerCase().includes("birthday")) {
+        setErrors({ birthdate: message });
       } else {
         setErrors({ email: message || "Sign up failed. Please try again." });
       }
@@ -77,7 +86,7 @@ export default function SignUp() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="w-full max-w-md self-center">
-            <Text className="mb-2 text-3xl font-extrabold text-blue-600">Create account</Text>
+            <Text className="mb-2 text-3xl font-extrabold text-brand-600">Create account</Text>
             <Text className="mb-8 text-base text-gray-500">
               Join PixelPatch to get your devices repaired.
             </Text>
@@ -104,6 +113,26 @@ export default function SignUp() {
             </View>
 
             <TextField
+              label="Middle name (optional)"
+              value={form.middle_name}
+              onChangeText={setField("middle_name")}
+              error={errors.middle_name}
+              placeholder="Santos"
+              autoComplete="name-middle"
+            />
+
+            <DateField
+              label="Birthday"
+              value={form.birthdate}
+              onChange={setField("birthdate")}
+              error={errors.birthdate}
+              placeholder="Select your birthday"
+              minDate={EARLIEST_BIRTHDAY}
+              maxDate={toDateString(new Date())}
+              defaultDate="2000-01-01"
+            />
+
+            <TextField
               label="Email"
               value={form.email}
               onChangeText={setField("email")}
@@ -125,24 +154,24 @@ export default function SignUp() {
               inputMode="tel"
             />
 
-            <TextField
+            <PasswordField
               label="Password"
               value={form.password}
               onChangeText={setField("password")}
               error={errors.password}
               placeholder="At least 8 characters"
-              autoCapitalize="none"
-              secureTextEntry
+              autoComplete="new-password"
+              textContentType="newPassword"
             />
 
-            <TextField
+            <PasswordField
               label="Confirm password"
               value={form.confirmPassword}
               onChangeText={setField("confirmPassword")}
               error={errors.confirmPassword}
               placeholder="Re-enter your password"
-              autoCapitalize="none"
-              secureTextEntry
+              autoComplete="new-password"
+              textContentType="newPassword"
               onSubmitEditing={onSubmit}
               returnKeyType="go"
             />
@@ -151,7 +180,7 @@ export default function SignUp() {
 
             <View className="mt-6 flex-row justify-center">
               <Text className="text-sm text-gray-600">Already have an account? </Text>
-              <Link href="/login" className="text-sm font-semibold text-blue-600">
+              <Link href="/login" className="text-sm font-semibold text-brand-600">
                 Sign in
               </Link>
             </View>

@@ -55,7 +55,7 @@ function SelectRow({ selected, title, subtitle, onPress }) {
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       className={`mb-2 flex-row items-center rounded-lg border p-3 ${
-        selected ? "border-blue-600 bg-blue-50" : "border-gray-200 bg-white"
+        selected ? "border-brand-600 bg-brand-50" : "border-gray-200 bg-white"
       }`}
     >
       <Ionicons
@@ -64,7 +64,7 @@ function SelectRow({ selected, title, subtitle, onPress }) {
         color={selected ? COLORS.primary : COLORS.textMuted}
       />
       <View className="ml-3 flex-1">
-        <Text className={`text-sm font-semibold ${selected ? "text-blue-700" : "text-gray-900"}`}>
+        <Text className={`text-sm font-semibold ${selected ? "text-brand-700" : "text-gray-900"}`}>
           {title}
         </Text>
         {subtitle ? <Text className="mt-0.5 text-xs text-gray-500">{subtitle}</Text> : null}
@@ -193,7 +193,7 @@ export default function NewRequest() {
           title="Device"
           right={
             <Pressable onPress={() => router.push("/devices")} accessibilityRole="button">
-              <Text className="text-xs font-semibold text-blue-600">Manage</Text>
+              <Text className="text-xs font-semibold text-brand-600">Manage</Text>
             </Pressable>
           }
         >
@@ -234,7 +234,7 @@ export default function NewRequest() {
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: on }}
                   className={`mb-2 flex-row items-center rounded-lg border p-3 ${
-                    on ? "border-blue-600 bg-blue-50" : "border-gray-200 bg-white"
+                    on ? "border-brand-600 bg-brand-50" : "border-gray-200 bg-white"
                   }`}
                 >
                   <Ionicons
@@ -244,12 +244,12 @@ export default function NewRequest() {
                   />
                   <Text
                     className={`ml-3 flex-1 text-sm font-semibold ${
-                      on ? "text-blue-700" : "text-gray-900"
+                      on ? "text-brand-700" : "text-gray-900"
                     }`}
                   >
                     {s.name}
                   </Text>
-                  <Text className="text-sm font-bold text-blue-600">
+                  <Text className="text-sm font-bold text-brand-600">
                     {PESO}
                     {s.base_price}
                   </Text>
@@ -283,7 +283,7 @@ export default function NewRequest() {
             title="Address"
             right={
               <Pressable onPress={() => router.push("/addresses")} accessibilityRole="button">
-                <Text className="text-xs font-semibold text-blue-600">Manage</Text>
+                <Text className="text-xs font-semibold text-brand-600">Manage</Text>
               </Pressable>
             }
           >

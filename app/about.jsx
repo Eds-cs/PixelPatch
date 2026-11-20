@@ -25,10 +25,10 @@ export default function About() {
       <Stack.Screen options={{ title: "About", headerShown: true }} />
 
       <View className="mb-6 items-center rounded-xl border border-gray-200 bg-white p-6">
-        <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-blue-600">
+        <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-brand-600">
           <Ionicons name="construct" size={30} color="#fff" />
         </View>
-        <Text className="text-2xl font-extrabold text-blue-600">PixelPatch</Text>
+        <Text className="text-2xl font-extrabold text-brand-600">PixelPatch</Text>
         <Text className="mt-1 text-sm text-gray-400">Version {version}</Text>
       </View>
 

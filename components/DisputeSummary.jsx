@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 
 export const DISPUTE_STATUSES = [
   { key: "OPEN", label: "Needs response", background: "bg-amber-50", foreground: "text-amber-800", color: "#d97706" },
-  { key: "SHOP_PROPOSED", label: "Awaiting client", background: "bg-blue-50", foreground: "text-blue-700", color: "#2563eb" },
+  { key: "SHOP_PROPOSED", label: "Awaiting client", background: "bg-brand-100", foreground: "text-brand-800", color: "#6f685f" },
   { key: "RESOLVED", label: "Resolved", background: "bg-emerald-50", foreground: "text-emerald-700", color: "#059669" },
   { key: "REJECTED", label: "Proposal declined", background: "bg-red-50", foreground: "text-red-700", color: "#dc2626" },
 ];
