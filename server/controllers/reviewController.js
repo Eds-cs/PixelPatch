@@ -38,19 +38,21 @@ export const getBusinessShopReviews = (req, res) => {
 export const getShopReviews = (req, res) => {
   const { id } = req.params;
 
+  // Public (no sign-in needed): reviewers appear as first name and last
+  // initial, and no user or request IDs are exposed.
   const sql = `
     SELECT
       r.id,
       r.shop_id,
-      r.client_id,
-      r.request_id,
       r.rating,
       r.feedback AS comment,
       r.created_at,
-      u.first_name, u.last_name
+      u.first_name,
+      IF(u.last_name IS NULL OR u.last_name = '', NULL, CONCAT(LEFT(u.last_name, 1), '.')) AS last_name
     FROM reviews r
     LEFT JOIN users u ON u.id = r.client_id
     WHERE r.shop_id = ?
+    ORDER BY r.created_at DESC
   `;
 
   db.query(sql, [id], (err, results) => {

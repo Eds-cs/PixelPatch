@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../../components/Button";
 import { useFetch } from "../../lib/useFetch";
+import { useAuth } from "../../lib/auth";
 import { COLORS } from "../../constants/theme";
 
 const PESO = "₱";
@@ -24,6 +25,7 @@ function Stars({ rating }) {
 export default function ShopDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { isLoggedIn } = useAuth();
 
   const shop = useFetch(`/shops/${id}`, (d) => d.shop ?? null);
   const services = useFetch(`/shops/${id}/services`, (d) => d.services ?? []);
@@ -38,6 +40,23 @@ export default function ShopDetail() {
   }
 
   const s = shop.data;
+
+  // Couldn't load, or no such shop: say so instead of showing an empty shop.
+  if (shop.error || !s) {
+    return (
+      <View className="flex-1 items-center justify-center bg-gray-50 p-6">
+        <Stack.Screen options={{ title: "Shop", headerShown: true }} />
+        <Ionicons name={shop.error ? "cloud-offline-outline" : "storefront-outline"} size={32} color={COLORS.textMuted} />
+        <Text className="mt-3 max-w-sm text-center text-base text-gray-600">
+          {shop.error ? "We couldn't load this shop. Check your connection and try again." : "This shop doesn't exist or is no longer listed."}
+        </Text>
+        <View className="mt-5 flex-row flex-wrap justify-center gap-3">
+          {shop.error ? <Button title="Try again" onPress={shop.refresh} /> : null}
+          <Button title="Browse shops" variant="outline" onPress={() => router.push("/")} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -85,11 +104,36 @@ export default function ShopDetail() {
 
       {/* Only admin-verified shops take requests (the server enforces this too). */}
       {Number(s?.is_verified) === 1 ? (
-        <Button
-          title="Request a repair"
-          className="mb-6"
-          onPress={() => router.push(`/request/${id}`)}
-        />
+        isLoggedIn ? (
+          <Button
+            title="Request a repair"
+            className="mb-6"
+            onPress={() => router.push(`/request/${id}`)}
+          />
+        ) : (
+          // Browsing is open to everyone; contacting a shop needs an account.
+          <View className="mb-6">
+            <Button
+              title="Sign in to request a repair"
+              onPress={() =>
+                router.push({ pathname: "/login", params: { redirect: `/request/${id}` } })
+              }
+            />
+            <Text className="mt-2 text-center text-xs text-gray-500">
+              New here?{" "}
+              <Text
+                accessibilityRole="link"
+                onPress={() =>
+                  router.push({ pathname: "/signup", params: { redirect: `/request/${id}` } })
+                }
+                className="font-semibold text-brand-600"
+              >
+                Create a free account
+              </Text>{" "}
+              to request repairs and message shops.
+            </Text>
+          </View>
+        )
       ) : (
         <Text className="mb-6 rounded-xl bg-amber-50 p-4 text-sm leading-5 text-amber-800">
           This shop is waiting for PixelPatch verification and can&apos;t take repair requests yet.

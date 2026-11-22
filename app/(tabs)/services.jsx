@@ -44,6 +44,8 @@ export default function Services() {
   const rows = [];
   for (let index = 0; index < filtered.length; index += columns) rows.push(filtered.slice(index, index + columns));
   const cardWidth = isMobile ? "100%" : isDesktop ? "32%" : "48.5%";
+  // Gaps are margins, not "spread apart", so a short last row starts on the left.
+  const cardGap = isDesktop ? "2%" : "3%";
 
   return (
     <AsyncList
@@ -102,9 +104,9 @@ export default function Services() {
         </View>
       }
       renderItem={({ item: row }) => (
-        <View className="mb-4 flex-row items-stretch justify-between">
-          {row.map((service) => (
-            <Pressable key={service.service_key} onPress={() => router.push(`/service/${encodeURIComponent(service.service_key)}`)} accessibilityRole="button" accessibilityLabel={`Compare shops for ${service.name}, ${serviceCategory(service.category)}`} style={{ width: cardWidth }} className="rounded-2xl border border-gray-200 bg-white p-5 active:bg-brand-50">
+        <View className="mb-4 flex-row items-stretch">
+          {row.map((service, index) => (
+            <Pressable key={service.service_key} onPress={() => router.push(`/service/${encodeURIComponent(service.service_key)}`)} accessibilityRole="button" accessibilityLabel={`Compare shops for ${service.name}, ${serviceCategory(service.category)}`} style={{ width: cardWidth, marginRight: index < columns - 1 ? cardGap : 0 }} className="rounded-2xl border border-gray-200 bg-white p-5 active:bg-brand-50">
               <View className="mb-4 flex-row items-center gap-3">
                 <View className="h-12 w-12 items-center justify-center rounded-xl bg-brand-50"><Ionicons name={SERVICE_ICONS[service.category] || "build-outline"} size={25} color={COLORS.primary} /></View>
                 <Text className="flex-1 text-xs font-semibold text-brand-600">{serviceCategory(service.category)}</Text>

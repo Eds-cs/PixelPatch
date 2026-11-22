@@ -40,6 +40,9 @@ export default function ServiceDetail() {
       return Number(b.rating_average || 0) - Number(a.rating_average || 0) || String(a.shop_name || "").localeCompare(String(b.shop_name || ""));
     });
   const cardWidth = isMobile ? "100%" : isDesktop ? "32%" : "48.5%";
+  // Gaps are margins, not "spread apart", so a short last row starts on the left.
+  const columns = isMobile ? 1 : isDesktop ? 3 : 2;
+  const cardGap = isDesktop ? "2%" : "3%";
 
   return (
     <ScrollView
@@ -93,9 +96,9 @@ export default function ServiceDetail() {
         {query || sort !== "rating" ? <Pressable onPress={() => { setQuery(""); setSort("rating"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
       </View>
 
-      <View className="mb-5 flex-row flex-wrap justify-between gap-y-4">
-        {filtered.map((shop) => (
-          <View key={shop.shop_id} style={{ width: cardWidth }} className="rounded-2xl border border-gray-200 bg-white p-5">
+      <View className="mb-5 flex-row flex-wrap gap-y-4">
+        {filtered.map((shop, index) => (
+          <View key={shop.shop_id} style={{ width: cardWidth, marginRight: (index + 1) % columns === 0 ? 0 : cardGap }} className="rounded-2xl border border-gray-200 bg-white p-5">
             <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
               <View className="h-11 w-11 items-center justify-center rounded-xl bg-gray-50"><Ionicons name="storefront-outline" size={23} color={COLORS.primary} /></View>
               <ServiceRating rating={shop.rating_average} />

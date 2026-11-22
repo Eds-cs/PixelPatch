@@ -2,7 +2,7 @@
 import "../global.css";
 
 import { useEffect } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -14,9 +14,23 @@ import { ServiceAreaProvider, useServiceArea } from "../lib/serviceArea";
 import { COLORS } from "../constants/theme";
 import WebHeader from "../components/WebHeader";
 
-// Screens that stay reachable while signed out.
-const PUBLIC_GROUP = "(auth)";
+// Sign-in, sign-up and password reset.
+const AUTH_GROUP = "(auth)";
 const ADMIN_GROUP = "admin";
+// Pages anyone can browse without an account. Everything else (requesting a
+// repair, chats, the AI assistant, profile...) asks visitors to sign in first.
+const BROWSABLE_SCREENS = ["shop", "service", "about", "help"];
+const BROWSABLE_TABS = [undefined, "index", "services"]; // home and services
+
+function isBrowsable(segments) {
+  if (segments[0] === "(tabs)") return BROWSABLE_TABS.includes(segments[1]);
+  return BROWSABLE_SCREENS.includes(segments[0]);
+}
+
+// Where to go after signing in: only a path inside this app, never another site.
+function safeRedirect(value) {
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : null;
+}
 // Shared informational screens an admin may still open outside the portal.
 const ADMIN_SHARED = ["settings", "help", "about"];
 // Screens a client without a Zamboanga City address may still open.
@@ -32,6 +46,8 @@ function RootNavigator() {
   const { isLoggedIn, loading, isBusiness, isAdmin } = useAuth();
   const { needsAddress } = useServiceArea();
   const segments = useSegments();
+  const pathname = usePathname();
+  const { redirect } = useGlobalSearchParams();
   const router = useRouter();
 
   // expo-router's assertIsReady() throws "Attempted to navigate before mounting
@@ -41,13 +57,14 @@ function RootNavigator() {
   useEffect(() => {
     if (loading) return;
 
-    const inPublicGroup = segments[0] === PUBLIC_GROUP;
+    const inAuthGroup = segments[0] === AUTH_GROUP;
     const inAdminGroup = segments[0] === ADMIN_GROUP;
 
-    if (!isLoggedIn && !inPublicGroup) {
-      router.replace("/login");
-    } else if (isLoggedIn && inPublicGroup) {
-      router.replace(homeFor({ isAdmin, isBusiness }));
+    if (!isLoggedIn && !inAuthGroup && !isBrowsable(segments)) {
+      // Account-only page: sign in first, then come back here.
+      router.replace({ pathname: "/login", params: { redirect: pathname } });
+    } else if (isLoggedIn && inAuthGroup) {
+      router.replace(safeRedirect(redirect) ?? homeFor({ isAdmin, isBusiness }));
     } else if (isLoggedIn && inAdminGroup && !isAdmin) {
       // The server refuses admin APIs anyway; keep non-admins out of the UI too.
       router.replace(homeFor({ isAdmin, isBusiness }));
@@ -58,14 +75,16 @@ function RootNavigator() {
       // PixelPatch only serves Zamboanga City: clients add an address there first.
       router.replace("/addresses");
     }
-  }, [isLoggedIn, loading, isBusiness, isAdmin, needsAddress, segments, router]);
+  }, [isLoggedIn, loading, isBusiness, isAdmin, needsAddress, segments, pathname, redirect, router]);
 
-  const inPublicGroup = segments[0] === PUBLIC_GROUP;
+  const inAuthGroup = segments[0] === AUTH_GROUP;
   // Native business and admin routes use their drawer header; every other
   // screen shares the responsive navigation, including native client screens.
   const nativeBusinessDrawer =
     Platform.OS !== "web" && (segments[0] === "business" || segments[0] === ADMIN_GROUP);
-  const showWebHeader = isLoggedIn && !inPublicGroup && !nativeBusinessDrawer;
+  // Visitors get the header too, with sign-in buttons, while browsing.
+  const showWebHeader =
+    !inAuthGroup && !nativeBusinessDrawer && (isLoggedIn || isBrowsable(segments));
 
   return (
     <View style={{ flex: 1 }}>

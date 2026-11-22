@@ -1,7 +1,7 @@
 // Troubleshooting UI. Starter prompts edit the draft; only Send calls the AI.
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -244,7 +244,10 @@ export default function Assistant() {
   const [messages, setMessages] = useState([]);
   const [shops, setShops] = useState([]);
   const [conversationId, setConversationId] = useState(null);
-  const [draft, setDraft] = useState("");
+  // ?prompt=... (from the home page) starts the message box with that question;
+  // the person still reviews it and presses Send.
+  const { prompt } = useLocalSearchParams();
+  const [draft, setDraft] = useState(() => (typeof prompt === "string" ? prompt.slice(0, 500) : ""));
   const [sending, setSending] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
   const [error, setError] = useState(null);

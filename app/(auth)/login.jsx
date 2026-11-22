@@ -17,7 +17,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function Login() {
   const { login, loginWithGoogle, sessionNotice } = useAuth();
   // Set by the forgot-password screen after a successful reset.
-  const { reset } = useLocalSearchParams();
+  const { reset, redirect } = useLocalSearchParams();
+  // Keeps "where to go after signing in" when switching to sign-up.
+  const signupHref = redirect ? { pathname: "/signup", params: { redirect } } : "/signup";
 
   const [form, setForm] = useState({ email: "", password: "", rememberMe: false });
   const [errors, setErrors] = useState({ email: "", password: "" });
@@ -206,8 +208,13 @@ export default function Login() {
 
             <View className="mt-6 flex-row justify-center">
               <Text className="text-sm text-gray-600">Don&apos;t have an account? </Text>
-              <Link href="/signup" className="text-sm font-semibold text-brand-600">
+              <Link href={signupHref} className="text-sm font-semibold text-brand-600">
                 Sign up
+              </Link>
+            </View>
+            <View className="mt-4 flex-row justify-center">
+              <Link href="/" className="text-sm font-medium text-gray-500">
+                Browse without an account
               </Link>
             </View>
           </View>

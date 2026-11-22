@@ -5,7 +5,7 @@
 //   2. POST /api/auth/register with the form and the code(s) creates it.
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import { Link } from "expo-router";
+import { Link, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -34,6 +34,9 @@ const onlyDigits = (value) => value.replace(/\D/g, "").slice(0, 6);
 
 export default function SignUp() {
   const { signup, login } = useAuth();
+  // Keeps "where to go after signing in" when switching to sign-in.
+  const { redirect } = useLocalSearchParams();
+  const loginHref = redirect ? { pathname: "/login", params: { redirect } } : "/login";
 
   const [form, setForm] = useState({
     first_name: "",
@@ -408,8 +411,13 @@ export default function SignUp() {
 
                 <View className="mt-6 flex-row justify-center">
                   <Text className="text-sm text-gray-600">Already have an account? </Text>
-                  <Link href="/login" className="text-sm font-semibold text-brand-600">
+                  <Link href={loginHref} className="text-sm font-semibold text-brand-600">
                     Sign in
+                  </Link>
+                </View>
+                <View className="mt-4 flex-row justify-center">
+                  <Link href="/" className="text-sm font-medium text-gray-500">
+                    Browse without an account
                   </Link>
                 </View>
               </>

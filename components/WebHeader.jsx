@@ -16,6 +16,13 @@ const CLIENT_NAV = [
   { label: "Chats", href: "/chat" },
 ];
 
+// Signed-out visitors: the pages they can browse without an account.
+const GUEST_NAV = [
+  { label: "Home", href: "/", exact: true },
+  { label: "Services", href: "/services" },
+  { label: "Help", href: "/help" },
+];
+
 const BUSINESS_NAV = [
   { label: "Dashboard", href: "/business/dashboard", exact: true },
   { label: "Repairs", href: "/business/repairs" },
@@ -43,11 +50,11 @@ function isActive(pathname, href, exact) {
 export default function WebHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isBusiness, isAdmin, logout } = useAuth();
+  const { user, isLoggedIn, isBusiness, isAdmin, logout } = useAuth();
   const { layout, isMobile, isDesktop, horizontalPadding } = useResponsive();
   const [menuPath, setMenuPath] = useState(null);
   const menuOpen = isMobile && menuPath === pathname;
-  const navigation = isAdmin ? ADMIN_NAV : isBusiness ? BUSINESS_NAV : CLIENT_NAV;
+  const navigation = !isLoggedIn ? GUEST_NAV : isAdmin ? ADMIN_NAV : isBusiness ? BUSINESS_NAV : CLIENT_NAV;
   const profileHref = isAdmin ? "/admin/account" : isBusiness ? "/business/profile" : "/profile";
   // Visible label: the signed-in person's first name, else one word for the role.
   const firstName = String(user?.first_name ?? "").trim();
@@ -79,7 +86,30 @@ export default function WebHeader() {
     );
   });
 
-  const accountActions = (
+  // Visitors come back to the page they were on after signing in.
+  const authLink = (screen) =>
+    pathname && pathname !== "/" ? { pathname: screen, params: { redirect: pathname } } : screen;
+
+  const guestActions = (
+    <View className={isMobile ? "mt-4 gap-2 border-t border-gray-200 pt-4" : "flex-row items-center gap-2"}>
+      <Pressable
+        onPress={() => navigate(authLink("/login"))}
+        accessibilityRole="link"
+        className={`rounded-md px-3 py-3 ${isMobile ? "border border-gray-300 items-center" : ""}`}
+      >
+        <Text className="text-sm font-semibold text-gray-700">Sign in</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => navigate(authLink("/signup"))}
+        accessibilityRole="link"
+        className="items-center rounded-md bg-brand-600 px-4 py-3 active:bg-brand-700"
+      >
+        <Text className="text-sm font-semibold text-white">Create account</Text>
+      </Pressable>
+    </View>
+  );
+
+  const accountActions = !isLoggedIn ? guestActions : (
     <View className={isMobile ? "mt-4 border-t border-gray-200 pt-3" : "flex-row items-center"}>
       <Pressable
         onPress={() => navigate(profileHref)}
