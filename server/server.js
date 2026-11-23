@@ -6,6 +6,7 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import path from "path";
+import fs from "fs";
 
 import chatRoutes from "./routes/chat.js";
 import businessRoutes from "./routes/businessRoutes.js";
@@ -61,12 +62,24 @@ import disputesRoutes from "./routes/disputes.routes.js";
 // Initialize Express app
 const app = express();
 
+// Hosting settings (all optional; local development needs none of them).
+// TRUST_PROXY: set to 1 behind a reverse proxy (Caddy/nginx) so req.ip is the
+// visitor's address and the login/signup rate limits are per visitor.
+if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY) || 1);
+// CORS_ORIGINS: comma-separated websites allowed to call the API from a
+// browser, e.g. "https://pixelpatch.example.com". Unset = allow any (dev).
+const corsOrigins = (process.env.CORS_ORIGINS || "").split(",").map((o) => o.trim()).filter(Boolean);
+const corsOrigin = corsOrigins.length ? corsOrigins : true;
+
+// Upload folders must exist before multer writes to them.
+fs.mkdirSync("uploads/requests", { recursive: true });
+
 app.use((req, res, next) => {
   console.log("➡️ Incoming:", req.method, req.originalUrl);
   next();
 });
 
-app.use(cors());
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
@@ -135,7 +148,7 @@ const httpServer = http.createServer(app);
 
 import { Server as IOServer } from "socket.io";
 const io = new IOServer(httpServer, {
-  cors: { origin: true, credentials: true },
+  cors: { origin: corsOrigin, credentials: true },
 });
 
 import setupChatSockets from "./sockets/chatSocket.js";
