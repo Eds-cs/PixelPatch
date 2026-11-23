@@ -28,12 +28,12 @@ export default function AdminAccount() {
       contentContainerStyle={{ paddingVertical: 20, paddingHorizontal: horizontalPadding, maxWidth: 720, width: "100%", alignSelf: "center" }}
     >
       <View className="mb-6 items-center rounded-xl border border-gray-200 bg-white p-6">
-        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-brand-100">
+        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-primary-soft">
           <Ionicons name="shield-half-outline" size={34} color={COLORS.primary} />
         </View>
         <Text className="text-lg font-bold text-gray-900">{[user?.first_name, user?.last_name].filter(Boolean).join(" ") || "Administrator"}</Text>
-        <View className="mt-2 rounded-full bg-brand-100 px-3 py-1">
-          <Text className="text-xs font-semibold text-brand-700">Admin account</Text>
+        <View className="mt-2 rounded-full bg-primary-soft px-3 py-1">
+          <Text className="text-xs font-semibold text-teal-800">Admin account</Text>
         </View>
       </View>
 

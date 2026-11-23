@@ -39,6 +39,7 @@ import { generatePaymentLink } from "../../../lib/payments";
 import { COLORS } from "../../../constants/theme";
 import { useResponsive } from "../../../lib/useResponsive";
 
+import { SHOW_BACK_BUTTONS } from "../../../lib/navigation";
 const PESO = "₱";
 const TODAY_DATE = toDateString(new Date());
 const WARRANTY_UNITS = ["DAY", "WEEK", "MONTH", "YEAR"];
@@ -227,10 +228,12 @@ export default function BusinessRepairDetail() {
     >
       <Stack.Screen options={{ title: `Repair #${id}` }} />
 
-      <Pressable onPress={() => router.push("/business/repairs")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
-        <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
-        <Text className="text-sm font-semibold text-brand-600">All repair requests</Text>
-      </Pressable>
+      {SHOW_BACK_BUTTONS ? (
+        <Pressable onPress={() => router.push("/business/repairs")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
+          <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
+          <Text className="text-sm font-semibold text-primary">All repair requests</Text>
+        </Pressable>
+      ) : null}
 
       <View className="mb-4 rounded-2xl border border-gray-200 bg-white p-5">
         <View className="flex-row flex-wrap items-start justify-between gap-3">
@@ -242,9 +245,9 @@ export default function BusinessRepairDetail() {
           <RepairStatusBadge status={status} decision={decision} clientApproved={repair.clientApproved} />
         </View>
         {!isRejected && !isCancelled ? (
-          <View className="mt-4 rounded-xl bg-brand-50 p-3">
-            <Text className="text-xs font-bold uppercase text-brand-700">Next step</Text>
-            <Text className="mt-1 text-sm leading-5 text-brand-800">
+          <View className="mt-4 rounded-xl bg-teal-50 p-3">
+            <Text className="text-xs font-bold uppercase text-teal-800">Next step</Text>
+            <Text className="mt-1 text-sm leading-5 text-primary-soft-foreground">
               {canDecide ? "Review the request and choose whether to accept it."
                 : normalizedStatus === "COMPLETED" ? "Repair completed. You can review the repair information below."
                 : canComplete ? "Finish the repair, then mark it completed when the work is done."
@@ -354,7 +357,7 @@ export default function BusinessRepairDetail() {
           {repair.issueDescription || "No description provided."}
         </Text>
         {repair.services?.length ? (
-          <Text className="mt-3 text-sm text-brand-600">{repair.services.join(", ")}</Text>
+          <Text className="mt-3 text-sm text-primary">{repair.services.join(", ")}</Text>
         ) : null}
       </Section>
 
@@ -378,17 +381,17 @@ export default function BusinessRepairDetail() {
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: selected }}
                   className={`mb-2 flex-row items-center rounded-lg border p-3 ${
-                    selected ? "border-brand-600 bg-brand-50" : "border-gray-200 bg-white"
+                    selected ? "border-primary bg-teal-50" : "border-gray-200 bg-white"
                   }`}
                 >
-                  <Text className={`mr-3 text-base ${selected ? "text-brand-700" : "text-gray-400"}`}>
+                  <Text className={`mr-3 text-base ${selected ? "text-teal-800" : "text-gray-400"}`}>
                     {selected ? "✓" : "□"}
                   </Text>
                   <View className="flex-1">
                     <Text className="text-sm font-semibold text-gray-900">{service.name}</Text>
                     <Text className="text-xs text-gray-500">{service.category}</Text>
                   </View>
-                  <Text className="text-sm font-bold text-brand-600">
+                  <Text className="text-sm font-bold text-price">
                     {PESO}{Number(service.base_price).toLocaleString()}
                   </Text>
                 </Pressable>
@@ -428,7 +431,7 @@ export default function BusinessRepairDetail() {
               </Text>
               {canManageAssignment ? (
                 <Pressable onPress={() => setAssignOpen(true)} accessibilityRole="button">
-                  <Text className="text-sm font-semibold text-brand-600">Change</Text>
+                  <Text className="text-sm font-semibold text-primary">Change</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -462,7 +465,7 @@ export default function BusinessRepairDetail() {
           <Row label="Checkout link" value={repair.paymentLink ? "Generated" : "Not generated"} />
 
           {repair.paymentLink ? (
-            <Text selectable className="mt-2 text-xs text-brand-600">
+            <Text selectable className="mt-2 text-xs text-primary">
               {repair.paymentLink}
             </Text>
           ) : isCancelled ? null : (
@@ -638,7 +641,7 @@ export default function BusinessRepairDetail() {
                   accessibilityState={{ selected: quoteForm.warrantyUnit === unit }}
                   className={`mb-2 mr-2 rounded-md border px-3 py-2 ${
                     quoteForm.warrantyUnit === unit
-                      ? "border-brand-600 bg-brand-50"
+                      ? "border-primary bg-teal-50"
                       : "border-gray-300 bg-white"
                   }`}
                 >
@@ -732,7 +735,7 @@ export default function BusinessRepairDetail() {
               <Text className="text-xs text-gray-500">{emp.role}</Text>
             </View>
             {Number(assignment?.employee_id) === Number(emp.id) ? (
-              <Text className="text-xs font-semibold text-brand-700">Assigned</Text>
+              <Text className="text-xs font-semibold text-teal-800">Assigned</Text>
             ) : null}
           </Pressable>
         ))}

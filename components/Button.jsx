@@ -1,8 +1,8 @@
 import { ActivityIndicator, Pressable, Text } from "react-native";
 
 const VARIANTS = {
-  primary: { box: "bg-brand-600 active:bg-brand-700", label: "text-white" },
-  outline: { box: "bg-white border border-gray-300 active:bg-gray-50", label: "text-brand-600" },
+  primary: { box: "bg-primary active:bg-teal-800", label: "text-white" },
+  outline: { box: "bg-white border border-gray-300 active:bg-gray-50", label: "text-primary" },
   ghost: { box: "bg-transparent active:bg-gray-100", label: "text-gray-700" },
 };
 
@@ -28,9 +28,11 @@ export default function Button({
       } ${className}`}
     >
       {loading ? (
-        <ActivityIndicator color={variant === "primary" ? "#fff" : "#2b2724"} />
+        <ActivityIndicator color={variant === "primary" ? "#fff" : "#0F766E"} />
       ) : (
-        <Text className={`text-base font-semibold ${v.label}`}>{title}</Text>
+        // Full width and centered: some Android phones (e.g. Honor/Huawei)
+        // measure semibold text too narrow and cut off the end of the label.
+        <Text className={`w-full text-center text-base font-semibold ${v.label}`}>{title}</Text>
       )}
     </Pressable>
   );

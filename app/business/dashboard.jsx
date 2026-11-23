@@ -39,8 +39,8 @@ function RevenueBars({ rows, range }) {
           <Text className="text-xs font-medium text-gray-500">{label}</Text>
           <Text className="text-sm font-semibold text-gray-800">{money(value)}</Text>
         </View>
-        <View className="h-2.5 overflow-hidden rounded-full bg-brand-50">
-          <View className="h-full rounded-full bg-brand-600" style={{ width: `${Math.max(0, value / max * 100)}%` }} />
+        <View className="h-2.5 overflow-hidden rounded-full bg-teal-50">
+          <View className="h-full rounded-full bg-primary" style={{ width: `${Math.max(0, value / max * 100)}%` }} />
         </View>
       </View>
     );
@@ -85,7 +85,7 @@ function DashboardContent({ range, onRangeChange }) {
 
       {error ? <Text accessibilityRole="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">Could not refresh: {error}. Showing the last loaded figures.</Text> : null}
 
-      <Pressable onPress={() => router.push("/business/repairs")} accessibilityRole="button" className={`mb-5 flex-row items-center gap-3 rounded-xl border p-4 ${pending ? "border-amber-200 bg-amber-50" : "border-brand-100 bg-brand-50"}`}>
+      <Pressable onPress={() => router.push("/business/repairs")} accessibilityRole="button" className={`mb-5 flex-row items-center gap-3 rounded-xl border p-4 ${pending ? "border-amber-200 bg-amber-50" : "border-primary-soft bg-teal-50"}`}>
         <Ionicons name={pending ? "file-tray-outline" : "checkmark-circle-outline"} size={24} color={pending ? "#b45309" : COLORS.primary} />
         <View className="flex-1">
           <Text className="text-sm font-bold text-gray-900">{pending ? `${pending} request${pending === 1 ? "" : "s"} awaiting your decision` : "No requests awaiting a decision"}</Text>
@@ -119,14 +119,14 @@ function DashboardContent({ range, onRangeChange }) {
             </View>
             <View className="flex-row flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
               {RANGES.map((item) => (
-                <Pressable key={item.key} onPress={() => onRangeChange(item.key)} accessibilityRole="button" accessibilityLabel={`Revenue: ${item.label}`} accessibilityState={{ selected: range === item.key }} className={`min-h-11 justify-center rounded-md px-3 py-2 ${range === item.key ? "bg-brand-600" : ""}`}>
+                <Pressable key={item.key} onPress={() => onRangeChange(item.key)} accessibilityRole="button" accessibilityLabel={`Revenue: ${item.label}`} accessibilityState={{ selected: range === item.key }} className={`min-h-11 justify-center rounded-md px-3 py-2 ${range === item.key ? "bg-primary" : ""}`}>
                   <Text className={`text-xs font-semibold ${range === item.key ? "text-white" : "text-gray-500"}`}>{item.label}</Text>
                 </Pressable>
               ))}
             </View>
           </View>
           <Text className="text-xs font-medium uppercase text-gray-400">Paid revenue · {period}</Text>
-          <Text className="mb-1 mt-2 text-3xl font-bold text-brand-600">{money(revenueTotal)}</Text>
+          <Text className="mb-1 mt-2 text-3xl font-bold text-primary">{money(revenueTotal)}</Text>
           <Text className="mb-6 text-xs text-gray-400">{range === "year" ? "Monthly totals for the current year" : "Daily totals by day of the month"}</Text>
           <RevenueBars rows={revenueRows} range={range} />
         </View>
@@ -135,9 +135,9 @@ function DashboardContent({ range, onRangeChange }) {
           <Text className="text-lg font-bold text-gray-900">Repair activity</Text>
           <Text className="mb-4 mt-1 text-xs text-gray-500">All-time request counts</Text>
           {[
-            { label: "Needs decision", value: status.pending, color: "#d97706" },
+            { label: "Needs decision", value: status.pending, color: "#D97706" },
             { label: "Accepted overall", value: status.accepted, color: COLORS.primary },
-            { label: "In progress", value: status.in_progress, color: "#a59d91" },
+            { label: "In progress", value: status.in_progress, color: "#14B8A6" },
             { label: "Completed", value: status.completed, color: COLORS.success },
           ].map((item) => (
             <View key={item.label} className="flex-row items-center gap-3 border-b border-gray-100 py-3">
@@ -159,7 +159,7 @@ function DashboardContent({ range, onRangeChange }) {
           { title: "Services", note: "Manage what you offer", icon: "pricetags-outline", href: "/business/services" },
           { title: "Customer reviews", note: "Explore customer feedback", icon: "star-outline", href: "/business/reviews" },
         ].map((item) => (
-          <Pressable key={item.href} onPress={() => router.push(item.href)} accessibilityRole="button" style={{ width: isMobile ? "48%" : "24%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50">
+          <Pressable key={item.href} onPress={() => router.push(item.href)} accessibilityRole="button" style={{ width: isMobile ? "48%" : "24%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-teal-50">
             <Ionicons name={item.icon} size={22} color={COLORS.primary} />
             <Text className="mt-3 text-sm font-bold text-gray-900">{item.title}</Text>
             <Text className="mt-1 text-xs leading-5 text-gray-500">{item.note}</Text>

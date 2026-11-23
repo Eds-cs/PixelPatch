@@ -23,6 +23,7 @@ import { COLORS } from "../../../constants/theme";
 import { useResponsive } from "../../../lib/useResponsive";
 import { DisputeStatusBadge, formatDisputeDate, resolutionLabel } from "../../../components/DisputeSummary";
 
+import { SHOW_BACK_BUTTONS } from "../../../lib/navigation";
 const RESOLUTIONS = [
   { key: "REFUND", label: "Refund", hint: "Return the amount paid to the client." },
   { key: "RESERVICE", label: "Re-service", hint: "Redo the repair at no extra cost." },
@@ -144,10 +145,12 @@ export default function BusinessDisputeDetail() {
     >
       <Stack.Screen options={{ title: `Dispute #${id}` }} />
 
-      <Pressable onPress={() => router.push("/business/disputes")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
-        <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
-        <Text className="text-sm font-semibold text-brand-600">Back to dispute inbox</Text>
-      </Pressable>
+      {SHOW_BACK_BUTTONS ? (
+        <Pressable onPress={() => router.push("/business/disputes")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
+          <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
+          <Text className="text-sm font-semibold text-primary">Back to dispute inbox</Text>
+        </Pressable>
+      ) : null}
       <View className="mb-4 rounded-2xl border border-gray-200 bg-white p-5">
         <View className="flex-row flex-wrap items-start justify-between gap-3">
           <View className="flex-1">
@@ -157,8 +160,8 @@ export default function BusinessDisputeDetail() {
           </View>
           <DisputeStatusBadge status={dispute.status} />
         </View>
-        <View className="mt-4 rounded-xl bg-brand-50 p-4">
-          <Text className="text-sm leading-5 text-brand-800">
+        <View className="mt-4 rounded-xl bg-teal-50 p-4">
+          <Text className="text-sm leading-5 text-primary-soft-foreground">
             {canPropose ? "Review the client's concern and the repair, then propose a refund or re-service. The client decides whether to accept your proposal."
               : dispute.status === "SHOP_PROPOSED" ? "Your proposal has been sent. The client can accept or decline it."
               : dispute.status === "RESOLVED" ? "The client accepted your proposal and this dispute is resolved."
@@ -207,7 +210,7 @@ export default function BusinessDisputeDetail() {
 
       <Section title="Response history">
         {dispute.history?.length ? dispute.history.map((entry) => (
-          <View key={entry.id} className={`mb-3 rounded-xl border p-4 ${entry.edited_by === "BUSINESS" ? "border-brand-100 bg-brand-50" : "border-gray-100 bg-gray-50"}`}>
+          <View key={entry.id} className={`mb-3 rounded-xl border p-4 ${entry.edited_by === "BUSINESS" ? "border-primary-soft bg-teal-50" : "border-gray-100 bg-gray-50"}`}>
             <View className="mb-2 flex-row flex-wrap justify-between gap-2">
               <Text className="text-sm font-semibold text-gray-800">{entry.edited_by === "BUSINESS" ? "Your shop" : "Client"}</Text>
               <Text className="text-xs text-gray-500">{formatDisputeDate(entry.created_at)}</Text>
@@ -235,12 +238,12 @@ export default function BusinessDisputeDetail() {
             accessibilityRole="radio"
             accessibilityState={{ checked: resolution === r.key, disabled: busy }}
             className={`mb-3 rounded-lg border p-3.5 ${
-              resolution === r.key ? "border-brand-600 bg-brand-50" : "border-gray-200 bg-white"
+              resolution === r.key ? "border-primary bg-teal-50" : "border-gray-200 bg-white"
             }`}
           >
             <Text
               className={`text-sm font-semibold ${
-                resolution === r.key ? "text-brand-700" : "text-gray-900"
+                resolution === r.key ? "text-teal-800" : "text-gray-900"
               }`}
             >
               {r.label}

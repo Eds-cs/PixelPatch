@@ -13,6 +13,7 @@ import { useResponsive } from "../../lib/useResponsive";
 const SCREENS = [
   { name: "dashboard", title: "Dashboard", icon: "grid" },
   { name: "repairs/index", title: "Repairs", icon: "construct" },
+  { name: "messages", title: "Messages", icon: "chatbubbles" },
   { name: "disputes/index", title: "Disputes", icon: "alert-circle" },
   { name: "employees", title: "Employees", icon: "people" },
   { name: "services", title: "Services", icon: "pricetags" },
@@ -36,7 +37,7 @@ export default function BusinessLayout() {
         swipeEnabled: Platform.OS !== "web" && !permanent,
         drawerActiveTintColor: COLORS.primary,
         drawerInactiveTintColor: COLORS.textMuted,
-        drawerActiveBackgroundColor: "#efebe5",
+        drawerActiveBackgroundColor: "#CCFBF1",
         headerShown: Platform.OS !== "web",
         headerStyle: { backgroundColor: COLORS.surface },
         headerTintColor: COLORS.text,

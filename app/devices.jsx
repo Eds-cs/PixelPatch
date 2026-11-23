@@ -147,7 +147,7 @@ export default function Devices() {
             onPress={() => openEdit(item)}
             accessibilityRole="button"
             accessibilityLabel={`Edit device ${item.name}`}
-            className="mb-3 flex-row items-center rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50"
+            className="mb-3 flex-row items-center rounded-xl border border-gray-200 bg-white p-4 active:bg-teal-50"
           >
             {item.photo_url ? (
               <Image
@@ -156,7 +156,7 @@ export default function Devices() {
                 resizeMode="cover"
               />
             ) : (
-              <View className="mr-3 h-14 w-14 items-center justify-center rounded-lg bg-brand-100">
+              <View className="mr-3 h-14 w-14 items-center justify-center rounded-lg bg-primary-soft">
                 <Ionicons name="hardware-chip-outline" size={24} color={COLORS.primary} />
               </View>
             )}
@@ -170,7 +170,7 @@ export default function Devices() {
                 <Text className="mt-0.5 text-xs text-gray-400">SN: {item.serial_number}</Text>
               ) : null}
               {usedCount(item) ? (
-                <Text className="mt-1 text-xs text-brand-700">
+                <Text className="mt-1 text-xs text-teal-800">
                   Used in {usedCount(item)} repair request{usedCount(item) === 1 ? "" : "s"}
                 </Text>
               ) : null}
@@ -204,7 +204,7 @@ export default function Devices() {
         ) : null}
 
         {!isNew && usedCount(editing) ? (
-          <Text className="mb-4 rounded-lg bg-brand-50 p-3 text-xs leading-5 text-brand-800">
+          <Text className="mb-4 rounded-lg bg-teal-50 p-3 text-xs leading-5 text-primary-soft-foreground">
             This device is part of a repair request, so it can&apos;t be deleted. You can still update its details.
           </Text>
         ) : null}

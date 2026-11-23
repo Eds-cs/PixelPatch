@@ -13,6 +13,7 @@ import { useResponsive } from "../../lib/useResponsive";
 import { chatDate, chatDay, chatTitle, mergeChatMessages } from "../../lib/chat";
 import { COLORS } from "../../constants/theme";
 
+import { SHOW_BACK_BUTTONS } from "../../lib/navigation";
 function Conversation({ chatId }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -100,8 +101,10 @@ function Conversation({ chatId }) {
       <View className="border-b border-gray-200 bg-white">
         <View className="w-full self-center py-3" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
           <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => router.push("/chat")} accessibilityRole="button" accessibilityLabel="Back to messages" className="h-11 w-11 items-center justify-center rounded-xl bg-gray-50"><Ionicons name="arrow-back-outline" size={21} color={COLORS.primary} /></Pressable>
-            <View className="h-11 w-11 items-center justify-center rounded-xl bg-brand-50"><Text className="text-lg font-bold text-brand-700">{title.charAt(0).toUpperCase()}</Text></View>
+            {SHOW_BACK_BUTTONS ? (
+              <Pressable onPress={() => router.push(viewerIsShop ? "/business/messages" : "/chat")} accessibilityRole="button" accessibilityLabel="Back to messages" className="h-11 w-11 items-center justify-center rounded-xl bg-gray-50"><Ionicons name="arrow-back-outline" size={21} color={COLORS.primary} /></Pressable>
+            ) : null}
+            <View className="h-11 w-11 items-center justify-center rounded-xl bg-teal-50"><Text className="text-lg font-bold text-teal-800">{title.charAt(0).toUpperCase()}</Text></View>
             <View className="flex-1">
               <Text accessibilityRole="header" className="text-base font-bold text-gray-900">{title}</Text>
               <Text className={`mt-1 text-xs ${connected ? "text-emerald-700" : "text-gray-500"}`}>{connected ? "Live connection available" : "Live connection unavailable"}</Text>
@@ -133,7 +136,7 @@ function Conversation({ chatId }) {
             onContentSizeChange={() => { if (stickToBottom.current) listRef.current?.scrollToEnd({ animated: false }); }}
             ListEmptyComponent={
               <View className="flex-1 items-center justify-center px-5 py-10">
-                <View className="h-16 w-16 items-center justify-center rounded-2xl bg-brand-50"><Ionicons name="chatbubbles-outline" size={30} color={COLORS.primary} /></View>
+                <View className="h-16 w-16 items-center justify-center rounded-2xl bg-teal-50"><Ionicons name="chatbubbles-outline" size={30} color={COLORS.primary} /></View>
                 <Text className="mt-4 text-lg font-bold text-gray-900">{unavailable ? "Conversation unavailable" : history.error ? "Messages could not load" : "Start the conversation"}</Text>
                 <Text className="mt-2 text-center text-sm leading-6 text-gray-500">{unavailable ? "Return to your inbox and select one of your conversations." : history.error ? "Use refresh below to try loading the history again." : "Say hello, ask about your device, or discuss the repair with your shop."}</Text>
               </View>
@@ -148,9 +151,9 @@ function Conversation({ chatId }) {
                   {newDay ? <View className="mb-5 mt-2 items-center"><Text className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500">{chatDate(item.timestamp)}</Text></View> : null}
                   <View className={`mb-3 ${mine ? "self-end" : "self-start"}`} style={{ maxWidth: isMobile ? "88%" : isDesktop ? "68%" : "78%" }}>
                     {showName ? <Text className="mb-1 ml-1 text-xs font-semibold text-gray-500">{[item.first_name, item.last_name].filter(Boolean).join(" ") || title}</Text> : null}
-                    <View className={`rounded-2xl px-4 py-3 ${mine ? "bg-brand-600" : "border border-gray-200 bg-white"}`}>
+                    <View className={`rounded-2xl px-4 py-3 ${mine ? "bg-primary" : "border border-gray-200 bg-white"}`}>
                       <Text selectable className={`text-base leading-6 ${mine ? "text-white" : "text-gray-900"}`}>{item.message_text}</Text>
-                      <Text className={`mt-2 text-right text-xs ${mine ? "text-brand-100" : "text-gray-400"}`}>{chatDate(item.timestamp, true)}</Text>
+                      <Text className={`mt-2 text-right text-xs ${mine ? "text-primary-soft" : "text-gray-400"}`}>{chatDate(item.timestamp, true)}</Text>
                     </View>
                   </View>
                 </View>
@@ -159,7 +162,7 @@ function Conversation({ chatId }) {
           />
         )}
 
-        {hasNewMessages ? <Pressable onPress={jumpToLatest} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-center rounded-full border border-brand-200 bg-brand-50 px-4 py-2"><Text className="text-sm font-semibold text-brand-700">New messages</Text><Ionicons name="arrow-down-outline" size={16} color={COLORS.primary} /></Pressable> : null}
+        {hasNewMessages ? <Pressable onPress={jumpToLatest} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-center rounded-full border border-teal-200 bg-teal-50 px-4 py-2"><Text className="text-sm font-semibold text-teal-800">New messages</Text><Ionicons name="arrow-down-outline" size={16} color={COLORS.primary} /></Pressable> : null}
 
         {history.error || conversations.error || unavailable || sendError || !connected ? (
           <View className="w-full self-center px-4 pb-3" style={{ maxWidth: 960 }}>
@@ -174,10 +177,10 @@ function Conversation({ chatId }) {
               <TextInput
                 className="max-h-32 min-h-12 flex-1 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
                 placeholder="Write a message…"
-                placeholderTextColor="#a8a29e"
+                placeholderTextColor="#8A9B98"
                 value={draft} onChangeText={setDraft} multiline accessibilityLabel="Message"
               />
-              <Pressable onPress={send} disabled={!canSend} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !canSend, busy: sending }} className={`h-12 w-12 items-center justify-center rounded-xl ${canSend ? "bg-brand-600" : "bg-gray-200"}`}>
+              <Pressable onPress={send} disabled={!canSend} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !canSend, busy: sending }} className={`h-12 w-12 items-center justify-center rounded-xl ${canSend ? "bg-primary" : "bg-gray-200"}`}>
                 {sending ? <ActivityIndicator color={COLORS.primary} /> : <Ionicons name="send" size={20} color={canSend ? "#fff" : COLORS.textMuted} />}
               </Pressable>
             </View>

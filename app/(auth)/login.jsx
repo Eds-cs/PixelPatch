@@ -96,13 +96,13 @@ export default function Login() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="w-full max-w-md self-center">
-            <Text className="mb-2 text-3xl font-extrabold text-brand-600">PixelPatch</Text>
+            <Text className="mb-2 text-3xl font-extrabold text-gray-900">Pixel<Text className="text-primary">Patch</Text></Text>
             <Text className="mb-3 text-base text-gray-500">
               Sign in to book and track your repairs.
             </Text>
-            <View className="mb-8 flex-row items-center gap-2 self-start rounded-full bg-brand-50 px-3 py-1.5">
+            <View className="mb-8 flex-row items-center gap-2 self-start rounded-full bg-teal-50 px-3 py-1.5">
               <Ionicons name="location-outline" size={14} color={COLORS.primary} />
-              <Text className="text-xs font-medium text-brand-800">Available in Zamboanga City only</Text>
+              <Text className="text-xs text-primary-soft-foreground">Available in Zamboanga City only</Text>
             </View>
 
             {sessionNotice ? (
@@ -155,7 +155,7 @@ export default function Login() {
               >
                 <View
                   className={`mr-2 h-5 w-5 items-center justify-center rounded border ${
-                    form.rememberMe ? "border-brand-600 bg-brand-600" : "border-gray-400 bg-white"
+                    form.rememberMe ? "border-primary bg-primary" : "border-gray-400 bg-white"
                   }`}
                 >
                   {form.rememberMe ? (
@@ -170,9 +170,8 @@ export default function Login() {
                   pathname: "/forgot-password",
                   params: form.email.trim() ? { email: form.email.trim() } : {},
                 }}
-                className="text-sm font-medium text-brand-600"
               >
-                Forgot password?
+                <Text className="text-sm font-medium text-primary">Forgot password?</Text>
               </Link>
             </View>
 
@@ -208,13 +207,13 @@ export default function Login() {
 
             <View className="mt-6 flex-row justify-center">
               <Text className="text-sm text-gray-600">Don&apos;t have an account? </Text>
-              <Link href={signupHref} className="text-sm font-semibold text-brand-600">
-                Sign up
+              <Link href={signupHref}>
+                <Text className="text-sm font-semibold text-primary">Sign up</Text>
               </Link>
             </View>
             <View className="mt-4 flex-row justify-center">
-              <Link href="/" className="text-sm font-medium text-gray-500">
-                Browse without an account
+              <Link href="/">
+                <Text className="text-sm font-medium text-gray-500">Browse without an account</Text>
               </Link>
             </View>
           </View>

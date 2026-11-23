@@ -48,9 +48,9 @@ function Options({ label, options, value, onChange }) {
             accessibilityRole="button"
             accessibilityLabel={`${label}: ${option.label}`}
             accessibilityState={{ selected: option.value === value }}
-            className={`min-h-11 justify-center rounded-lg border px-3 py-2 ${option.value === value ? "border-brand-600 bg-brand-50" : "border-gray-200 bg-white"}`}
+            className={`min-h-11 justify-center rounded-lg border px-3 py-2 ${option.value === value ? "border-primary bg-teal-50" : "border-gray-200 bg-white"}`}
           >
-            <Text className={`text-sm font-medium ${option.value === value ? "text-brand-700" : "text-gray-600"}`}>{option.label}</Text>
+            <Text className={`text-sm font-medium ${option.value === value ? "text-teal-800" : "text-gray-600"}`}>{option.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -142,7 +142,7 @@ export default function BusinessReviews() {
                 const count = summary.counts[stars - 1];
                 const percent = summary.rated ? Math.round(count / summary.rated * 100) : 0;
                 return (
-                  <Pressable key={stars} onPress={() => setRating(rating === stars ? 0 : stars)} accessibilityRole="button" accessibilityLabel={`${stars} stars: ${count} reviews, ${percent} percent`} accessibilityState={{ selected: rating === stars }} className={`min-h-11 flex-row items-center gap-2 rounded-lg px-2 ${rating === stars ? "bg-brand-50" : ""}`}>
+                  <Pressable key={stars} onPress={() => setRating(rating === stars ? 0 : stars)} accessibilityRole="button" accessibilityLabel={`${stars} stars: ${count} reviews, ${percent} percent`} accessibilityState={{ selected: rating === stars }} className={`min-h-11 flex-row items-center gap-2 rounded-lg px-2 ${rating === stars ? "bg-teal-50" : ""}`}>
                     <Text className="text-sm text-gray-600">{stars} ★</Text>
                     <View className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
                       <View style={{ width: `${percent}%`, height: "100%", backgroundColor: "#f59e0b" }} />
@@ -161,7 +161,7 @@ export default function BusinessReviews() {
               <Options label="Sort by" options={SORTS} value={sort} onChange={setSort} />
               {hasFilters ? (
                 <Pressable accessibilityRole="button" onPress={() => { setQuery(""); setRating(0); setDays(0); setSort("newest"); }} className="mt-3 min-h-11 justify-center self-start py-2">
-                  <Text className="text-sm font-semibold text-brand-600">Reset filters</Text>
+                  <Text className="text-sm font-semibold text-primary">Reset filters</Text>
                 </Pressable>
               ) : null}
             </View>

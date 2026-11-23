@@ -32,7 +32,7 @@ export default function AdminLayout() {
         swipeEnabled: Platform.OS !== "web" && !permanent,
         drawerActiveTintColor: COLORS.primary,
         drawerInactiveTintColor: COLORS.textMuted,
-        drawerActiveBackgroundColor: "#efebe5",
+        drawerActiveBackgroundColor: "#CCFBF1",
         headerShown: Platform.OS !== "web",
         headerStyle: { backgroundColor: COLORS.surface },
         headerTintColor: COLORS.text,

@@ -84,8 +84,8 @@ function Stars({ value, light = false }) {
   const rated = Number.isFinite(rating) && rating > 0;
   return (
     <View className="flex-row items-center gap-1">
-      <Ionicons name={rated ? "star" : "star-outline"} size={13} color={rated ? "#f59e0b" : light ? "#cfc7bb" : COLORS.textMuted} />
-      <Text className={`text-xs font-semibold ${light ? "text-brand-100" : "text-gray-600"}`}>{rated ? rating.toFixed(1) : "New"}</Text>
+      <Ionicons name={rated ? "star" : "star-outline"} size={13} color={rated ? "#f59e0b" : light ? "#5EEAD4" : COLORS.textMuted} />
+      <Text className={`text-xs font-semibold ${light ? "text-primary-soft" : "text-gray-600"}`}>{rated ? rating.toFixed(1) : "New"}</Text>
     </View>
   );
 }
@@ -96,7 +96,7 @@ function SectionTitle({ title, action, onPress }) {
       <Text accessibilityRole="header" className="flex-1 text-xl font-bold text-gray-900">{title}</Text>
       {onPress ? (
         <Pressable onPress={onPress} accessibilityRole="link" className="min-h-11 flex-row items-center gap-1 pl-2">
-          <Text className="text-sm font-semibold text-brand-600">{action}</Text>
+          <Text className="text-sm font-semibold text-primary">{action}</Text>
           <Ionicons name="arrow-forward-outline" size={16} color={COLORS.primary} />
         </Pressable>
       ) : null}
@@ -195,9 +195,9 @@ export default function Home() {
   };
 
   const serviceCard = (service) => (
-    <Pressable onPress={() => router.push(`/service/${encodeURIComponent(service.service_key)}`)} accessibilityRole="link" accessibilityLabel={`Compare shops for ${service.name}, from ${priceText(service)}`} className="h-full rounded-2xl border border-gray-200 bg-white p-4 active:bg-brand-50">
+    <Pressable onPress={() => router.push(`/service/${encodeURIComponent(service.service_key)}`)} accessibilityRole="link" accessibilityLabel={`Compare shops for ${service.name}, from ${priceText(service)}`} className={`${isMobile ? "" : "h-full "}rounded-2xl border border-gray-200 bg-white p-4 active:bg-teal-50`}>
       <View className="flex-row items-center gap-3">
-        <View className="h-11 w-11 items-center justify-center rounded-xl bg-brand-50"><Ionicons name={CATEGORY_ICONS[service.category] || "build-outline"} size={22} color={COLORS.primary} /></View>
+        <View className="h-11 w-11 items-center justify-center rounded-xl bg-teal-50"><Ionicons name={CATEGORY_ICONS[service.category] || "build-outline"} size={22} color={COLORS.primary} /></View>
         <View className="flex-1">
           <Text numberOfLines={1} className="text-base font-bold text-gray-900">{service.name}</Text>
           <Text className="text-xs text-gray-500">{categoryName(service.category)}</Text>
@@ -206,7 +206,7 @@ export default function Home() {
       <View className="mt-4 flex-row items-end justify-between">
         <View>
           <Text className="text-xs text-gray-400">From</Text>
-          <Text className="text-lg font-bold text-gray-900">{priceText(service)}</Text>
+          <Text className="text-lg font-bold text-price">{priceText(service)}</Text>
         </View>
         <View className="flex-row items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1">
           <Ionicons name="storefront-outline" size={12} color={COLORS.textMuted} />
@@ -217,9 +217,9 @@ export default function Home() {
   );
 
   const shopCard = (shop) => (
-    <Pressable onPress={() => router.push(`/shop/${shop.id}`)} accessibilityRole="link" accessibilityLabel={`View repair shop ${shop.name}`} className="h-full rounded-2xl border border-gray-200 bg-white p-4 active:bg-brand-50">
+    <Pressable onPress={() => router.push(`/shop/${shop.id}`)} accessibilityRole="link" accessibilityLabel={`View repair shop ${shop.name}`} className={`${isMobile ? "" : "h-full "}rounded-2xl border border-gray-200 bg-white p-4 active:bg-teal-50`}>
       <View className="flex-row items-center gap-3">
-        <View className="h-12 w-12 items-center justify-center rounded-full bg-brand-600"><Text className="text-lg font-bold text-white">{String(shop.name || "?").trim().charAt(0).toUpperCase()}</Text></View>
+        <View className="h-12 w-12 items-center justify-center rounded-full bg-amber-100"><Text className="text-lg font-bold text-amber-900">{String(shop.name || "?").trim().charAt(0).toUpperCase()}</Text></View>
         <View className="flex-1">
           <Text numberOfLines={1} className="text-base font-bold text-gray-900">{shop.name}</Text>
           <View className="mt-0.5 flex-row items-center gap-2">
@@ -241,20 +241,20 @@ export default function Home() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={COLORS.primary} />}
     >
       {/* Hero */}
-      <View className="bg-brand-600">
+      <View className="bg-teal-950">
         <View style={[container, { paddingTop: isMobile ? 32 : 56, paddingBottom: isMobile ? 32 : 64 }]} className={isDesktop ? "flex-row items-center gap-12" : ""}>
           <View style={isDesktop ? { flex: 1.25, minWidth: 0 } : undefined}>
-            <View className="mb-5 flex-row items-center gap-2 self-start rounded-full bg-white/10 px-3 py-1.5">
-              <Ionicons name="location-outline" size={14} color="#efebe5" />
-              <Text className="text-xs font-semibold text-brand-100">Serving Zamboanga City</Text>
+            <View className="mb-5 flex-row items-center gap-2 self-start rounded-full bg-amber-400/15 px-3 py-1.5">
+              <Ionicons name="location" size={14} color="#FBBF24" />
+              <Text className="text-xs font-semibold text-amber-300">Serving Zamboanga City</Text>
             </View>
             {isClient && user?.first_name ? (
-              <Text className="mb-2 text-base font-medium text-brand-200">Welcome back, {user.first_name} 👋</Text>
+              <Text className="mb-2 text-base font-medium text-teal-200">Welcome back, {user.first_name} 👋</Text>
             ) : null}
             <Text accessibilityRole="header" className={`font-extrabold leading-tight text-white ${isMobile ? "text-4xl" : "text-5xl"}`}>
-              Device repair, made simple.
+              Device repair, <Text className="text-amber-400">made simple.</Text>
             </Text>
-            <Text className="mt-4 max-w-xl text-base leading-7 text-brand-100">
+            <Text className="mt-4 max-w-xl text-base leading-7 text-teal-100">
               Find verified repair shops in Zamboanga City, compare services and prices, and book when
               you&apos;re ready.
             </Text>
@@ -265,7 +265,7 @@ export default function Home() {
                 value={query}
                 onChangeText={setQuery}
                 placeholder="What needs fixing?"
-                placeholderTextColor="#a8a29e"
+                placeholderTextColor="#8A9B98"
                 accessibilityLabel="Search repairs, devices and shops"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -284,15 +284,15 @@ export default function Home() {
                 const active = needle === problem.search;
                 return (
                   <Pressable key={problem.label} onPress={() => setQuery(active ? "" : problem.search)} accessibilityRole="button" accessibilityState={{ selected: active }} className={`rounded-full border px-3 py-2 ${active ? "border-white bg-white" : "border-white/20 bg-white/5 active:bg-white/10"}`}>
-                    <Text className={`text-sm font-medium ${active ? "text-brand-700" : "text-brand-100"}`}>{problem.label}</Text>
+                    <Text className={`text-sm font-medium ${active ? "text-teal-950" : "text-teal-100"}`}>{problem.label}</Text>
                   </Pressable>
                 );
               })}
             </View>
 
             <Pressable onPress={() => openAssistant()} accessibilityRole="link" className="mt-6 flex-row items-center gap-2 self-start">
-              <Ionicons name="sparkles" size={16} color="#ffffff" />
-              <Text className="text-sm text-brand-100">Not sure what&apos;s wrong? <Text className="font-semibold text-white underline">Ask our AI assistant</Text></Text>
+              <Ionicons name="sparkles" size={16} color="#FBBF24" />
+              <Text className="text-sm text-teal-100">Not sure what&apos;s wrong? <Text className="font-semibold text-amber-300 underline">Ask our AI assistant</Text></Text>
             </Pressable>
           </View>
 
@@ -300,17 +300,17 @@ export default function Home() {
           {isDesktop && topService && topShop ? (
             <View style={{ flex: 1, minWidth: 0 }} className="gap-4">
               <View className="rounded-2xl bg-white p-5" style={{ transform: [{ rotate: "-2deg" }], shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } }}>
-                <Text className="text-xs font-semibold uppercase tracking-wide text-gray-400">Popular repair</Text>
+                <View className="self-start rounded-full bg-amber-100 px-2.5 py-1"><Text className="text-xs font-bold uppercase tracking-wide text-amber-900">Popular repair</Text></View>
                 <View className="mt-3 flex-row items-center gap-3">
-                  <View className="h-11 w-11 items-center justify-center rounded-xl bg-brand-50"><Ionicons name={CATEGORY_ICONS[topService.category] || "build-outline"} size={22} color={COLORS.primary} /></View>
+                  <View className="h-11 w-11 items-center justify-center rounded-xl bg-teal-50"><Ionicons name={CATEGORY_ICONS[topService.category] || "build-outline"} size={22} color={COLORS.primary} /></View>
                   <View className="flex-1"><Text className="text-base font-bold text-gray-900">{topService.name}</Text><Text className="text-xs text-gray-500">{categoryName(topService.category)}</Text></View>
-                  <Text className="text-lg font-bold text-gray-900">{priceText(topService)}</Text>
+                  <Text className="text-lg font-bold text-price">{priceText(topService)}</Text>
                 </View>
               </View>
-              <View className="ml-10 rounded-2xl border border-white/10 bg-brand-700 p-5" style={{ transform: [{ rotate: "1.5deg" }] }}>
-                <Text className="text-xs font-semibold uppercase tracking-wide text-brand-300">Top-rated shop</Text>
+              <View className="ml-10 rounded-2xl border border-white/10 bg-teal-900 p-5" style={{ transform: [{ rotate: "1.5deg" }] }}>
+                <Text className="text-xs font-bold uppercase tracking-wide text-amber-300">Top-rated shop</Text>
                 <View className="mt-3 flex-row items-center gap-3">
-                  <View className="h-11 w-11 items-center justify-center rounded-full bg-white"><Text className="text-lg font-bold text-brand-700">{String(topShop.name).charAt(0)}</Text></View>
+                  <View className="h-11 w-11 items-center justify-center rounded-full bg-amber-400"><Text className="text-lg font-bold text-amber-950">{String(topShop.name).charAt(0)}</Text></View>
                   <View className="flex-1"><Text className="text-base font-bold text-white">{topShop.name}</Text><Stars value={topShop.rating_average} light /></View>
                   <Ionicons name="checkmark-circle" size={22} color="#4ade80" />
                 </View>
@@ -325,7 +325,7 @@ export default function Home() {
         <View style={[container, { paddingVertical: 18 }]} className={isMobile ? "gap-4" : "flex-row justify-between gap-6"}>
           {TRUST_POINTS.map((point) => (
             <View key={point.title} className="flex-1 flex-row items-center gap-3">
-              <View className="h-10 w-10 items-center justify-center rounded-full bg-brand-50"><Ionicons name={point.icon} size={20} color={COLORS.primary} /></View>
+              <View className="h-10 w-10 items-center justify-center rounded-full bg-teal-50"><Ionicons name={point.icon} size={20} color={COLORS.primary} /></View>
               <View className="flex-1">
                 <Text className="text-sm font-bold text-gray-900">{point.title}</Text>
                 <Text className="text-xs text-gray-500">{point.note}</Text>
@@ -339,9 +339,9 @@ export default function Home() {
       <View style={[container, { paddingTop: 32 }]}>
         <View className={`overflow-hidden rounded-3xl border border-gray-200 bg-white ${isDesktop ? "flex-row" : ""}`}>
           <View style={isDesktop ? { flex: 1.1, minWidth: 0 } : undefined} className={isMobile ? "p-6" : "p-10"}>
-            <View className="mb-4 flex-row items-center gap-2 self-start rounded-full bg-brand-600 px-3 py-1.5">
-              <Ionicons name="sparkles" size={13} color="#ffffff" />
-              <Text className="text-xs font-semibold text-white">PixelPatch AI assistant</Text>
+            <View className="mb-4 flex-row items-center gap-2 self-start rounded-full bg-amber-100 px-3 py-1.5">
+              <Ionicons name="sparkles" size={13} color="#B45309" />
+              <Text className="text-xs font-bold text-amber-900">PixelPatch AI assistant</Text>
             </View>
             <Text accessibilityRole="header" className={`font-extrabold leading-tight text-gray-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>
               Not sure what&apos;s wrong? Ask before you book.
@@ -353,14 +353,14 @@ export default function Home() {
 
             <View className="mt-6 gap-4">
               <View className="flex-row items-start gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-50"><Ionicons name="construct-outline" size={20} color={COLORS.primary} /></View>
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-teal-50"><Ionicons name="construct-outline" size={20} color={COLORS.primary} /></View>
                 <View className="flex-1">
                   <Text className="text-base font-bold text-gray-900">Fix it yourself</Text>
                   <Text className="text-sm leading-5 text-gray-600">Step-by-step checks you can try at home first.</Text>
                 </View>
               </View>
               <View className="flex-row items-start gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-50"><Ionicons name="storefront-outline" size={20} color={COLORS.primary} /></View>
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-teal-50"><Ionicons name="storefront-outline" size={20} color={COLORS.primary} /></View>
                 <View className="flex-1">
                   <Text className="text-base font-bold text-gray-900">Or get the right shop</Text>
                   <Text className="text-sm leading-5 text-gray-600">If it needs a technician, it suggests shops that can help.</Text>
@@ -371,7 +371,7 @@ export default function Home() {
             <Text className="mb-2 mt-7 text-xs font-semibold uppercase tracking-wide text-gray-400">Try asking</Text>
             <View className="flex-row flex-wrap gap-2">
               {ASSISTANT_PROMPTS.map((text) => (
-                <Pressable key={text} onPress={() => openAssistant(text)} accessibilityRole="link" accessibilityLabel={`Ask the assistant: ${text}`} className="flex-row items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 active:bg-brand-50">
+                <Pressable key={text} onPress={() => openAssistant(text)} accessibilityRole="link" accessibilityLabel={`Ask the assistant: ${text}`} className="flex-row items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-2 active:bg-teal-50">
                   <Ionicons name="chatbubble-outline" size={14} color={COLORS.textMuted} />
                   <Text className="text-sm text-gray-700">{text}</Text>
                 </Pressable>
@@ -379,7 +379,7 @@ export default function Home() {
             </View>
 
             <View className="mt-7 flex-row flex-wrap items-center gap-3">
-              <Pressable onPress={() => openAssistant()} accessibilityRole="link" className="h-12 flex-row items-center gap-2 rounded-xl bg-brand-600 px-6 active:bg-brand-700">
+              <Pressable onPress={() => openAssistant()} accessibilityRole="link" className="h-12 flex-row items-center gap-2 rounded-xl bg-primary px-6 active:bg-teal-800">
                 <Ionicons name="sparkles" size={18} color="#ffffff" />
                 <Text className="text-base font-semibold text-white">Ask the assistant</Text>
               </Pressable>
@@ -388,23 +388,23 @@ export default function Home() {
           </View>
 
           {/* Example conversation */}
-          <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined} className={`bg-brand-50 ${isMobile ? "p-5" : "p-8"}`}>
+          <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined} className={`bg-gray-100 ${isMobile ? "p-5" : "p-8"}`}>
             <View className="mb-4 flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
-                <View className="h-8 w-8 items-center justify-center rounded-full bg-brand-600"><Ionicons name="sparkles" size={15} color="#ffffff" /></View>
+                <View className="h-8 w-8 items-center justify-center rounded-full bg-primary"><Ionicons name="sparkles" size={15} color="#ffffff" /></View>
                 <Text className="text-sm font-bold text-gray-900">PixelPatch AI</Text>
               </View>
               <Text className="text-xs text-gray-400">Example conversation</Text>
             </View>
             <View className="gap-2.5">
               {EXAMPLE_CHAT.map((message, index) => (
-                <View key={index} className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${message.from === "user" ? "self-end rounded-br-md bg-brand-600" : "self-start rounded-bl-md bg-white"}`}>
+                <View key={index} className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${message.from === "user" ? "self-end rounded-br-md bg-primary" : "self-start rounded-bl-md bg-white"}`}>
                   <Text className={`text-sm leading-5 ${message.from === "user" ? "text-white" : "text-gray-800"}`}>{message.text}</Text>
                 </View>
               ))}
               {topShop ? (
                 <Pressable onPress={() => router.push(`/shop/${topShop.id}`)} accessibilityRole="link" className="max-w-[85%] flex-row items-center gap-3 self-start rounded-2xl border border-gray-200 bg-white p-3 active:bg-gray-50">
-                  <View className="h-9 w-9 items-center justify-center rounded-full bg-brand-600"><Text className="font-bold text-white">{String(topShop.name).charAt(0)}</Text></View>
+                  <View className="h-9 w-9 items-center justify-center rounded-full bg-amber-100"><Text className="font-bold text-amber-900">{String(topShop.name).charAt(0)}</Text></View>
                   <View className="flex-1">
                     <Text numberOfLines={1} className="text-sm font-bold text-gray-900">{topShop.name}</Text>
                     <Stars value={topShop.rating_average} />
@@ -422,7 +422,7 @@ export default function Home() {
         {isClient ? (
           <View className="mb-10 flex-row flex-wrap gap-3">
             {CLIENT_SHORTCUTS.map((item) => (
-              <Pressable key={item.href} onPress={() => router.push(item.href)} accessibilityRole="link" className="flex-row items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2.5 active:bg-brand-50">
+              <Pressable key={item.href} onPress={() => router.push(item.href)} accessibilityRole="link" className="flex-row items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2.5 active:bg-teal-50">
                 <Ionicons name={item.icon} size={18} color={COLORS.primary} />
                 <Text className="text-sm font-semibold text-gray-800">{item.label}</Text>
               </Pressable>
@@ -439,10 +439,10 @@ export default function Home() {
                 const active = category === value;
                 const count = serviceList.filter((item) => item.category === value).length;
                 return (
-                  <Pressable key={value} onPress={() => setCategory(active ? "" : value)} accessibilityRole="button" accessibilityLabel={`${categoryName(value)}, ${count} services`} accessibilityState={{ selected: active }} style={{ width: isMobile ? "31%" : 150 }} className={`items-center rounded-2xl border px-3 py-5 ${active ? "border-brand-600 bg-brand-600" : "border-gray-200 bg-white active:bg-brand-50"}`}>
+                  <Pressable key={value} onPress={() => setCategory(active ? "" : value)} accessibilityRole="button" accessibilityLabel={`${categoryName(value)}, ${count} services`} accessibilityState={{ selected: active }} style={{ width: isMobile ? "31%" : 150 }} className={`items-center rounded-2xl border px-3 py-5 ${active ? "border-primary bg-primary" : "border-gray-200 bg-white active:bg-teal-50"}`}>
                     <Ionicons name={CATEGORY_ICONS[value] || "build-outline"} size={30} color={active ? "#ffffff" : COLORS.primary} />
                     <Text className={`mt-2 text-sm font-bold ${active ? "text-white" : "text-gray-900"}`}>{categoryName(value)}</Text>
-                    <Text className={`text-xs ${active ? "text-brand-100" : "text-gray-500"}`}>{count} service{count === 1 ? "" : "s"}</Text>
+                    <Text className={`text-xs ${active ? "text-primary-soft" : "text-gray-500"}`}>{count} service{count === 1 ? "" : "s"}</Text>
                   </Pressable>
                 );
               })}
@@ -480,7 +480,7 @@ export default function Home() {
       </View>
 
       {/* How it works */}
-      <View className="bg-brand-50">
+      <View className="bg-amber-50">
         <View style={[container, { paddingVertical: 40 }]}>
           <Text accessibilityRole="header" className="text-center text-2xl font-bold text-gray-900">How it works</Text>
           <Text className="mb-8 mt-1 text-center text-sm text-gray-500">Four simple steps</Text>
@@ -489,7 +489,7 @@ export default function Home() {
               <View key={step.title} style={isMobile ? undefined : { flex: 1, minWidth: 0 }} className={isMobile ? "flex-row items-center gap-4" : "items-center"}>
                 <View className="h-14 w-14 items-center justify-center rounded-full bg-white">
                   <Ionicons name={step.icon} size={24} color={COLORS.primary} />
-                  <View className="absolute -right-1 -top-1 h-6 w-6 items-center justify-center rounded-full bg-brand-600"><Text className="text-xs font-bold text-white">{index + 1}</Text></View>
+                  <View className="absolute -right-1 -top-1 h-6 w-6 items-center justify-center rounded-full bg-amber-400"><Text className="text-xs font-bold text-amber-950">{index + 1}</Text></View>
                 </View>
                 <View className={isMobile ? "flex-1" : "mt-3 items-center"}>
                   <Text className="text-base font-bold text-gray-900">{step.title}</Text>
@@ -504,8 +504,8 @@ export default function Home() {
       <View style={[container, { paddingTop: 40 }]}>
         {/* Partner invitation */}
         {!isBusiness && !isAdmin ? (
-          <Pressable onPress={() => router.push("/become-partner")} accessibilityRole="link" className="mb-10 flex-row items-center gap-4 rounded-2xl bg-white p-5 active:bg-brand-50">
-            <View className="h-14 w-14 items-center justify-center rounded-2xl bg-brand-100"><Ionicons name="storefront" size={24} color={COLORS.primary} /></View>
+          <Pressable onPress={() => router.push("/become-partner")} accessibilityRole="link" className="mb-10 flex-row items-center gap-4 rounded-2xl bg-white p-5 active:bg-teal-50">
+            <View className="h-14 w-14 items-center justify-center rounded-2xl bg-primary-soft"><Ionicons name="storefront" size={24} color={COLORS.primary} /></View>
             <View className="flex-1">
               <Text className="text-base font-bold text-gray-900">Own a repair shop?</Text>
               <Text className="mt-0.5 text-sm text-gray-600">Join PixelPatch and reach more customers in Zamboanga City.</Text>
@@ -516,17 +516,17 @@ export default function Home() {
 
         {/* Visitor call to action */}
         {!isLoggedIn ? (
-          <View className={`mb-10 overflow-hidden rounded-3xl bg-brand-600 ${isMobile ? "p-6" : "flex-row items-center justify-between gap-6 p-10"}`}>
+          <View className={`mb-10 overflow-hidden rounded-3xl bg-amber-400 ${isMobile ? "p-6" : "flex-row items-center justify-between gap-6 p-10"}`}>
             <View className={isMobile ? "mb-5" : "flex-1"}>
-              <Text className="text-2xl font-bold text-white">Ready to get it fixed?</Text>
-              <Text className="mt-2 text-sm leading-6 text-brand-100">Create a free account to book repairs and chat with shops.</Text>
+              <Text className="text-2xl font-bold text-amber-950">Ready to get it fixed?</Text>
+              <Text className="mt-2 text-sm leading-6 text-amber-900">Create a free account to book repairs and chat with shops.</Text>
             </View>
             <View className={isMobile ? "gap-3" : "flex-row gap-3"}>
-              <Pressable onPress={() => router.push("/signup")} accessibilityRole="link" className="h-12 items-center justify-center rounded-xl bg-white px-6 active:bg-brand-50">
-                <Text className="text-base font-semibold text-brand-700">Create free account</Text>
+              <Pressable onPress={() => router.push("/signup")} accessibilityRole="link" className="h-12 items-center justify-center rounded-xl bg-teal-950 px-6 active:bg-teal-900">
+                <Text className="text-base font-semibold text-white">Create free account</Text>
               </Pressable>
-              <Pressable onPress={() => router.push("/login")} accessibilityRole="link" className="h-12 items-center justify-center rounded-xl border border-white/30 px-6 active:bg-white/10">
-                <Text className="text-base font-semibold text-white">Sign in</Text>
+              <Pressable onPress={() => router.push("/login")} accessibilityRole="link" className="h-12 items-center justify-center rounded-xl border border-amber-950/25 px-6 active:bg-amber-300">
+                <Text className="text-base font-semibold text-amber-950">Sign in</Text>
               </Pressable>
             </View>
           </View>

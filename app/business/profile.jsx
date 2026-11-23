@@ -64,13 +64,13 @@ export default function BusinessProfile() {
       ) : null}
 
       <View className="mb-6 items-center rounded-xl border border-gray-200 bg-white p-6">
-        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-brand-100">
+        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-primary-soft">
           <Ionicons name="storefront" size={32} color={COLORS.primary} />
         </View>
         <Text className="text-lg font-bold text-gray-900">{shop?.name || "Your shop"}</Text>
         {shop?.is_verified ? (
           <View className="mt-2 flex-row items-center rounded-full bg-emerald-100 px-3 py-1">
-            <Ionicons name="checkmark-circle" size={13} color="#047857" />
+            <Ionicons name="checkmark-circle" size={13} color="#15803D" />
             <Text className="ml-1 text-xs font-semibold text-emerald-700">Verified</Text>
           </View>
         ) : (

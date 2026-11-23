@@ -22,7 +22,7 @@ export default function PasswordField(props) {
           hitSlop={8}
           className="h-12 w-12 items-center justify-center rounded-lg active:bg-gray-100"
         >
-          <Ionicons name={visible ? "eye-off-outline" : "eye-outline"} size={20} color="#78716c" />
+          <Ionicons name={visible ? "eye-off-outline" : "eye-outline"} size={20} color="#5F706D" />
         </Pressable>
       }
     />

@@ -14,6 +14,11 @@ import { ServiceAreaProvider, useServiceArea } from "../lib/serviceArea";
 import { COLORS } from "../constants/theme";
 import WebHeader from "../components/WebHeader";
 
+import { SHOW_BACK_BUTTONS } from "../lib/navigation";
+// The app opens on the home page. Without this, the phone apps open the first
+// screen listed below, the sign-in group, because the start address is just "/".
+export const unstable_settings = { initialRouteName: "(tabs)" };
+
 // Sign-in, sign-up and password reset.
 const AUTH_GROUP = "(auth)";
 const ADMIN_GROUP = "admin";
@@ -35,6 +40,10 @@ function safeRedirect(value) {
 const ADMIN_SHARED = ["settings", "help", "about"];
 // Screens a client without a Zamboanga City address may still open.
 const NO_ADDRESS_ALLOWED = ["addresses", "settings", "help", "about"];
+
+// Websites have the browser's back button: title bars keep their title but
+// drop the back arrow there (lib/navigation.js). Phones keep the default arrow.
+const WEB_HEADER_OPTIONS = SHOW_BACK_BUTTONS ? {} : { headerBackVisible: false, headerLeft: () => null };
 
 function homeFor({ isAdmin, isBusiness }) {
   if (isAdmin) return "/admin/dashboard";
@@ -91,9 +100,9 @@ function RootNavigator() {
       {showWebHeader ? <WebHeader /> : null}
       {/* Rendered unconditionally — the root layout must present a navigator on
           its first render, so the loading state is an overlay, never a swap. */}
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
+      <Stack screenOptions={{ headerShown: false, ...WEB_HEADER_OPTIONS }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(auth)" />
         <Stack.Screen name="business" />
         <Stack.Screen name="admin" />
       </Stack>
