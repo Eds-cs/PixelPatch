@@ -24,7 +24,7 @@ const AUTH_GROUP = "(auth)";
 const ADMIN_GROUP = "admin";
 // Pages anyone can browse without an account. Everything else (requesting a
 // repair, chats, the AI assistant, profile...) asks visitors to sign in first.
-const BROWSABLE_SCREENS = ["shop", "service", "about", "help"];
+const BROWSABLE_SCREENS = ["shop", "service", "about", "help", "terms", "privacy"];
 const BROWSABLE_TABS = [undefined, "index", "services"]; // home and services
 
 function isBrowsable(segments) {
@@ -37,9 +37,9 @@ function safeRedirect(value) {
   return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : null;
 }
 // Shared informational screens an admin may still open outside the portal.
-const ADMIN_SHARED = ["settings", "help", "about"];
+const ADMIN_SHARED = ["settings", "help", "about", "terms", "privacy"];
 // Screens a client without a Zamboanga City address may still open.
-const NO_ADDRESS_ALLOWED = ["addresses", "settings", "help", "about"];
+const NO_ADDRESS_ALLOWED = ["addresses", "settings", "help", "about", "terms", "privacy"];
 
 // Websites have the browser's back button: title bars keep their title but
 // drop the back arrow there (lib/navigation.js). Phones keep the default arrow.
@@ -80,6 +80,10 @@ function RootNavigator() {
     } else if (isLoggedIn && isAdmin && !inAdminGroup && !ADMIN_SHARED.includes(segments[0])) {
       // Admin accounts are not client or business accounts.
       router.replace("/admin/dashboard");
+    } else if (isLoggedIn && segments[0] === "business" && !isBusiness) {
+      // The business portal opens once an admin approves the registration;
+      // until then /become-partner shows the application's status.
+      router.replace("/become-partner");
     } else if (isLoggedIn && needsAddress && !NO_ADDRESS_ALLOWED.includes(segments[0])) {
       // PixelPatch only serves Zamboanga City: clients add an address there first.
       router.replace("/addresses");

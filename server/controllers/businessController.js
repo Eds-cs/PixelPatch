@@ -1,9 +1,12 @@
 // server/controllers/businessController.js
 import db from "../config/db.js";
 import { withTransaction } from "../utils/transaction.js";
-import jwt from "jsonwebtoken";
 import { resolveShopIdForUser } from "./repairController.js";
 import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
+import { normalizePhone, PHONE_MESSAGE } from "../utils/phone.js";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 
 
 // Payout methods offered by app/become-partner.jsx (shop_payouts.method also
@@ -49,6 +52,18 @@ export const registerBusiness = async (req, res) => {
         success: false,
         message: "Business information is incomplete"
       });
+    }
+
+    const shopPhone = normalizePhone(business_phone);
+    if (!shopPhone) {
+      return res.status(400).json({ success: false, message: `Business phone: ${PHONE_MESSAGE}` });
+    }
+    const shopEmail = String(business_email).trim().toLowerCase();
+    if (!EMAIL_RE.test(shopEmail) || shopEmail.length > 100) {
+      return res.status(400).json({ success: false, message: "Enter a valid business email address." });
+    }
+    if (!TIME_RE.test(String(open_time)) || !TIME_RE.test(String(close_time))) {
+      return res.status(400).json({ success: false, message: "Enter valid opening and closing times." });
     }
 
     // Shops must be in Zamboanga City, the only area PixelPatch serves.
@@ -109,7 +124,7 @@ export const registerBusiness = async (req, res) => {
     // --------------------------------------------------
     const existingShop = await new Promise((resolve, reject) => {
       db.query(
-        "SELECT id FROM shops WHERE user_id = ? LIMIT 1",
+        "SELECT id, is_verified FROM shops WHERE user_id = ? LIMIT 1",
         [userId],
         (err, rows) => (err ? reject(err) : resolve(rows))
       );
@@ -118,7 +133,9 @@ export const registerBusiness = async (req, res) => {
     if (existingShop.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "User already has a registered shop"
+        message: Number(existingShop[0].is_verified) === 1
+          ? "User already has a registered shop"
+          : "Your business registration is already waiting for admin approval."
       });
     }
 
@@ -126,7 +143,9 @@ export const registerBusiness = async (req, res) => {
     // 5. TRANSACTION — ALL OR NOTHING
     // --------------------------------------------------
     // One pooled connection for the whole registration: the address, shop,
-    // role change and services are committed together or rolled back together.
+    // services and payout account are committed together or rolled back
+    // together. The account stays a client (role 1) until an admin approves
+    // the shop (POST /admin/shops/:id/approve makes it a business, role 3).
     const shopId = await withTransaction(async (conn) => {
       // -----------------------------
       // ADDRESS INSERT
@@ -191,11 +210,11 @@ export const registerBusiness = async (req, res) => {
         `,
         [
           userId,
-          business_name,
+          String(business_name).trim(),
           "Business profile created",
           addressId,
-          business_phone,
-          business_email,
+          shopPhone,
+          shopEmail,
           open_time,
           close_time,
           days_from,
@@ -207,8 +226,6 @@ export const registerBusiness = async (req, res) => {
       );
 
       const newShopId = shopResult.insertId;
-
-      await conn.query("UPDATE users SET role_id = 3 WHERE id = ?", [userId]);
 
       // -----------------------------
       // SERVICES INSERT
@@ -262,14 +279,9 @@ export const registerBusiness = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Business registered successfully",
-      shop_id: shopId,
-      token: jwt.sign(
-        { id: userId, role_id: 3 },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      ),
-      user: { id: userId, role_id: 3 }
+      pending: true,
+      message: "Registration received. An admin will review your shop before it goes live.",
+      shop_id: shopId
     });
 
   } catch (err) {
@@ -299,9 +311,10 @@ export const getMyShop = async (req, res) => {
 
     // Use the promise-based wrapper
     const rows = await query(
-      `SELECT id 
-       FROM shops 
-       WHERE user_id = ? 
+      `SELECT id, name, is_verified, created_at
+       FROM shops
+       WHERE user_id = ?
+       ORDER BY id
        LIMIT 1`,
       [userId]
     );
@@ -314,9 +327,13 @@ export const getMyShop = async (req, res) => {
       });
     }
 
+    // is_verified = 0 means the registration is waiting for an admin.
     return res.json({
       success: true,
-      shopId: rows[0].id
+      shopId: rows[0].id,
+      shopName: rows[0].name,
+      isVerified: Number(rows[0].is_verified) === 1,
+      submittedAt: rows[0].created_at
     });
 
   } catch (err) {

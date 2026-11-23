@@ -40,6 +40,7 @@ import { COLORS } from "../../../constants/theme";
 import { useResponsive } from "../../../lib/useResponsive";
 
 import { SHOW_BACK_BUTTONS } from "../../../lib/navigation";
+import { specRows, typeLabel } from "../../../lib/deviceSpecs";
 const PESO = "₱";
 const TODAY_DATE = toDateString(new Date());
 const WARRANTY_UNITS = ["DAY", "WEEK", "MONTH", "YEAR"];
@@ -335,6 +336,10 @@ export default function BusinessRepairDetail() {
       <Section title="Request">
         <Row label="Client" value={repair.client} />
         <Row label="Device" value={repair.deviceType} />
+        {repair.device?.device_type ? <Row label="Device type" value={typeLabel(repair.device.device_type)} /> : null}
+        {specRows(repair.device).map((spec) => (
+          <Row key={spec.label} label={spec.label} value={spec.value} />
+        ))}
         <Row label="Decision" value={normalizedDecision} />
         <Row label="Status" value={isRejected ? "REJECTED" : isCancelled ? "CANCELLED BY CLIENT" : normalizedStatus.replace(/_/g, " ")} />
         <Row label="Delivery" value={repair.deliveryMethod} />

@@ -69,11 +69,30 @@ router.post(
       // Only admin-verified shops take requests. Public lists already hide
       // unverified shops; this closes the direct-link route.
       const [[shop]] = await db.promise().query(
-        "SELECT is_verified FROM shops WHERE id = ? LIMIT 1",
+        "SELECT is_verified, user_id FROM shops WHERE id = ? LIMIT 1",
         [shop_id]
       );
       if (!shop || Number(shop.is_verified) !== 1) {
         return res.status(400).json({ message: "This shop isn't accepting repair requests yet." });
+      }
+      // Shop owners may book repairs at other shops, never their own.
+      if (Number(shop.user_id) === Number(req.user.id)) {
+        return res.status(400).json({ message: "You can't request a repair from your own shop." });
+      }
+
+      // The device must be the client's own, with its type and specifications
+      // (phone, laptop or desktop) so the shop knows what it is repairing.
+      const [[device]] = await db.promise().query(
+        "SELECT device_type FROM devices WHERE id = ? AND user_id = ? LIMIT 1",
+        [device_id, client_id]
+      );
+      if (!device) {
+        return res.status(400).json({ message: "Choose one of your own devices." });
+      }
+      if (!device.device_type) {
+        return res.status(400).json({
+          message: "Add this device's type and specifications in My devices before requesting a repair.",
+        });
       }
 
       // Every selected service must belong to this shop and be admin-approved.

@@ -17,18 +17,20 @@ import BarangayPicker from "../../components/BarangayPicker";
 import { useAuth } from "../../lib/auth";
 import api from "../../lib/api";
 import { COLORS } from "../../constants/theme";
+import ConsentCheckbox from "../../components/ConsentCheckbox";
+import {
+  PHONE_MAX_LENGTH,
+  PHONE_MESSAGE,
+  PHONE_PLACEHOLDER,
+  cleanPhoneInput,
+  normalizePhone,
+  phoneProblem,
+} from "../../lib/phone";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // The server accepts birthdays from 1900 up to today.
 const EARLIEST_BIRTHDAY = "1900-01-01";
 
-// Keep in sync with server/utils/phone.js.
-function normalizePhone(value) {
-  let digits = String(value ?? "").replace(/[\s\-().]/g, "");
-  if (digits.startsWith("+63")) digits = `0${digits.slice(3)}`;
-  else if (digits.startsWith("63") && digits.length === 12) digits = `0${digits.slice(2)}`;
-  return /^09\d{9}$/.test(digits) ? digits : null;
-}
 
 const onlyDigits = (value) => value.replace(/\D/g, "").slice(0, 6);
 
@@ -49,6 +51,7 @@ export default function SignUp() {
     phone: "",
     password: "",
     confirmPassword: "",
+    acceptedTerms: false,
   });
   const [errors, setErrors] = useState({});
   // Set when the person says they aren't in Zamboanga City.
@@ -65,6 +68,17 @@ export default function SignUp() {
   const setField = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
   const email = form.email.trim().toLowerCase();
 
+  // Live check while typing the confirmation: flag a mismatch as soon as it
+  // can no longer match (a wrong character, or as long as the password but
+  // different), and confirm when both are the same.
+  const confirmTyped = form.confirmPassword.length > 0;
+  const passwordsMatch = confirmTyped && form.confirmPassword === form.password;
+  const confirmMismatch =
+    confirmTyped &&
+    !passwordsMatch &&
+    (!form.password.startsWith(form.confirmPassword) ||
+      form.confirmPassword.length >= form.password.length);
+
   const validate = () => {
     const next = {};
     if (!form.first_name.trim()) next.first_name = "First name is required.";
@@ -74,11 +88,12 @@ export default function SignUp() {
       next.barangay = "Choose the barangay in Zamboanga City where you live or are staying.";
     }
     if (!EMAIL_RE.test(email)) next.email = "Please enter a valid email address.";
-    if (!normalizePhone(form.phone)) {
-      next.phone = "Enter a valid Philippine mobile number (09XX XXX XXXX).";
-    }
+    if (!normalizePhone(form.phone)) next.phone = PHONE_MESSAGE;
     if (form.password.length < 8) next.password = "Password must be at least 8 characters.";
     if (form.password !== form.confirmPassword) next.confirmPassword = "Passwords do not match.";
+    if (!form.acceptedTerms) {
+      next.acceptedTerms = "Please agree to the Terms of Service and Privacy Policy to continue.";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -152,6 +167,7 @@ export default function SignUp() {
         email,
         phone: normalizePhone(form.phone),
         password: form.password,
+        accepted_terms: form.acceptedTerms,
         email_code: codes.email,
         phone_code: phoneVerification ? codes.phone : undefined,
       });
@@ -317,6 +333,7 @@ export default function SignUp() {
                   minDate={EARLIEST_BIRTHDAY}
                   maxDate={toDateString(new Date())}
                   defaultDate="2000-01-01"
+                  initialView={form.birthdate ? "day" : "year"}
                 />
 
                 <BarangayPicker
@@ -369,12 +386,13 @@ export default function SignUp() {
                 <TextField
                   label="Mobile number"
                   value={form.phone}
-                  onChangeText={setField("phone")}
-                  error={errors.phone}
-                  placeholder="09XX XXX XXXX"
+                  onChangeText={(value) => setField("phone")(cleanPhoneInput(value))}
+                  error={phoneProblem(form.phone) || errors.phone}
+                  placeholder={PHONE_PLACEHOLDER}
                   keyboardType="phone-pad"
                   inputMode="tel"
                   autoComplete="tel"
+                  maxLength={PHONE_MAX_LENGTH}
                 />
 
                 <PasswordField
@@ -391,19 +409,35 @@ export default function SignUp() {
                   label="Confirm password"
                   value={form.confirmPassword}
                   onChangeText={setField("confirmPassword")}
-                  error={errors.confirmPassword}
+                  error={confirmMismatch ? "Passwords do not match." : passwordsMatch ? null : errors.confirmPassword}
                   placeholder="Re-enter your password"
                   autoComplete="new-password"
                   textContentType="newPassword"
                   onSubmitEditing={onSubmit}
                   returnKeyType="go"
                 />
+                {passwordsMatch ? (
+                  <View className="-mt-3 mb-4 flex-row items-center">
+                    <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                    <Text className="ml-1.5 text-sm text-success">Passwords match</Text>
+                  </View>
+                ) : null}
+
+                <ConsentCheckbox
+                  checked={form.acceptedTerms}
+                  onChange={(value) => {
+                    setField("acceptedTerms")(value);
+                    if (value) setErrors((e) => ({ ...e, acceptedTerms: undefined }));
+                  }}
+                  error={errors.acceptedTerms}
+                  what="using PixelPatch"
+                />
 
                 <Button
                   title="Continue"
                   onPress={onSubmit}
                   loading={submitting}
-                  disabled={outsideArea}
+                  disabled={outsideArea || !form.acceptedTerms}
                 />
                 <Text className="mt-3 text-center text-xs text-gray-500">
                   We&apos;ll email you a code to confirm it&apos;s really you.

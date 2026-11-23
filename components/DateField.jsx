@@ -53,6 +53,13 @@ const displayDate = (value) => {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
 
+// "18:30" -> "6:30 PM"
+const displayTime = (value) => {
+  const d = parseValue(value, "time");
+  const h = d.getHours();
+  return `${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? "AM" : "PM"}`;
+};
+
 export default function DateField({
   label,
   value,
@@ -66,10 +73,39 @@ export default function DateField({
   disableYearPicker = false,
   // Where the calendar opens while no value is set (defaults to today).
   defaultDate,
+  // "day" | "month" | "year": the view the calendar opens on. Use "year" for
+  // dates far in the past, such as birthdays.
+  initialView = "day",
   className = "",
 }) {
   const isTime = mode === "time";
-  const styles = useDefaultStyles("light");
+  const defaultStyles = useDefaultStyles("light");
+  // The library's own arrows are faint grey images that are easy to miss
+  // (users thought only 12 years existed), so use clear teal chevrons and the
+  // app's teal for the selected day/month/year.
+  const styles = {
+    ...defaultStyles,
+    selected: { ...defaultStyles.selected, backgroundColor: COLORS.primary },
+    selected_month: {
+      ...defaultStyles.selected_month,
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+    },
+    selected_year: {
+      ...defaultStyles.selected_year,
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+    },
+  };
+  const navIcon = (name) => (
+    <View className="h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white">
+      <Ionicons name={name} size={20} color={COLORS.primary} />
+    </View>
+  );
+  const pickerComponents = {
+    IconPrev: navIcon("chevron-back"),
+    IconNext: navIcon("chevron-forward"),
+  };
   const pickerMinDate = minDate ? parseValue(minDate, mode) : undefined;
   const pickerMaxDate = maxDate ? parseValue(maxDate, mode) : undefined;
 
@@ -95,7 +131,7 @@ export default function DateField({
     setOpen(false);
   };
 
-  const shown = value ? (isTime ? value : displayDate(value)) : "";
+  const shown = value ? (isTime ? displayTime(value) : displayDate(value)) : "";
 
   return (
     <View className={`mb-4 ${className}`}>
@@ -139,6 +175,12 @@ export default function DateField({
           maxDate={pickerMaxDate}
           disableMonthPicker={disableMonthPicker}
           disableYearPicker={disableYearPicker}
+          // Times (e.g. shop opening hours) show only the hour/minute wheels,
+          // never a calendar.
+          initialView={isTime ? "time" : initialView}
+          hideHeader={isTime}
+          use12Hours={isTime}
+          components={pickerComponents}
           styles={styles}
         />
       </Modal>

@@ -155,6 +155,12 @@ export const getRepairById = async (req, res) => {
 
           CONCAT(u.first_name, ' ', u.last_name) AS client,
           d.name AS deviceType,
+          d.device_type,
+          d.brand AS device_brand,
+          d.model AS device_model,
+          d.serial_number AS device_serial_number,
+          d.model_number AS device_model_number,
+          d.specs AS device_specs,
 
           CONCAT_WS(', ',
             a.street,
@@ -207,6 +213,16 @@ export const getRepairById = async (req, res) => {
       status: row.status, 
       client: row.client,
       deviceType: row.deviceType,
+      // The client's device with its type-specific specifications
+      // (lib/deviceSpecs.js specRows reads this shape).
+      device: {
+        device_type: row.device_type,
+        brand: row.device_brand,
+        model: row.device_model,
+        serial_number: row.device_serial_number,
+        model_number: row.device_model_number,
+        specs: row.device_specs,
+      },
       issueDescription: row.issue_description,
       decisionStatus: row.decisionStatus,
       rejectionReason: row.rejection_reason,

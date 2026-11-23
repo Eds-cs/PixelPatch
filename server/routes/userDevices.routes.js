@@ -2,6 +2,7 @@ import express from "express";
 import db from "../config/db.js";
 import { authRequired } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/upload.js";
+import { validateDevice, defaultDeviceName } from "../utils/deviceSpecs.js";
 
 
 const router = express.Router();
@@ -15,8 +16,10 @@ router.get("/", authRequired, (req, res) => {
   const sql = `
     SELECT
       id,
+      device_type,
       name,
       brand,
+      specs,
       model,
       serial_number,
       model_number,
@@ -47,13 +50,12 @@ router.post(
   authRequired,
   upload.single("photo"),
   (req, res) => {
-    const {
-      name,
-      brand,
-      model,
-      serial_number,
-      model_number,
-    } = req.body;
+    // Phone, laptop or desktop (CPU), with that type's specifications.
+    const device = validateDevice(req.body);
+    if (device.error) return res.status(400).json({ message: device.error });
+    const { columns } = device;
+    const name = String(req.body.name ?? "").trim() || defaultDeviceName(device.device_type, columns);
+    if (name.length > 255) return res.status(400).json({ message: "The device name is too long." });
 
     const photo_url = req.file
       ? `/uploads/requests/${req.file.filename}`
@@ -62,16 +64,18 @@ router.post(
     db.query(
       `
       INSERT INTO devices
-      (user_id, name, brand, model, serial_number, model_number, photo_url, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+      (user_id, device_type, name, brand, model, serial_number, model_number, specs, photo_url, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
       `,
       [
         req.user.id,
+        device.device_type,
         name,
-        brand,
-        model,
-        serial_number,
-        model_number,
+        columns.brand,
+        columns.model,
+        columns.serial_number,
+        columns.model_number,
+        JSON.stringify(device.specs),
         photo_url,
       ],
       (err) => {
@@ -93,12 +97,11 @@ router.put(
   authRequired,
   upload.single("photo"),
   (req, res) => {
-    const text = (value) => String(value ?? "").trim();
-    const name = text(req.body.name);
-
-    if (!name) {
-      return res.status(400).json({ message: "Give the device a name." });
-    }
+    const device = validateDevice(req.body);
+    if (device.error) return res.status(400).json({ message: device.error });
+    const { columns } = device;
+    const name = String(req.body.name ?? "").trim() || defaultDeviceName(device.device_type, columns);
+    if (name.length > 255) return res.status(400).json({ message: "The device name is too long." });
 
     const photo_url = req.file
       ? `/uploads/requests/${req.file.filename}`
@@ -108,21 +111,25 @@ router.put(
       `
       UPDATE devices
       SET
+        device_type = ?,
         name = ?,
         brand = ?,
         model = ?,
         serial_number = ?,
         model_number = ?,
+        specs = ?,
         photo_url = COALESCE(?, photo_url),
         updated_at = NOW()
       WHERE id = ? AND user_id = ?
       `,
       [
+        device.device_type,
         name,
-        text(req.body.brand),
-        text(req.body.model),
-        text(req.body.serial_number),
-        text(req.body.model_number),
+        columns.brand,
+        columns.model,
+        columns.serial_number,
+        columns.model_number,
+        JSON.stringify(device.specs),
         photo_url,
         req.params.id,
         req.user.id,

@@ -202,6 +202,19 @@ export default function Login() {
                     {googleBusy ? "Signing in…" : "Continue with Google"}
                   </Text>
                 </Pressable>
+                {/* Google sign-in creates an account on first use, so it gets
+                    the same agreement as the sign-up form. */}
+                <Text className="mt-2 text-center text-xs leading-5 text-gray-500">
+                  By continuing with Google you agree to the{" "}
+                  <Link href="/terms">
+                    <Text className="font-semibold text-primary underline">Terms of Service</Text>
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy">
+                    <Text className="font-semibold text-primary underline">Privacy Policy</Text>
+                  </Link>
+                  .
+                </Text>
               </View>
             ) : null}
 

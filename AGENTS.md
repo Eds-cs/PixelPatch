@@ -583,6 +583,8 @@ summary counts and shop-service review:
 * `GET /admin/services?status=&shop_id=&q=&limit=&offset=` (paged, `{ services, total, counts }`)
 * `POST /admin/services/bulk { ids, action: "approve" | "reject", note }` (max 200; reject needs a note)
 * `POST /admin/services/:id/approve`, `POST /admin/services/:id/reject`
+* `GET /admin/shops?status=PENDING|VERIFIED|ALL&q=&limit=&offset=` (business registrations)
+* `POST /admin/shops/:id/approve { approve_services }`, `POST /admin/shops/:id/reject { note }`
 
 Admin lists are paged server-side; use `lib/usePagedFetch.js` for new long lists.
 
@@ -1008,17 +1010,41 @@ The verified `user_roles` mapping is:
 Role IDs come from the database and are included in the JWT. Preserve this
 mapping in frontend and backend authorization checks.
 
-Each role has its own portal and they are kept separate:
+Each role has its own portal:
 
 * client (1): `app/(tabs)/` and client screens
 * admin (2): `app/admin/` (the root layout redirects admins there and keeps
-  them out of client and business screens, except settings/help/about)
-* business (3): `app/business/` (also requires owning a shop)
+  them out of client and business screens, except settings/help/about/terms/privacy)
+* business (3): `app/business/` (also requires owning a shop). Since
+  2026-11-23 a business account is ALSO a customer: it can browse the client
+  screens and request repairs, chat and pay at other shops, never its own
+  (the server refuses requests to, and chats with, the caller's own shop).
+  The header shows "My shop" on the customer side and "Browse PixelPatch" in
+  the portal; `/business/messages` lists the shop's customer chats and `/chat`
+  the owner's own chats as a customer.
 
 Admin APIs must use `adminRequired`, never just the JWT's `role_id`. An admin is
 not a business: business routes refuse role 2 even if the admin owns a shop. Before changing it,
 inspect the live `user_roles` and `users` tables and confirm the affected
 ownership and authorization behavior.
+
+## Becoming a business (since 2026-11-23)
+
+1. A client registers a shop (`POST /business-register`, `app/become-partner.jsx`).
+   The shop is saved with `is_verified = 0` and the account STAYS role 1.
+2. An admin reviews it in `app/admin/shops.jsx`:
+   * approve (`POST /admin/shops/:id/approve`): `is_verified = 1`, the owner
+     becomes role 3 (only if role 1; admins keep role 2), optionally the
+     registration's pending services are approved, and the owner is emailed.
+   * reject (`POST /admin/shops/:id/reject { note }`): the application (shop,
+     services, payout, address) is deleted, the owner stays a client and is
+     emailed the reason, and may apply again.
+3. `GET /auth/session` re-reads the role from the database and returns a new
+   token. `lib/auth.jsx` calls it once per app start (and the partner page's
+   "Check status" button), replacing the token only when the role changed.
+
+`/my-shop` returns `isVerified`; the root layout sends non-business accounts
+away from `app/business/` to `/become-partner`, which shows the status.
 
 ---
 
@@ -2042,8 +2068,12 @@ created_at, updated_at   datetime NOT NULL
   business middleware takes the first shop (`LIMIT 1`) and requires role 3.
 * `rating_average` is NOT recomputed by any code, so it can disagree with
   `reviews`. Compute from `reviews` if accuracy matters.
-* Intended registration flow: a new shop is created with `is_verified = 0`, an
-  admin verifies it, and rejected shops may be deleted.
+* Registration flow (implemented 2026-11-23, see section 20 "Becoming a
+  business"): a new shop is created with `is_verified = 0` and the owner stays
+  role 1; an admin approves it (owner becomes role 3) or rejects it (the
+  application is deleted and the reason emailed).
+* `phone_number` is stored normalized as `09XXXXXXXXX` for new registrations
+  (`server/utils/phone.js`); older rows may differ.
 
 ### addresses
 
@@ -2066,10 +2096,19 @@ Referenced by `shops.address_id` and `service_requests.pickup_address_id`.
 ```text
 id
 user_id         int NOT NULL   No FK
+device_type     enum('PHONE','LAPTOP','DESKTOP') NULL   (added 2026-11-23; NULL = older device)
 name, model, serial_number, model_number, brand   varchar(255) NOT NULL
+specs           longtext NULL   (JSON of type-specific specs, added 2026-11-23)
 photo_url       longtext NULL
 created_at, updated_at   datetime NOT NULL
 ```
+
+PixelPatch repairs phones, laptops and desktop computers ("CPU" = system unit).
+The specification fields per type, and which are required, live in
+`server/utils/deviceSpecs.js` (validation) and `lib/deviceSpecs.js` (form and
+display); keep them in sync. Repair requests require the device to belong to
+the client and to have a `device_type`. Applied by
+`server/sql/2026-11-23_device_types.sql`.
 
 ### shop_services
 

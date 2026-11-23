@@ -2,8 +2,9 @@
 // Replaces legacy-web BusinessLayout's fixed w-64 sidebar, which had no mobile
 // behaviour at all. Here the same nav is a permanent sidebar on wide screens
 // and a slide-over drawer on phones.
-import { Drawer } from "expo-router/drawer";
-import { Platform } from "react-native";
+import { Drawer, DrawerContentScrollView, DrawerItem, DrawerItemList } from "expo-router/drawer";
+import { useRouter } from "expo-router";
+import { Platform, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS } from "../../constants/theme";
@@ -24,6 +25,24 @@ const SCREENS = [
 // Detail routes live in the drawer navigator but must not appear as nav items.
 const HIDDEN = ["repairs/[id]", "disputes/[id]"];
 
+// The shop's pages, then a way out to the customer side of PixelPatch: shop
+// owners can browse, and book repairs at other shops, like any client.
+function DrawerContent(props) {
+  const router = useRouter();
+  return (
+    <DrawerContentScrollView {...props}>
+      <DrawerItemList {...props} />
+      <View className="mx-3 my-2 h-px bg-gray-200" />
+      <DrawerItem
+        label="Browse PixelPatch"
+        icon={({ size }) => <Ionicons name="home-outline" size={size} color={COLORS.primary} />}
+        labelStyle={{ color: COLORS.primary, fontWeight: "600" }}
+        onPress={() => router.push("/")}
+      />
+    </DrawerContentScrollView>
+  );
+}
+
 export default function BusinessLayout() {
   const { isMobile, isTablet } = useResponsive();
   const permanent = Platform.OS !== "web" && !isMobile;
@@ -31,6 +50,7 @@ export default function BusinessLayout() {
   return (
     <ShopProvider>
     <Drawer
+      drawerContent={(props) => <DrawerContent {...props} />}
       screenOptions={{
         drawerType: permanent ? "permanent" : "front",
         drawerStyle: { width: isTablet ? 224 : 256, backgroundColor: COLORS.surface },

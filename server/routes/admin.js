@@ -10,6 +10,11 @@ import {
   rejectService,
   bulkReviewServices,
 } from "../controllers/admin/serviceReviewController.js";
+import {
+  listShopRegistrations,
+  approveShop,
+  rejectShop,
+} from "../controllers/admin/shopReviewController.js";
 
 const router = express.Router();
 router.use(authRequired, adminRequired);
@@ -22,5 +27,10 @@ router.get("/services/shops", listShopsForReview);
 router.post("/services/bulk", bulkReviewServices);
 router.post("/services/:id/approve", approveService);
 router.post("/services/:id/reject", rejectService);
+
+// Business registrations (shop verification)
+router.get("/shops", listShopRegistrations);
+router.post("/shops/:id/approve", approveShop);
+router.post("/shops/:id/reject", rejectShop);
 
 export default router;

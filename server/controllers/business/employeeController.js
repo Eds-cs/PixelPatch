@@ -1,6 +1,7 @@
 // controllers/business/employeeController.js
 import db from "../../config/db.js";
 import { resolveShopIdForUser } from "../../utils/resolveShopIdForUser.js";
+import { normalizePhone, PHONE_MESSAGE } from "../../utils/phone.js";
 
 
 /* ======================================================
@@ -24,11 +25,14 @@ export const createEmployee = (req, res) => {
       });
     }
 
+    const { error, values } = validateEmployee(req.body);
+    if (error) return res.status(400).json({ message: error });
+
     db.query(
       `INSERT INTO shop_employees
        (shop_id, first_name, last_name, role, phone, email, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 1, NOW())`,
-      [shopId, req.body.firstName, req.body.lastName, req.body.role, req.body.phone || null, req.body.email || null],
+      [shopId, values.firstName, values.lastName, values.role, values.phone, values.email],
       (err, result) => {
         if (err) {
           return res.status(500).json({
@@ -252,10 +256,12 @@ function validateEmployee(body) {
 
   if (!firstName || !lastName || !role) return { error: "First name, last name and role are required." };
   if (firstName.length > 100 || lastName.length > 100 || role.length > 100) return { error: "Names and role must be 100 characters or fewer." };
-  if (phone.length > 20) return { error: "Phone must be 20 characters or fewer." };
+  // Optional, but when given it must be a real Philippine mobile number.
+  const cleanPhone = phone ? normalizePhone(phone) : null;
+  if (phone && !cleanPhone) return { error: `${PHONE_MESSAGE} Or leave the phone empty.` };
   if (email && (email.length > 150 || !EMAIL_RE.test(email))) return { error: "Enter a valid email address or leave it empty." };
 
-  return { values: { firstName, lastName, role, phone: phone || null, email: email || null } };
+  return { values: { firstName, lastName, role, phone: cleanPhone, email: email || null } };
 }
 
 /* GET /api/business/employees/all — active and inactive, for the team screen */

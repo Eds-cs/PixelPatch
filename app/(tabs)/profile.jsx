@@ -35,7 +35,9 @@ function LinkRow({ icon, label, href }) {
 export default function Profile() {
   const { user, logout, isBusiness } = useAuth();
   const myShop = useFetch("/my-shop");
-  const ownsShop = Boolean(myShop.data?.success);
+  // A registration waits for an admin (isVerified false) before the account
+  // becomes a business and the portal opens.
+  const shopPending = Boolean(myShop.data?.success) && !isBusiness && myShop.data?.isVerified === false;
 
   const confirmLogout = () => {
     // Alert has no web implementation in react-native-web.
@@ -84,10 +86,10 @@ export default function Profile() {
         <LinkRow icon="hardware-chip-outline" label="My devices" href="/devices" />
         <LinkRow icon="location-outline" label="My addresses" href="/addresses" />
         <LinkRow icon="sparkles-outline" label="AI assistant" href="/assistant" />
-        {/* registerBusiness never promotes users.role_id, so shop ownership is
-            resolved from /my-shop rather than from the role on the token. */}
-        {ownsShop ? (
+        {isBusiness ? (
           <LinkRow icon="storefront-outline" label="Business portal" href="/business/dashboard" />
+        ) : shopPending ? (
+          <LinkRow icon="time-outline" label="Business application: under review" href="/become-partner" />
         ) : (
           <LinkRow icon="briefcase-outline" label="Become a partner" href="/become-partner" />
         )}

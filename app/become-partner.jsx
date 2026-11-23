@@ -4,11 +4,11 @@
 // payload and only submits on the final step.
 import { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
-  Switch,
   Text,
   View,
 } from "react-native";
@@ -23,6 +23,17 @@ import api from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import { COLORS } from "../constants/theme";
 import { useAuth } from "../lib/auth";
+import ConsentCheckbox from "../components/ConsentCheckbox";
+import {
+  PHONE_MAX_LENGTH,
+  PHONE_MESSAGE,
+  PHONE_PLACEHOLDER,
+  cleanPhoneInput,
+  normalizePhone,
+  phoneProblem,
+} from "../lib/phone";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const STEPS = ["Business", "Location", "Services", "Payment"];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -66,8 +77,12 @@ function Card({ title, children }) {
 
 export default function BecomePartner() {
   const router = useRouter();
-  const { user, setSession } = useAuth();
+  const { isBusiness, refreshSession } = useAuth();
   const categories = useFetch("/shop-services/categories", (d) => d.categories ?? []);
+  // An existing registration: waiting for an admin, or already approved.
+  const myShop = useFetch("/my-shop");
+  const [checking, setChecking] = useState(false);
+  const [statusNote, setStatusNote] = useState(null);
 
   const [step, setStep] = useState(0);
   const [error, setError] = useState(null);
@@ -106,8 +121,8 @@ export default function BecomePartner() {
   const stepError = useMemo(() => {
     if (step === 0) {
       if (!biz.business_name.trim()) return "Business name is required.";
-      if (!biz.business_email.trim()) return "Business email is required.";
-      if (!biz.business_phone.trim()) return "Business phone is required.";
+      if (!EMAIL_RE.test(biz.business_email.trim())) return "Enter a valid business email address.";
+      if (!normalizePhone(biz.business_phone)) return `Business phone: ${PHONE_MESSAGE}`;
     }
     if (step === 1) {
       if (!loc.street.trim()) return "Street is required.";
@@ -129,8 +144,9 @@ export default function BecomePartner() {
     if (step === 3) {
       if (!payment.account_name.trim()) return "Account name is required.";
       if (!payment.account_number.trim()) return "Account number is required.";
-      if (!payment.terms) return "You must accept the Terms of Service.";
-      if (!payment.privacy) return "You must accept the Privacy Policy.";
+      if (!payment.terms || !payment.privacy) {
+        return "Please agree to the Terms of Service and Privacy Policy to submit.";
+      }
     }
     return null;
   }, [step, biz, loc, services, payment]);
@@ -157,21 +173,100 @@ export default function BecomePartner() {
     setSubmitting(true);
     setError(null);
     try {
-      const { data } = await api.post("/business-register", {
+      await api.post("/business-register", {
         ...biz,
+        business_phone: normalizePhone(biz.business_phone),
         ...loc,
         services: services.map((s) => ({ ...s, price: String(parseFloat(s.price)) })),
         payment,
       });
-      if (data?.token) {
-        await setSession(data.token, { ...user, ...data.user, role_id: 3 }, true);
-      }
-      router.replace("/business/dashboard");
+      // The account becomes a business once an admin approves the shop.
+      await myShop.refresh();
     } catch (e) {
       setError(e.message || "Registration failed. Please review your details.");
+    } finally {
       setSubmitting(false);
     }
   };
+
+  // "Check status": picks up an approval without signing out and in again.
+  const checkStatus = async () => {
+    setChecking(true);
+    setStatusNote(null);
+    try {
+      const current = await refreshSession();
+      if (Number(current?.role_id) === 3) {
+        router.replace("/business/dashboard");
+        return;
+      }
+      await myShop.refresh();
+      setStatusNote("Still under review. We'll email you as soon as an admin has checked your shop.");
+    } catch (e) {
+      setStatusNote(e.message || "Couldn't check right now. Try again in a moment.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const application = myShop.data?.success ? myShop.data : null;
+
+  if (myShop.loading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-gray-50">
+        <Stack.Screen options={{ title: "Become a partner", headerShown: true }} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (isBusiness || application) {
+    const approved = isBusiness || application?.isVerified;
+    return (
+      <ScrollView
+        className="flex-1 bg-gray-50"
+        contentContainerStyle={{ padding: 16, maxWidth: 720, width: "100%", alignSelf: "center" }}
+      >
+        <Stack.Screen options={{ title: "Become a partner", headerShown: true }} />
+        <View className="items-center rounded-xl border border-gray-200 bg-white p-6">
+          <View
+            className={`mb-4 h-16 w-16 items-center justify-center rounded-full ${
+              approved ? "bg-success-soft" : "bg-warning-soft"
+            }`}
+          >
+            <Ionicons
+              name={approved ? "checkmark-circle" : "time"}
+              size={34}
+              color={approved ? COLORS.success : COLORS.warning}
+            />
+          </View>
+          <Text className="text-center text-xl font-bold text-gray-900">
+            {approved ? "Your shop is approved" : "Your application is under review"}
+          </Text>
+          {application?.shopName ? (
+            <Text className="mt-1 text-center text-base font-semibold text-primary">
+              {application.shopName}
+            </Text>
+          ) : null}
+          <Text className="mt-3 text-center text-sm leading-6 text-gray-600">
+            {approved
+              ? "Your business portal is ready. You can still browse PixelPatch and book repairs at other shops."
+              : "A PixelPatch admin checks every new shop before it goes live. You'll get an email when it's approved; until then you can keep using PixelPatch as a customer."}
+          </Text>
+          {statusNote ? (
+            <Text className="mt-4 rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-700">{statusNote}</Text>
+          ) : null}
+          <View className="mt-5 w-full gap-3">
+            {isBusiness ? (
+              <Button title="Open business portal" onPress={() => router.replace("/business/dashboard")} />
+            ) : (
+              <Button title={approved ? "Open business portal" : "Check status"} loading={checking} onPress={checkStatus} />
+            )}
+            <Button title="Back to home" variant="outline" onPress={() => router.replace("/")} />
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -225,6 +320,7 @@ export default function BecomePartner() {
               label="Business email"
               value={biz.business_email}
               onChangeText={setBizField("business_email")}
+              autoComplete="email"
               placeholder="shop@example.com"
               autoCapitalize="none"
               keyboardType="email-address"
@@ -233,10 +329,12 @@ export default function BecomePartner() {
             <TextField
               label="Business phone"
               value={biz.business_phone}
-              onChangeText={setBizField("business_phone")}
-              placeholder="09XX XXX XXXX"
+              onChangeText={(value) => setBizField("business_phone")(cleanPhoneInput(value))}
+              error={phoneProblem(biz.business_phone)}
+              placeholder={PHONE_PLACEHOLDER}
               keyboardType="phone-pad"
               inputMode="tel"
+              maxLength={PHONE_MAX_LENGTH}
             />
           </Card>
         ) : null}
@@ -435,26 +533,14 @@ export default function BecomePartner() {
               inputMode="numeric"
             />
 
-            <View className="mb-3 flex-row items-center justify-between">
-              <Text className="flex-1 pr-3 text-sm text-gray-700">
-                I accept the Terms of Service
-              </Text>
-              <Switch
-                value={payment.terms}
-                onValueChange={setPayField("terms")}
-                trackColor={{ true: COLORS.primary }}
-              />
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="flex-1 pr-3 text-sm text-gray-700">
-                I accept the Privacy Policy
-              </Text>
-              <Switch
-                value={payment.privacy}
-                onValueChange={setPayField("privacy")}
-                trackColor={{ true: COLORS.primary }}
-              />
-            </View>
+            <ConsentCheckbox
+              checked={payment.terms && payment.privacy}
+              onChange={(value) => setPayment((p) => ({ ...p, terms: value, privacy: value }))}
+              what="listing my shop on PixelPatch"
+            />
+            <Text className="text-xs leading-5 text-gray-500">
+              After you submit, a PixelPatch admin reviews your shop. You stay a customer account until it&apos;s approved.
+            </Text>
           </Card>
         ) : null}
 
@@ -472,7 +558,12 @@ export default function BecomePartner() {
             {step < STEPS.length - 1 ? (
               <Button title="Continue" onPress={next} />
             ) : (
-              <Button title="Submit registration" loading={submitting} onPress={submit} />
+              <Button
+                title="Submit registration"
+                loading={submitting}
+                disabled={!payment.terms || !payment.privacy}
+                onPress={submit}
+              />
             )}
           </View>
         </View>

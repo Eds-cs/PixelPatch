@@ -171,7 +171,18 @@ export default function ShopDetail() {
 
   /* ---------- side panel pieces (also used in the phone layout) ---------- */
 
-  const bookingCard = (
+  // Shop owners browsing their own page: nothing to book or message.
+  const ownShop = Boolean(user && String(shopData?.user_id) === String(user.id));
+
+  const bookingCard = ownShop ? (
+    <Card>
+      <Text className="text-base font-bold text-gray-900">This is your shop</Text>
+      <Text className="mb-4 mt-1 text-sm leading-5 text-gray-600">
+        This is how customers see your page. Manage repairs, services and messages from your business portal.
+      </Text>
+      <Button title="Open my business portal" onPress={() => router.push("/business/dashboard")} />
+    </Card>
+  ) : (
     <Card>
       {verified ? (
         <>

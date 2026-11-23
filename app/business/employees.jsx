@@ -13,9 +13,17 @@ import { useFetch } from "../../lib/useFetch";
 import { confirmAction } from "../../lib/confirm";
 import { useResponsive } from "../../lib/useResponsive";
 import { COLORS } from "../../constants/theme";
+import {
+  PHONE_MAX_LENGTH,
+  PHONE_MESSAGE,
+  PHONE_PLACEHOLDER,
+  cleanPhoneInput,
+  normalizePhone,
+  phoneProblem,
+} from "../../lib/phone";
 
 const EMPTY = { firstName: "", lastName: "", role: "", phone: "", email: "" };
-const STATUSES = [["active", "Active"], ["inactive", "Inactive"], ["all", "Everyone"]];
+const STATUSES = [["active", "Active"], ["inactive", "Inactive"]];
 const nameOf = (employee) => [employee.first_name, employee.last_name].filter(Boolean).join(" ") || "Employee";
 const roleOf = (employee) => (employee.role || "").trim();
 const roleKey = (employee) => roleOf(employee).toLowerCase();
@@ -63,7 +71,7 @@ export default function Employees() {
 
   const everyone = data ?? [];
   const active = everyone.filter(isActive);
-  const byStatus = status === "all" ? everyone : status === "active" ? active : everyone.filter((employee) => !isActive(employee));
+  const byStatus = status === "active" ? active : everyone.filter((employee) => !isActive(employee));
   const roles = [...new Map(byStatus.filter((item) => roleOf(item)).map((item) => [roleKey(item), roleOf(item)])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const needle = query.trim().toLowerCase();
   const filtered = byStatus.filter((employee) =>
@@ -98,12 +106,16 @@ export default function Employees() {
       setFormError("Enter a valid email address or leave the email field empty.");
       return;
     }
+    if (form.phone.trim() && !normalizePhone(form.phone)) {
+      setFormError(`${PHONE_MESSAGE} Or leave the phone empty.`);
+      return;
+    }
     setBusy(true);
     setFormError(null);
     try {
       const payload = {
         firstName: form.firstName.trim(), lastName: form.lastName.trim(), role: form.role.trim(),
-        phone: form.phone.trim() || null, email: form.email.trim() || null,
+        phone: normalizePhone(form.phone) || null, email: form.email.trim() || null,
       };
       if (isNew) {
         await api.post("/business/employees", payload);
@@ -214,7 +226,7 @@ export default function Employees() {
             </View>
 
             <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
-              <Text className="text-sm text-gray-500">{filtered.length} of {byStatus.length} {status === "all" ? "team members" : `${status} employees`}</Text>
+              <Text className="text-sm text-gray-500">{filtered.length} of {byStatus.length} {status} employees</Text>
               <View className="flex-row flex-wrap gap-3">
                 {query || role || status !== "active" || sort !== "name" ? <Pressable onPress={() => { setQuery(""); setRole(""); setStatus("active"); setSort("name"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">Reset filters</Text></Pressable> : null}
                 <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
@@ -262,7 +274,7 @@ export default function Employees() {
           <View style={isMobile ? undefined : { flex: 1 }}><TextField label="Last name *" value={form.lastName} onChangeText={setField("lastName")} placeholder="Dela Cruz" maxLength={100} editable={!busy} /></View>
         </View>
         <TextField label="Role *" value={form.role} onChangeText={setField("role")} placeholder="e.g. Technician" maxLength={100} editable={!busy} />
-        <TextField label="Phone (optional)" value={form.phone} onChangeText={setField("phone")} placeholder="09XX XXX XXXX" keyboardType="phone-pad" inputMode="tel" maxLength={20} editable={!busy} />
+        <TextField label="Phone (optional)" value={form.phone} onChangeText={(value) => setField("phone")(cleanPhoneInput(value))} error={phoneProblem(form.phone)} placeholder={PHONE_PLACEHOLDER} keyboardType="phone-pad" inputMode="tel" maxLength={PHONE_MAX_LENGTH} editable={!busy} />
         <TextField label="Email (optional)" value={form.email} onChangeText={setField("email")} placeholder="tech@example.com" autoCapitalize="none" keyboardType="email-address" inputMode="email" maxLength={150} editable={!busy} />
         <Text className="text-xs text-gray-400">* Required fields. Contact details can be left empty.</Text>
       </Modal>
