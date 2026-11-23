@@ -157,7 +157,8 @@ function CardRow({ items, renderCard, keyOf, isMobile, columns }) {
 export default function Home() {
   const router = useRouter();
   const { user, isLoggedIn, isBusiness, isAdmin } = useAuth();
-  const isClient = isLoggedIn && !isBusiness && !isAdmin;
+  // Shop owners browse and book at other shops like any client.
+  const isClient = isLoggedIn && !isAdmin;
   const { isMobile, isDesktop, horizontalPadding } = useResponsive();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");

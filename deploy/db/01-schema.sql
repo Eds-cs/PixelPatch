@@ -647,3 +647,8 @@ INSERT INTO `user_roles` VALUES
 (3,'business');
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- 2026-11-23: device types and specifications (server/sql/2026-11-23_device_types.sql)
+ALTER TABLE devices
+  ADD COLUMN IF NOT EXISTS device_type ENUM('PHONE','LAPTOP','DESKTOP') NULL DEFAULT NULL AFTER user_id,
+  ADD COLUMN IF NOT EXISTS specs LONGTEXT NULL DEFAULT NULL AFTER brand;

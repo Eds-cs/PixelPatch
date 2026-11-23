@@ -59,8 +59,16 @@ export const register = async (req, res) => {
       barangay,
       street,
       email_code,
-      phone_code
+      phone_code,
+      accepted_terms
     } = req.body;
+
+    // The sign-up form keeps "Continue" disabled until this box is ticked.
+    if (accepted_terms !== true) {
+      return res.status(400).json({
+        error: "Please agree to the Terms of Service and Privacy Policy to create an account.",
+      });
+    }
 
     if (
       !String(first_name ?? "").trim() ||
@@ -214,6 +222,32 @@ export const login = (req, res) => {
   );
 };
 
+
+/* =====================================
+               SESSION
+====================================== */
+// GET /auth/session — the signed-in user as the database has them now. Used
+// when a role changes while signed in (an admin approving a business
+// registration), so the app can switch to a token with the new role without
+// asking the person to sign out and in again.
+export const getSession = async (req, res) => {
+  try {
+    const [[user]] = await db.promise().query(
+      `SELECT id, role_id, first_name, middle_name, last_name, email, phone, photo_url
+       FROM users WHERE id = ? LIMIT 1`,
+      [req.user.id]
+    );
+    if (!user) return res.status(401).json({ error: "Account not found." });
+
+    const token = jwt.sign({ id: user.id, role_id: user.role_id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+    res.json({ token, user });
+  } catch (err) {
+    console.error("getSession error:", { code: err.code });
+    res.status(500).json({ error: "Couldn't load your account." });
+  }
+};
 
 /* =====================================
              GOOGLE LOGIN

@@ -33,6 +33,10 @@ const BUSINESS_NAV = [
   { label: "Reviews", href: "/business/reviews" },
 ];
 
+// Switches between a shop owner's portal and the customer side.
+const BROWSE_LINK = { label: "Browse PixelPatch", href: "/", exact: true, switcher: true };
+const MY_SHOP_LINK = { label: "My shop", href: "/business/dashboard", switcher: true };
+
 const ADMIN_NAV = [
   { label: "Dashboard", href: "/admin/dashboard", exact: true },
   { label: "Services", href: "/admin/services" },
@@ -73,15 +77,25 @@ export default function WebHeader() {
     Animated.timing(slide, { toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver }).start(() =>
       setMenuPath(null)
     );
-  const navigation = !isLoggedIn ? GUEST_NAV : isAdmin ? ADMIN_NAV : isBusiness ? BUSINESS_NAV : CLIENT_NAV;
-  const profileHref = isAdmin ? "/admin/account" : isBusiness ? "/business/profile" : "/profile";
+  // Shop owners use PixelPatch two ways: their shop's portal (/business/...)
+  // and the customer side (browsing, booking at other shops). The header
+  // follows whichever side they are on and links to the other.
+  const inShopPortal = isBusiness && (pathname === "/business" || pathname.startsWith("/business/"));
+  const navigation = !isLoggedIn
+    ? GUEST_NAV
+    : isAdmin
+      ? ADMIN_NAV
+      : isBusiness
+        ? inShopPortal ? [...BUSINESS_NAV, BROWSE_LINK] : [...CLIENT_NAV, MY_SHOP_LINK]
+        : CLIENT_NAV;
+  const profileHref = isAdmin ? "/admin/account" : inShopPortal ? "/business/profile" : "/profile";
   // Visible label: the signed-in person's first name, else one word for the role.
   const firstName = String(user?.first_name ?? "").trim();
-  const profileLabel = firstName || (isAdmin ? "Admin" : isBusiness ? "Shop" : "Profile");
+  const profileLabel = firstName || (isAdmin ? "Admin" : inShopPortal ? "Shop" : "Profile");
   // Screen readers still hear where the link goes.
-  const profileDestination = isAdmin ? "admin account" : isBusiness ? "shop profile" : "profile";
+  const profileDestination = isAdmin ? "admin account" : inShopPortal ? "shop profile" : "profile";
   const profileA11yLabel = firstName ? `${firstName}, open ${profileDestination}` : `Open ${profileDestination}`;
-  const homeHref = isAdmin ? "/admin/dashboard" : isBusiness ? "/business/dashboard" : "/";
+  const homeHref = isAdmin ? "/admin/dashboard" : inShopPortal ? "/business/dashboard" : "/";
 
   const navigate = (href) => {
     setMenuPath(null);
@@ -89,16 +103,28 @@ export default function WebHeader() {
   };
 
   const links = navigation.map((item) => {
-    const active = isActive(pathname, item.href, item.exact);
+    const active = !item.switcher && isActive(pathname, item.href, item.exact);
     return (
       <Pressable
-        key={item.href}
+        key={`${item.label}-${item.href}`}
         onPress={() => navigate(item.href)}
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
-        className={`rounded-md px-3 py-3 ${active ? "bg-teal-50" : ""}`}
+        className={`flex-row items-center rounded-md px-3 py-3 ${active ? "bg-teal-50" : ""}`}
       >
-        <Text className={`text-sm font-semibold ${active ? "text-teal-800" : "text-gray-600"}`}>
+        {item.switcher ? (
+          <Ionicons
+            name={item.href === "/" ? "home-outline" : "storefront-outline"}
+            size={16}
+            color={COLORS.primary}
+            style={{ marginRight: 6 }}
+          />
+        ) : null}
+        <Text
+          className={`text-sm font-semibold ${
+            active ? "text-teal-800" : item.switcher ? "text-primary" : "text-gray-600"
+          }`}
+        >
           {item.label}
         </Text>
       </Pressable>

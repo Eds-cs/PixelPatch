@@ -25,6 +25,7 @@ import { useFetch } from "../../lib/useFetch";
 import { appendImage, pickImages, multipartConfig } from "../../lib/upload";
 import { formatAddress } from "../../lib/format";
 import { COLORS } from "../../constants/theme";
+import { typeLabel } from "../../lib/deviceSpecs";
 
 const PESO = "₱";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -212,15 +213,28 @@ export default function NewRequest() {
               />
             </View>
           ) : (
-            (devices.data ?? []).map((d) => (
-              <SelectRow
-                key={d.id}
-                selected={deviceId === d.id}
-                title={d.name}
-                subtitle={[d.brand, d.model].filter(Boolean).join(" ")}
-                onPress={() => setDeviceId(d.id)}
-              />
-            ))
+            (devices.data ?? []).map((d) =>
+              d.device_type ? (
+                <SelectRow
+                  key={d.id}
+                  selected={deviceId === d.id}
+                  title={d.name}
+                  subtitle={[typeLabel(d.device_type), [d.brand, d.model].filter(Boolean).join(" ")]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  onPress={() => setDeviceId(d.id)}
+                />
+              ) : (
+                // Older devices need their type and specifications first.
+                <SelectRow
+                  key={d.id}
+                  selected={false}
+                  title={d.name}
+                  subtitle="Add its type and specifications first (opens My devices)"
+                  onPress={() => router.push("/devices")}
+                />
+              )
+            )
           )}
         </Card>
 

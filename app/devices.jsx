@@ -1,7 +1,9 @@
 // app/devices.jsx
 // GET    /api/user/devices       (includes request_count)
-// POST   /api/user/devices       (multipart: name, brand, model, serial_number, model_number, photo)
+// POST   /api/user/devices       (multipart: device_type, name, brand, model, serial_number,
+//                                 model_number, specs (JSON), photo)
 // PUT    /api/user/devices/:id   (same fields; photo optional)
+// Device types and their specification fields: lib/deviceSpecs.js.
 // DELETE /api/user/devices/:id   (refused while a repair request uses the device)
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
@@ -18,9 +20,41 @@ import { appendImage, pickImages, multipartConfig } from "../lib/upload";
 import { confirmAction } from "../lib/confirm";
 import { useResponsive } from "../lib/useResponsive";
 import { COLORS } from "../constants/theme";
+import {
+  DEVICE_TYPES,
+  DEVICE_TYPE_KEYS,
+  parseSpecs,
+  specSummary,
+  typeIcon,
+  typeLabel,
+} from "../lib/deviceSpecs";
 
-const EMPTY = { name: "", brand: "", model: "", serial_number: "", model_number: "" };
+const EMPTY = { device_type: "", name: "", brand: "", model: "", serial_number: "", model_number: "", specs: {} };
 const usedCount = (device) => Number(device?.request_count) || 0;
+
+function OptionChips({ options, value, onChange, disabled }) {
+  return (
+    <View className="flex-row flex-wrap">
+      {options.map((option) => {
+        const selected = value === option;
+        return (
+          <Pressable
+            key={option}
+            onPress={() => onChange(selected ? "" : option)}
+            disabled={disabled}
+            accessibilityRole="radio"
+            accessibilityState={{ selected, disabled }}
+            className={`mb-2 mr-2 min-h-10 justify-center rounded-full border px-3.5 py-2 ${
+              selected ? "border-primary bg-primary" : "border-gray-300 bg-white"
+            }`}
+          >
+            <Text className={`text-sm ${selected ? "font-semibold text-white" : "text-gray-700"}`}>{option}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 export default function Devices() {
   const { isMobile } = useResponsive();
@@ -38,6 +72,13 @@ export default function Devices() {
 
   const isNew = editing === "new";
   const setField = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
+  const type = DEVICE_TYPES[form.device_type];
+  // Brand/model/serial/model number have their own columns; the rest live in specs.
+  const fieldValue = (field) => (field.column ? form[field.key] : form.specs[field.key]) ?? "";
+  const setFieldValue = (field) => (value) =>
+    setForm((f) =>
+      field.column ? { ...f, [field.key]: value } : { ...f, specs: { ...f.specs, [field.key]: value } }
+    );
 
   const openNew = () => {
     setForm(EMPTY);
@@ -48,11 +89,13 @@ export default function Devices() {
 
   const openEdit = (device) => {
     setForm({
+      device_type: device.device_type ?? "",
       name: device.name ?? "",
       brand: device.brand ?? "",
       model: device.model ?? "",
       serial_number: device.serial_number ?? "",
       model_number: device.model_number ?? "",
+      specs: parseSpecs(device.specs),
     });
     setPhoto(null);
     setFormError(null);
@@ -74,15 +117,30 @@ export default function Devices() {
   };
 
   const submit = async () => {
-    if (!form.name.trim()) {
-      setFormError("Give the device a name.");
+    if (!type) {
+      setFormError("Choose what kind of device this is.");
+      return;
+    }
+    const missing = type.fields.find((field) => field.required && !String(fieldValue(field)).trim());
+    if (missing) {
+      setFormError(`${missing.label} is required for a ${type.label.toLowerCase()}.`);
       return;
     }
     setBusy(true);
     setFormError(null);
     try {
+      // Only this type's specifications are sent.
+      const specs = Object.fromEntries(
+        type.fields
+          .filter((field) => !field.column)
+          .map((field) => [field.key, String(form.specs[field.key] ?? "").trim()])
+          .filter(([, value]) => value)
+      );
       const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => fd.append(k, v.trim()));
+      ["device_type", "name", "brand", "model", "serial_number", "model_number"].forEach((key) =>
+        fd.append(key, String(form[key] ?? "").trim())
+      );
+      fd.append("specs", JSON.stringify(specs));
       if (photo) await appendImage(fd, "photo", photo);
 
       if (isNew) await api.post("/user/devices", fd, multipartConfig());
@@ -157,15 +215,25 @@ export default function Devices() {
               />
             ) : (
               <View className="mr-3 h-14 w-14 items-center justify-center rounded-lg bg-primary-soft">
-                <Ionicons name="hardware-chip-outline" size={24} color={COLORS.primary} />
+                <Ionicons name={typeIcon(item.device_type)} size={24} color={COLORS.primary} />
               </View>
             )}
 
             <View className="flex-1">
               <Text className="text-base font-semibold text-gray-900">{item.name}</Text>
               <Text className="mt-0.5 text-sm text-gray-500">
-                {[item.brand, item.model].filter(Boolean).join(" ") || "No model recorded"}
+                {[typeLabel(item.device_type), [item.brand, item.model].filter(Boolean).join(" ")]
+                  .filter(Boolean)
+                  .join(" · ")}
               </Text>
+              {specSummary(item) ? (
+                <Text className="mt-0.5 text-xs text-gray-500">{specSummary(item)}</Text>
+              ) : null}
+              {!item.device_type ? (
+                <Text className="mt-1 text-xs font-semibold text-amber-700">
+                  Tap to add its type and specifications
+                </Text>
+              ) : null}
               {item.serial_number ? (
                 <Text className="mt-0.5 text-xs text-gray-400">SN: {item.serial_number}</Text>
               ) : null}
@@ -209,49 +277,79 @@ export default function Devices() {
           </Text>
         ) : null}
 
-        <TextField
-          label="Device name"
-          value={form.name}
-          onChangeText={setField("name")}
-          placeholder="e.g. My work laptop"
-          editable={!busy}
-        />
-        <View className={isMobile ? "" : "flex-row gap-3"}>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="Brand"
-              value={form.brand}
-              onChangeText={setField("brand")}
-              placeholder="Apple"
-              editable={!busy}
-            />
-          </View>
-          <View className={isMobile ? "" : "flex-1"}>
-            <TextField
-              label="Model"
-              value={form.model}
-              onChangeText={setField("model")}
-              placeholder="MacBook Pro"
-              editable={!busy}
-            />
-          </View>
+        <Text className="mb-1.5 text-sm font-medium text-gray-700">What kind of device is it?</Text>
+        <View className={`mb-2 ${isMobile ? "gap-2" : "flex-row gap-3"}`}>
+          {DEVICE_TYPE_KEYS.map((key) => {
+            const selected = form.device_type === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setField("device_type")(key)}
+                disabled={busy}
+                accessibilityRole="radio"
+                accessibilityState={{ selected, disabled: busy }}
+                className={`min-h-12 flex-row items-center rounded-xl border-2 px-3 py-3 ${isMobile ? "" : "flex-1"} ${
+                  selected ? "border-primary bg-teal-50" : "border-gray-200 bg-white"
+                }`}
+              >
+                <Ionicons name={DEVICE_TYPES[key].icon} size={22} color={selected ? COLORS.primary : COLORS.textMuted} />
+                <Text className={`ml-2 text-sm font-semibold ${selected ? "text-teal-900" : "text-gray-700"}`}>
+                  {DEVICE_TYPES[key].label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-        <TextField
-          label="Serial number (optional)"
-          value={form.serial_number}
-          onChangeText={setField("serial_number")}
-          placeholder="C02..."
-          autoCapitalize="characters"
-          editable={!busy}
-        />
-        <TextField
-          label="Model number (optional)"
-          value={form.model_number}
-          onChangeText={setField("model_number")}
-          placeholder="A2338"
-          autoCapitalize="characters"
-          editable={!busy}
-        />
+        <Text className="mb-4 text-xs leading-5 text-gray-500">
+          {type ? type.hint : "PixelPatch repairs phones, laptops and desktop computers (CPU)."}
+        </Text>
+
+        {type ? (
+          <>
+            <TextField
+              label="Nickname (optional)"
+              value={form.name}
+              onChangeText={setField("name")}
+              placeholder={`e.g. ${type.example}`}
+              editable={!busy}
+              maxLength={255}
+            />
+            <Text className="mb-3 text-sm font-bold text-gray-900">{type.label} specifications</Text>
+            <View className={isMobile ? "" : "flex-row flex-wrap"} style={isMobile ? undefined : { marginHorizontal: -6 }}>
+              {type.fields.map((field) => {
+                const label = `${field.label}${field.required ? "" : " (optional)"}`;
+                return (
+                  <View
+                    key={field.key}
+                    style={isMobile ? undefined : { width: field.options ? "100%" : "50%", paddingHorizontal: 6 }}
+                  >
+                    {field.options ? (
+                      <View className="mb-3">
+                        <Text className="mb-1.5 text-sm font-medium text-gray-700">{label}</Text>
+                        <OptionChips
+                          options={field.options}
+                          value={fieldValue(field)}
+                          onChange={setFieldValue(field)}
+                          disabled={busy}
+                        />
+                      </View>
+                    ) : (
+                      <TextField
+                        label={label}
+                        value={fieldValue(field)}
+                        onChangeText={setFieldValue(field)}
+                        placeholder={field.placeholder}
+                        autoCapitalize={field.caps ? "characters" : "sentences"}
+                        editable={!busy}
+                        maxLength={field.column ? 255 : 100}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
 
         <Text className="mb-1.5 text-sm font-medium text-gray-700">Photo (optional)</Text>
         {previewUri ? (

@@ -1,7 +1,7 @@
 // Participant-scoped conversations with server-backed last-message previews.
 import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import AsyncList from "../../components/AsyncList";
@@ -19,6 +19,10 @@ import { COLORS } from "../../constants/theme";
 export default function ChatList() {
   const router = useRouter();
   const { user, isBusiness } = useAuth();
+  // Shop owners see their shop's customer chats in the portal (/business/messages)
+  // and their own chats with other shops on the customer side (/chat).
+  const pathname = usePathname();
+  const shopMode = isBusiness && pathname.startsWith("/business");
   const { isMobile, isDesktop } = useResponsive();
   const socket = useSocket();
   const connected = useSocketConnected(socket);
@@ -30,8 +34,14 @@ export default function ChatList() {
   const [startError, setStartError] = useState(null);
   const availableShops = useFetch(newChatOpen ? "/public/shops" : null, (d) => d.shops ?? []);
   const focusedBefore = useRef(false);
-  const conversations = Array.isArray(data) ? data : [];
-  const roomIds = conversations.map((chat) => Number(chat.id)).sort((a, b) => a - b).join(",");
+  const allConversations = Array.isArray(data) ? data : [];
+  const roomIds = allConversations.map((chat) => Number(chat.id)).sort((a, b) => a - b).join(",");
+  const myId = String(user?.id);
+  const conversations = !isBusiness
+    ? allConversations
+    : allConversations.filter((chat) =>
+        shopMode ? String(chat.shop_owner_id) === myId : String(chat.client_id) === myId
+      );
 
   useFocusEffect(useCallback(() => {
     if (focusedBefore.current) refresh();
@@ -81,19 +91,19 @@ export default function ChatList() {
     <AsyncList
       loading={loading} error={error} refreshing={refreshing} onRefresh={refresh}
       data={filtered} keyExtractor={(item) => String(item.id)}
-      emptyText={conversations.length ? "No conversations match your search or filter." : isBusiness ? "No customer conversations yet." : "No conversations yet. Choose New conversation above to contact a featured shop."}
+      emptyText={conversations.length ? "No conversations match your search or filter." : shopMode ? "No customer conversations yet." : "No conversations yet. Choose New conversation above to contact a featured shop."}
       ListHeaderComponent={
         <View>
           <View className={isMobile ? "mb-5 gap-3" : "mb-5 flex-row flex-wrap items-center justify-between gap-3"}>
             <View className={isMobile ? "" : "flex-1"}><Text accessibilityRole="header" className="text-2xl font-bold text-gray-900">Messages</Text><Text className="mt-1 text-sm leading-5 text-gray-500">Keep your repair conversations in one place.</Text></View>
-            {isBusiness ? <Button title="Refresh" variant="outline" onPress={refresh} loading={refreshing} /> : <Button title="New conversation" onPress={() => { setStartError(null); setNewChatOpen(true); }} />}
+            {shopMode ? <Button title="Refresh" variant="outline" onPress={refresh} loading={refreshing} /> : <Button title="New conversation" onPress={() => { setStartError(null); setNewChatOpen(true); }} />}
           </View>
           <View className="mb-5 flex-row items-start gap-3 rounded-2xl border border-primary-soft bg-teal-50 p-4">
             <Ionicons name="chatbubbles-outline" size={25} color={COLORS.primary} />
-            <View className="flex-1"><Text className="text-sm font-bold text-teal-950">{isBusiness ? "Your customers' questions" : "A direct line to your repair shop"}</Text><Text className="mt-1 text-sm leading-5 text-primary-soft-foreground">{isBusiness ? "Customers can message you from your shop page before or during a repair. Reply here." : "Ask about your device, clarify a quotation, or follow up on repair progress."}</Text></View>
+            <View className="flex-1"><Text className="text-sm font-bold text-teal-950">{shopMode ? "Your customers' questions" : "A direct line to your repair shop"}</Text><Text className="mt-1 text-sm leading-5 text-primary-soft-foreground">{shopMode ? "Customers can message you from your shop page before or during a repair. Reply here." : "Ask about your device, clarify a quotation, or follow up on repair progress."}</Text></View>
           </View>
           <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-            <TextField label="Search conversations" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder={isBusiness ? "Customer name or latest message" : "Shop name or latest message"} />
+            <TextField label="Search conversations" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder={shopMode ? "Customer name or latest message" : "Shop name or latest message"} />
             <View className="flex-row flex-wrap gap-2">
               {[["all", "All conversations"], ["messages", "With messages"], ["empty", "No messages yet"]].map(([key, label]) => (
                 <Pressable key={key} onPress={() => setFilter(key)} accessibilityRole="button" accessibilityState={{ selected: filter === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${filter === key ? "bg-primary" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${filter === key ? "text-white" : "text-gray-600"}`}>{label}</Text></Pressable>

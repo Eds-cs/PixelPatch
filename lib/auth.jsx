@@ -17,6 +17,10 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   // Shown once on the login screen after an automatic sign-out.
   const [sessionNotice, setSessionNotice] = useState(null);
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
     (async () => {
@@ -72,6 +76,18 @@ export function AuthProvider({ children }) {
     [persist]
   );
 
+  // Picks up a role changed on the server while signed in (an admin approving
+  // a business registration). The token is replaced only when the role
+  // differs, so sessions still expire as usual. Returns the current user.
+  const refreshSession = useCallback(async () => {
+    const { data } = await api.get("/auth/session");
+    if (data?.user?.role_id !== undefined && data.user.role_id !== userRef.current?.role_id) {
+      const remember = await storage.isPersistent(KEYS.TOKEN);
+      await persist(data.token, { ...userRef.current, ...data.user }, remember);
+    }
+    return data?.user;
+  }, [persist]);
+
   const signup = useCallback(async (payload) => {
     const { data } = await api.post("/auth/register", payload);
     return data;
@@ -91,6 +107,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
+
+  // Once per app start, check the stored role is still current.
+  const checkedRole = useRef(false);
+  useEffect(() => {
+    if (loading || !token || checkedRole.current) return;
+    checkedRole.current = true;
+    refreshSession().catch(() => {});
+  }, [loading, token, refreshSession]);
   useEffect(() => {
     setUnauthorizedHandler((failedToken) => {
       if (signingOut.current || !tokenRef.current || failedToken !== tokenRef.current) return;
@@ -117,10 +141,11 @@ export function AuthProvider({ children }) {
       login,
       loginWithGoogle,
       setSession,
+      refreshSession,
       signup,
       logout,
     }),
-    [user, token, loading, sessionNotice, login, loginWithGoogle, setSession, signup, logout]
+    [user, token, loading, sessionNotice, login, loginWithGoogle, setSession, refreshSession, signup, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
