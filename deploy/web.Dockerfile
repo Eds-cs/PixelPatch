@@ -3,7 +3,8 @@
 # /uploads to the API container (see deploy/Caddyfile).
 
 # 1. Build the static website (Expo export).
-FROM node:22-bookworm-slim AS build
+# Node 24 ships npm 11, which matches the lockfile (npm 10 rejects it).
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
