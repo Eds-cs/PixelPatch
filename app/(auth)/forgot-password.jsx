@@ -89,7 +89,7 @@ export default function ForgotPassword() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="w-full max-w-md self-center">
-            <Text className="mb-2 text-3xl font-extrabold text-brand-600">Reset password</Text>
+            <Text className="mb-2 text-3xl font-extrabold text-gray-900">Reset password</Text>
             <Text className="mb-8 text-base text-gray-500">
               {step === "email"
                 ? "Enter your account's email and we'll send you a 6-digit code."
@@ -97,7 +97,7 @@ export default function ForgotPassword() {
             </Text>
 
             {notice ? (
-              <Text className="mb-6 rounded-lg bg-brand-50 p-3 text-sm text-brand-800">{notice}</Text>
+              <Text className="mb-6 rounded-lg bg-teal-50 p-3 text-sm text-primary-soft-foreground">{notice}</Text>
             ) : null}
 
             {errors.form ? (
@@ -169,7 +169,7 @@ export default function ForgotPassword() {
                     disabled={sending}
                     className={sending ? "opacity-50" : ""}
                   >
-                    <Text className="text-sm font-medium text-brand-600">
+                    <Text className="text-sm font-medium text-primary">
                       {sending ? "Sending…" : "Resend code"}
                     </Text>
                   </Pressable>
@@ -188,8 +188,8 @@ export default function ForgotPassword() {
             )}
 
             <View className="mt-8 flex-row justify-center">
-              <Link href="/login" className="text-sm font-semibold text-brand-600">
-                Back to sign in
+              <Link href="/login">
+                <Text className="text-sm font-semibold text-primary">Back to sign in</Text>
               </Link>
             </View>
           </View>

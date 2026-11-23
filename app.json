@@ -28,7 +28,7 @@
       "bundler": "metro",
       "output": "single",
       "name": "PixelPatch",
-      "themeColor": "#2b2724",
+      "themeColor": "#0F766E",
       "backgroundColor": "#ffffff",
       "description": "Repair service platform for electronic devices. Find trusted technicians near you."
     },

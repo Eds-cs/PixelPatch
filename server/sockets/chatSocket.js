@@ -61,7 +61,6 @@ export default function setupChatSockets(io) {
     // Receive a send_message event from client
     // payload: { chat_id, message_text }
     socket.on("send_message", async (payload, ack) => {
-      console.log("🔥 send_message RECEIVED on server:", payload);
       try {
         const sender_id = socket.user.id;
         const { chat_id, message_text } = payload || {};

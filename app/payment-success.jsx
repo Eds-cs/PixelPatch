@@ -23,7 +23,7 @@ export default function PaymentSuccess() {
       <Stack.Screen options={{ title: "Payment", headerShown: true }} />
 
       <View className="mb-5 h-20 w-20 items-center justify-center rounded-full bg-emerald-100">
-        <Ionicons name="checkmark-circle" size={44} color="#059669" />
+        <Ionicons name="checkmark-circle" size={44} color="#15803D" />
       </View>
 
       <Text className="mb-2 text-center text-xl font-bold text-gray-900">

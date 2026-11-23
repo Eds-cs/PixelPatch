@@ -1,17 +1,26 @@
 import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { statusBadgeClasses } from "../constants/theme";
+
 const PESO = "₱";
 
-const REPAIR_STATUS_STYLES = {
-  pending: ["bg-amber-100", "text-amber-800", "Pending"],
-  review: ["bg-brand-100", "text-brand-800", "In review"],
-  accepted: ["bg-brand-100", "text-brand-800", "Accepted"],
-  in_progress: ["bg-brand-600", "text-white", "In progress"],
-  completed: ["bg-emerald-100", "text-emerald-800", "Completed"],
-  rejected: ["bg-red-100", "text-red-800", "Rejected"],
-  cancelled: ["bg-gray-200", "text-gray-700", "Cancelled"],
+// Badge colors come from the theme's status tones (constants/theme.js).
+const REPAIR_STATUS_LABELS = {
+  pending: "Pending",
+  review: "In review",
+  accepted: "Accepted",
+  in_progress: "In progress",
+  completed: "Completed",
+  rejected: "Rejected",
+  cancelled: "Cancelled",
 };
+const REPAIR_STATUS_STYLES = Object.fromEntries(
+  Object.entries(REPAIR_STATUS_LABELS).map(([key, label]) => {
+    const { bg, text } = statusBadgeClasses(key);
+    return [key, [bg, text, label]];
+  })
+);
 
 // service_requests.client_approved: null = undecided, 1 = approved, 0 = cancelled.
 // Check for null first: Number(null) is 0.
@@ -181,7 +190,7 @@ export function getRepairLocation({ deliveryMethod, serviceAddress, shopAddress 
 export function RepairCancelledNotice({ message }) {
   return (
     <View className="mb-4 flex-row rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <Ionicons name="ban-outline" size={22} color="#57534e" />
+      <Ionicons name="ban-outline" size={22} color="#52635F" />
       <View className="ml-3 flex-1">
         <Text className="text-base font-bold text-gray-800">Repair request cancelled</Text>
         <Text className="mt-1 text-sm text-gray-600">

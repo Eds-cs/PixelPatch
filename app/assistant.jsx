@@ -1,13 +1,12 @@
 // Troubleshooting UI. Starter prompts edit the draft; only Send calls the AI.
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../components/Button";
 import Modal from "../components/Modal";
-import TextField from "../components/TextField";
 import { ServiceRating } from "../components/ServiceSummary";
 import api from "../lib/api";
 import { useFetch } from "../lib/useFetch";
@@ -18,10 +17,21 @@ import { COLORS } from "../constants/theme";
 
 const SUGGESTIONS = [
   { title: "Phone not charging", icon: "battery-charging-outline", text: "My phone will not charge. What should I check first?" },
-  { title: "Laptop display issue", icon: "laptop-outline", text: "My laptop screen flickers. How can I narrow down the cause?" },
-  { title: "Tablet got wet", icon: "tablet-portrait-outline", text: "My tablet got wet. What should I do next?" },
+  { title: "Laptop screen flickers", icon: "laptop-outline", text: "My laptop screen flickers. How can I narrow down the cause?" },
+  { title: "Tablet got wet", icon: "water-outline", text: "My tablet got wet. What should I do next?" },
   { title: "Controller stick drift", icon: "game-controller-outline", text: "My controller stick moves on its own. What could be causing this?" },
 ];
+
+// Readable line length for the conversation and the message box.
+const CHAT_WIDTH = 760;
+
+function AssistantAvatar({ size = 32 }) {
+  return (
+    <View style={{ width: size, height: size }} className="items-center justify-center rounded-full bg-primary">
+      <Ionicons name="sparkles" size={Math.round(size * 0.5)} color="#ffffff" />
+    </View>
+  );
+}
 
 function BoldText({ text }) {
   return String(text).split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
@@ -36,7 +46,7 @@ function ReplyText({ text }) {
     const heading = /^#{1,6}\s+(.+)/.exec(line);
     const bullet = /^\s*[-*]\s+(.+)/.exec(line);
     const numbered = /^\s*(\d+[.)])\s+(.+)/.exec(line);
-    if (bullet || numbered) return <View key={index} className="my-1 flex-row items-start gap-2"><Text className="text-base leading-6 text-brand-600">{numbered ? numbered[1] : "•"}</Text><Text selectable className="text-base leading-6 text-gray-800" style={{ flexShrink: 1 }}><BoldText text={numbered ? numbered[2] : bullet[1]} /></Text></View>;
+    if (bullet || numbered) return <View key={index} className="my-1 flex-row items-start gap-2"><Text className="text-base leading-6 text-primary">{numbered ? numbered[1] : "•"}</Text><Text selectable className="text-base leading-6 text-gray-800" style={{ flexShrink: 1 }}><BoldText text={numbered ? numbered[2] : bullet[1]} /></Text></View>;
     return <Text key={index} selectable className={heading ? "mb-1 mt-3 text-base font-bold leading-6 text-gray-900" : "text-base leading-6 text-gray-800"}><BoldText text={heading ? heading[1] : line} /></Text>;
   });
 }
@@ -63,9 +73,9 @@ function IconAction({ icon, label, onPress, disabled, danger, onFocus, onBlur })
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
       hitSlop={4}
-      className={`h-11 w-11 items-center justify-center rounded-lg active:bg-gray-100 ${disabled ? "opacity-40" : ""}`}
+      className={`h-9 w-9 items-center justify-center rounded-md active:bg-gray-200 ${disabled ? "opacity-40" : ""}`}
     >
-      <Ionicons name={icon} size={18} color={danger ? COLORS.danger : COLORS.textMuted} />
+      <Ionicons name={icon} size={16} color={danger ? COLORS.danger : COLORS.textMuted} />
     </Pressable>
   );
 }
@@ -78,10 +88,10 @@ function NewChatButton({ onPress, disabled }) {
       accessibilityRole="button"
       accessibilityLabel="Start a new chat"
       accessibilityState={{ disabled }}
-      className={`min-h-12 flex-row items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 active:bg-brand-100 ${disabled ? "opacity-50" : ""}`}
+      className={`min-h-11 flex-row items-center justify-center gap-2 rounded-xl bg-primary px-4 active:bg-teal-800 ${disabled ? "opacity-50" : ""}`}
     >
-      <Ionicons name="add" size={20} color={COLORS.primary} />
-      <Text className="text-sm font-semibold text-brand-700">New chat</Text>
+      <Ionicons name="add" size={20} color="#ffffff" />
+      <Text className="text-sm font-semibold text-white">New chat</Text>
     </Pressable>
   );
 }
@@ -94,9 +104,9 @@ function HeaderIcon({ icon, label, onPress, disabled }) {
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
-      className={`h-11 w-11 items-center justify-center rounded-lg border border-gray-200 active:bg-gray-100 ${disabled ? "opacity-50" : ""}`}
+      className={`h-11 w-11 items-center justify-center rounded-full active:bg-gray-100 ${disabled ? "opacity-50" : ""}`}
     >
-      <Ionicons name={icon} size={20} color={COLORS.primary} />
+      <Ionicons name={icon} size={22} color={COLORS.text} />
     </Pressable>
   );
 }
@@ -140,11 +150,17 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
 
   return (
     <View>
-      <TextField label="Search conversations" placeholder="Conversation title" value={query} onChangeText={setQuery} autoCapitalize="none" />
-      <View className="mb-3 flex-row items-center justify-between gap-2">
-        <Text className="flex-1 text-xs text-gray-400">{CAN_HOVER ? "Recent saved conversations" : "Press and hold a conversation to rename or delete it"}</Text>
-        <Pressable onPress={onRefresh} disabled={refreshing || disabled} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-xs font-semibold text-brand-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
+      <View className="mb-4 h-10 flex-row items-center rounded-lg border border-gray-200 bg-white px-3">
+        <Ionicons name="search-outline" size={16} color={COLORS.textMuted} />
+        <TextInput value={query} onChangeText={setQuery} placeholder="Search chats" placeholderTextColor="#8A9B98" accessibilityLabel="Search conversations" autoCapitalize="none" className="h-10 flex-1 px-2 text-sm text-gray-900" />
       </View>
+      <View className="mb-1 flex-row items-center justify-between gap-2 px-1">
+        <Text className="text-xs font-semibold uppercase tracking-wide text-gray-400">Recent</Text>
+        <Pressable onPress={onRefresh} disabled={refreshing || disabled} accessibilityRole="button" accessibilityLabel="Refresh conversations" className="h-9 w-9 items-center justify-center rounded-full active:bg-gray-200">
+          {refreshing ? <ActivityIndicator size="small" color={COLORS.textMuted} /> : <Ionicons name="refresh-outline" size={16} color={COLORS.textMuted} />}
+        </Pressable>
+      </View>
+      {!CAN_HOVER ? <Text className="mb-2 px-1 text-xs text-gray-400">Press and hold a chat to rename or delete it.</Text> : null}
       {loading ? <ActivityIndicator color={COLORS.primary} /> : error ? <View className="rounded-xl bg-red-50 p-3"><Text accessibilityRole="alert" className="text-sm leading-5 text-red-700">{error}</Text><Button title="Try again" variant="ghost" onPress={onRefresh} loading={refreshing} /></View> : filtered.map((item) => {
         const active = String(activeId) === String(item.id);
         const editing = editingId === item.id;
@@ -159,7 +175,7 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
             key={item.id}
             onPointerEnter={CAN_HOVER ? () => setRevealedId(item.id) : undefined}
             onPointerLeave={CAN_HOVER ? () => conceal(item.id) : undefined}
-            className={`mb-2 rounded-xl border ${active ? "border-brand-200 bg-brand-50" : "border-gray-200 bg-white"}`}
+            className={`mb-0.5 rounded-lg ${active ? "bg-primary-soft" : showActions ? "bg-gray-100" : ""}`}
           >
             {editing ? (
               <View className="p-2">
@@ -173,15 +189,15 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
                   returnKeyType="done"
                   accessibilityLabel="Conversation name"
                   placeholder="Conversation name"
-                  placeholderTextColor="#a8a29e"
-                  className="h-11 rounded-lg border border-brand-300 bg-white px-3 text-sm text-gray-900"
+                  placeholderTextColor="#8A9B98"
+                  className="h-11 rounded-lg border border-teal-300 bg-white px-3 text-sm text-gray-900"
                 />
                 <View className="mt-1 flex-row items-center justify-between">
                   <Text className="text-xs text-gray-400">{draft.trim().length}/{TITLE_MAX}</Text>
                   <View className="flex-row">
                     <Pressable onPress={cancelRename} disabled={saving} accessibilityRole="button" className="min-h-11 justify-center px-3"><Text className="text-sm font-semibold text-gray-600">Cancel</Text></Pressable>
                     <Pressable onPress={() => saveRename(item)} disabled={saving} accessibilityRole="button" accessibilityState={{ busy: saving }} className="min-h-11 justify-center px-3">
-                      {saving ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text className="text-sm font-semibold text-brand-600">Save</Text>}
+                      {saving ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text className="text-sm font-semibold text-primary">Save</Text>}
                     </Pressable>
                   </View>
                 </View>
@@ -205,16 +221,16 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
                     if (nativeEvent.actionName === "rename") startRename(item);
                     if (nativeEvent.actionName === "delete") onDelete(item);
                   }}
-                  className={`min-h-12 flex-1 p-3 pr-1 ${locked ? "opacity-60" : ""}`}
+                  className={`min-h-11 flex-1 justify-center px-3 py-2 ${locked ? "opacity-60" : ""}`}
                 >
-                  <View className="flex-row items-start gap-2"><Ionicons name="chatbubble-outline" size={16} color={COLORS.primary} /><Text numberOfLines={2} className="flex-1 text-sm font-semibold text-gray-800">{titleOf(item)}</Text>{String(loadingId) === String(item.id) ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}</View>
-                  <Text className="mt-2 text-xs text-gray-400">{chatDate(item.updated_at)}</Text>
+                  <View className="flex-row items-center gap-2"><Text numberOfLines={1} className={`flex-1 text-sm ${active ? "font-semibold text-gray-900" : "text-gray-700"}`}>{titleOf(item)}</Text>{String(loadingId) === String(item.id) ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}</View>
+                  <Text className="mt-0.5 text-xs text-gray-400">{chatDate(item.updated_at)}</Text>
                 </Pressable>
                 {/* Mouse: kept in the layout (just invisible and not clickable) so the
                     title never reflows on hover. Touch: only rendered once revealed,
                     so hidden buttons can't be tapped by accident. */}
                 {CAN_HOVER || showActions ? (
-                  <View className="flex-row pr-1 pt-1" style={{ opacity: showActions ? 1 : 0 }} pointerEvents={showActions ? "auto" : "none"}>
+                  <View className="flex-row items-center pr-1" style={{ opacity: showActions ? 1 : 0 }} pointerEvents={showActions ? "auto" : "none"}>
                     <IconAction icon="create-outline" label={`Rename ${titleOf(item)}`} disabled={locked} onPress={() => startRename(item)} onFocus={() => setRevealedId(item.id)} onBlur={CAN_HOVER ? () => conceal(item.id) : undefined} />
                     <IconAction icon="trash-outline" label={`Delete ${titleOf(item)}`} disabled={locked} danger onPress={() => { setRevealedId(null); onDelete(item); }} onFocus={() => setRevealedId(item.id)} onBlur={CAN_HOVER ? () => conceal(item.id) : undefined} />
                   </View>
@@ -225,7 +241,7 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
           </View>
         );
       })}
-      {!loading && !error && !filtered.length ? <Text className="py-4 text-sm leading-5 text-gray-500">{conversations.length ? "No saved conversations match that search." : "Your conversations will appear here after you send a message."}</Text> : null}
+      {!loading && !error && !filtered.length ? <Text className="px-1 py-4 text-sm leading-5 text-gray-500">{conversations.length ? "No chats match that search." : "Your chats will appear here after you send a message."}</Text> : null}
     </View>
   );
 }
@@ -244,7 +260,10 @@ export default function Assistant() {
   const [messages, setMessages] = useState([]);
   const [shops, setShops] = useState([]);
   const [conversationId, setConversationId] = useState(null);
-  const [draft, setDraft] = useState("");
+  // ?prompt=... (from the home page) starts the message box with that question;
+  // the person still reviews it and presses Send.
+  const { prompt } = useLocalSearchParams();
+  const [draft, setDraft] = useState(() => (typeof prompt === "string" ? prompt.slice(0, 500) : ""));
   const [sending, setSending] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
   const [error, setError] = useState(null);
@@ -370,7 +389,7 @@ export default function Assistant() {
   const empty = messages.length === 0;
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["bottom", "left", "right"]}>
+    <SafeAreaView className="flex-1 bg-white" edges={["bottom", "left", "right"]}>
       <Stack.Screen options={{ title: "AI assistant", headerShown: false }} />
       {/* Phones and tablets have no sidebar, so a slim bar carries the title and
           the history / new-chat icons. On desktop all of this lives in the sidebar. */}
@@ -378,10 +397,13 @@ export default function Assistant() {
         <View className="border-b border-gray-200 bg-white">
           <View className="w-full flex-row items-center justify-between gap-3 self-center py-2.5" style={{ maxWidth: 1280, paddingHorizontal: horizontalPadding }}>
             <View className="flex-1 flex-row items-center gap-2.5">
-              <View className="h-9 w-9 items-center justify-center rounded-lg bg-brand-50"><Ionicons name="sparkles-outline" size={19} color={COLORS.primary} /></View>
-              <Text accessibilityRole="header" numberOfLines={1} className="flex-shrink text-base font-bold text-gray-900">PixelPatch assistant</Text>
+              <AssistantAvatar size={34} />
+              <View className="flex-shrink">
+                <Text accessibilityRole="header" numberOfLines={1} className="text-base font-bold text-gray-900">PixelPatch AI</Text>
+                <Text numberOfLines={1} className="text-xs text-gray-500">{conversationId ? conversationTitle || "Saved conversation" : "Repair assistant"}</Text>
+              </View>
             </View>
-            <View className="flex-row gap-2">
+            <View className="flex-row gap-1">
               <HeaderIcon icon="list-outline" label="Open past conversations" disabled={disabled} onPress={openHistory} />
               <HeaderIcon icon="create-outline" label="Start a new chat" disabled={disabled} onPress={startNew} />
             </View>
@@ -393,32 +415,34 @@ export default function Assistant() {
           message list and composer keep their own 960px cap. */}
       <View className="w-full flex-1 self-center" style={{ maxWidth: isDesktop ? undefined : 1280, flexDirection: "row" }}>
         {isDesktop ? (
-          <View style={{ width: 280 }} className="border-r border-gray-200 bg-white">
-            {/* Sidebar top: assistant title, then New chat (pinned above the list). */}
-            <View className="border-b border-gray-100 p-4">
-              <View className="mb-4 flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-xl bg-brand-50"><Ionicons name="sparkles-outline" size={21} color={COLORS.primary} /></View>
+          <View style={{ width: 280 }} className="border-r border-gray-200 bg-gray-50">
+            <View className="p-4">
+              <View className="mb-4 flex-row items-center gap-3 px-1">
+                <AssistantAvatar size={36} />
                 <View style={{ flexShrink: 1 }}>
-                  <Text accessibilityRole="header" className="text-base font-bold text-gray-900">PixelPatch assistant</Text>
-                  <Text className="mt-0.5 text-xs leading-4 text-gray-500">Troubleshoot your device, one step at a time.</Text>
+                  <Text accessibilityRole="header" className="text-base font-bold text-gray-900">PixelPatch AI</Text>
+                  <Text className="text-xs text-gray-500">Your repair assistant</Text>
                 </View>
               </View>
               <NewChatButton onPress={startNew} disabled={disabled} />
             </View>
-            <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
-              <Text className="mb-4 text-base font-bold text-gray-900">Past conversations</Text>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
               {historyPanel}
             </ScrollView>
           </View>
         ) : null}
 
         <KeyboardAvoidingView className="flex-1" style={{ minWidth: 0 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
-          {conversationId ? <View className="px-4 pt-3"><Text numberOfLines={2} className="text-center text-xs font-medium text-gray-500">{conversationTitle || "Saved conversation"}</Text></View> : null}
+          {conversationId && isDesktop ? (
+            <View className="border-b border-gray-100 px-6 py-3">
+              <Text numberOfLines={1} className="text-center text-sm font-semibold text-gray-700">{conversationTitle || "Saved conversation"}</Text>
+            </View>
+          ) : null}
           {loadingId !== null ? <View className="flex-1 items-center justify-center"><ActivityIndicator color={COLORS.primary} /><Text className="mt-3 text-sm text-gray-500">Loading conversation…</Text></View> : (
             <FlatList
               ref={listRef} className="flex-1" data={messages} keyExtractor={(message) => message._key}
               keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-              contentContainerStyle={{ paddingVertical: 24, paddingHorizontal: horizontalPadding, flexGrow: 1, maxWidth: 960, width: "100%", alignSelf: "center" }}
+              contentContainerStyle={{ paddingVertical: 28, paddingHorizontal: horizontalPadding, flexGrow: 1, maxWidth: CHAT_WIDTH + horizontalPadding * 2, width: "100%", alignSelf: "center" }}
               onScroll={({ nativeEvent }) => {
                 stickToBottom.current = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y < 80;
                 if (stickToBottom.current) setNewReply(false);
@@ -427,48 +451,73 @@ export default function Assistant() {
               onContentSizeChange={() => { if (stickToBottom.current) listRef.current?.scrollToEnd({ animated: false }); }}
               ListEmptyComponent={
                 <View className="flex-1 justify-center py-3">
-                  <View className="mb-5 h-16 w-16 items-center justify-center self-center rounded-2xl bg-brand-50"><Ionicons name="sparkles" size={30} color={COLORS.primary} /></View>
-                  <Text className="text-center text-2xl font-bold text-gray-900">What is happening with your device?</Text>
-                  <Text className="mb-6 mt-3 text-center text-sm leading-6 text-gray-500">Share the symptoms, device model, and what you have tried. Start with a prompt below or write your own question.</Text>
+                  <View className="mb-5 self-center"><AssistantAvatar size={56} /></View>
+                  <Text className={`text-center font-bold text-gray-900 ${isMobile ? "text-2xl" : "text-3xl"}`}>Hi! What&apos;s wrong with your device?</Text>
+                  <Text className="mx-auto mb-8 mt-3 max-w-md text-center text-base leading-6 text-gray-500">Describe the problem and I&apos;ll help you fix it yourself, or point you to a shop that can.</Text>
                   <View className="flex-row flex-wrap justify-between gap-y-3">
                     {SUGGESTIONS.map((suggestion) => (
-                      <Pressable key={suggestion.title} onPress={() => fillPrompt(suggestion.text)} accessibilityRole="button" accessibilityLabel={`Use prompt: ${suggestion.title}`} disabled={disabled} style={{ width: isMobile ? "100%" : "48.5%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50">
-                        <View className="flex-row items-center gap-3"><Ionicons name={suggestion.icon} size={22} color={COLORS.primary} /><Text className="flex-1 text-sm font-bold text-gray-800">{suggestion.title}</Text><Ionicons name="add-outline" size={18} color={COLORS.textMuted} /></View>
-                        <Text className="mt-2 text-xs leading-5 text-gray-500">{suggestion.text}</Text>
+                      <Pressable key={suggestion.title} onPress={() => fillPrompt(suggestion.text)} accessibilityRole="button" accessibilityLabel={`Use prompt: ${suggestion.title}`} disabled={disabled} style={{ width: isMobile ? "100%" : "48.5%" }} className="flex-row items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 active:bg-gray-50">
+                        <View className="h-10 w-10 items-center justify-center rounded-xl bg-teal-50"><Ionicons name={suggestion.icon} size={20} color={COLORS.primary} /></View>
+                        <View className="flex-1">
+                          <Text className="text-sm font-semibold text-gray-900">{suggestion.title}</Text>
+                          <Text numberOfLines={1} className="mt-0.5 text-xs text-gray-500">{suggestion.text}</Text>
+                        </View>
                       </Pressable>
                     ))}
                   </View>
-                  <Text className="mt-4 text-center text-xs text-gray-400">A prompt fills the message box. Review it, then press Send.</Text>
+                  <Text className="mt-5 text-center text-xs text-gray-400">Tapping a suggestion fills the message box. Review it, then press send.</Text>
                 </View>
               }
               renderItem={({ item }) => {
                 const mine = item.sender === "user";
-                // Both bubbles size to their content, capped so long replies still wrap.
-                return (
-                  <View className={`mb-5 ${mine ? "self-end" : "self-start"}`} style={{ maxWidth: mine ? (isMobile ? "90%" : "80%") : (isMobile ? "100%" : "85%") }}>
-                    <Text className={`mb-2 text-xs font-semibold text-gray-400 ${mine ? "text-right" : ""}`}>{mine ? "You" : "PixelPatch assistant"}</Text>
-                    <View className={`rounded-2xl p-4 ${mine ? "bg-brand-600" : "border border-gray-200 bg-white"}`}>
-                      {mine ? <Text selectable className="text-base leading-6 text-white">{item.text}</Text> : <ReplyText text={item.text} />}
+                const status = item.pending ? "Sending…" : item.failed ? "Response not confirmed" : null;
+                if (mine) {
+                  return (
+                    <View className="mb-6 self-end" style={{ maxWidth: isMobile ? "88%" : "75%" }}>
+                      <View className="rounded-3xl rounded-br-lg bg-primary px-4 py-3">
+                        <Text selectable className="text-base leading-6 text-white">{item.text}</Text>
+                      </View>
+                      {status ? <Text className={`mt-1.5 text-right text-xs ${item.failed ? "text-red-600" : "text-gray-400"}`}>{status}</Text> : null}
                     </View>
-                    {item.pending || item.failed ? <Text className="mt-2 text-right text-xs text-gray-500">{item.pending ? "Waiting for response…" : "Response not confirmed"}</Text> : null}
+                  );
+                }
+                // Assistant replies read like a document: avatar, name, plain text.
+                return (
+                  <View className="mb-7 flex-row items-start gap-3">
+                    <AssistantAvatar size={30} />
+                    <View className="flex-1" style={{ minWidth: 0 }}>
+                      <Text className="mb-1 text-sm font-semibold text-gray-900">PixelPatch AI</Text>
+                      <ReplyText text={item.text} />
+                    </View>
                   </View>
                 );
               }}
               ListFooterComponent={
                 <View>
-                  {sending ? <View accessibilityRole="progressbar" accessibilityLabel="Assistant is preparing a reply" className="mb-4 flex-row items-center gap-3 self-start rounded-xl border border-gray-200 bg-white p-4"><ActivityIndicator color={COLORS.primary} /><Text className="text-sm text-gray-500">Working through your question…</Text></View> : null}
+                  {sending ? (
+                    <View accessibilityRole="progressbar" accessibilityLabel="Assistant is preparing a reply" className="mb-6 flex-row items-center gap-3">
+                      <AssistantAvatar size={30} />
+                      <View className="flex-row items-center gap-2 rounded-full bg-gray-100 px-4 py-2.5">
+                        <ActivityIndicator size="small" color={COLORS.textMuted} />
+                        <Text className="text-sm text-gray-500">Thinking…</Text>
+                      </View>
+                    </View>
+                  ) : null}
                   {shops.length ? (
-                    <View className="mt-3">
-                      <Text className="text-lg font-bold text-gray-900">Explore repair options</Text>
-                      <Text className="mb-4 mt-1 text-sm leading-5 text-gray-500">Open a suggested shop to review its services and details.</Text>
-                      <View className="flex-row flex-wrap justify-between gap-y-3">
+                    <View className="mb-4" style={{ paddingLeft: isMobile ? 0 : 42 }}>
+                      <Text className="mb-3 text-sm font-semibold text-gray-900">Shops that can help</Text>
+                      <View className="gap-2">
                         {shops.map((shop) => (
-                          <Pressable key={shop.id} onPress={() => router.push(`/shop/${shop.id}`)} accessibilityRole="button" accessibilityLabel={`View suggested shop ${shop.name}`} style={{ width: isMobile ? "100%" : "48.5%" }} className="rounded-xl border border-gray-200 bg-white p-4 active:bg-brand-50">
-                            <Ionicons name="storefront-outline" size={22} color={COLORS.primary} />
-                            <Text className="mb-2 mt-3 text-base font-bold text-gray-900">{shop.name}</Text>
-                            <ServiceRating rating={shop.rating_average} />
-                            {shop.address ? <Text className="mt-3 text-xs leading-5 text-gray-500">{shop.address}</Text> : null}
-                            <Text className="mt-4 text-sm font-semibold text-brand-600">View shop →</Text>
+                          <Pressable key={shop.id} onPress={() => router.push(`/shop/${shop.id}`)} accessibilityRole="button" accessibilityLabel={`View suggested shop ${shop.name}`} className="flex-row items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 active:bg-gray-50">
+                            <View className="h-10 w-10 items-center justify-center rounded-full bg-primary"><Text className="text-base font-bold text-white">{String(shop.name || "?").trim().charAt(0).toUpperCase()}</Text></View>
+                            <View className="flex-1" style={{ minWidth: 0 }}>
+                              <Text numberOfLines={1} className="text-sm font-bold text-gray-900">{shop.name}</Text>
+                              <View className="mt-0.5 flex-row flex-wrap items-center gap-x-2">
+                                <ServiceRating rating={shop.rating_average} />
+                                {shop.address ? <Text numberOfLines={1} className="flex-shrink text-xs text-gray-500">{shop.address}</Text> : null}
+                              </View>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
                           </Pressable>
                         ))}
                       </View>
@@ -479,15 +528,17 @@ export default function Assistant() {
             />
           )}
 
-          {newReply ? <Pressable onPress={() => { stickToBottom.current = true; setNewReply(false); listRef.current?.scrollToEnd({ animated: true }); }} accessibilityRole="button" className="mb-3 min-h-11 justify-center self-center rounded-full border border-brand-200 bg-brand-50 px-4 py-2"><Text className="text-sm font-semibold text-brand-700">Jump to latest reply ↓</Text></Pressable> : null}
-          {error ? <View className="w-full self-center px-4 pb-3" style={{ maxWidth: 960 }}><Text accessibilityRole="alert" className="rounded-xl bg-red-50 p-3 text-sm leading-5 text-red-700">{error}</Text></View> : null}
-          <View className="border-t border-gray-200 bg-white">
-            <View className="w-full self-center py-3" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
-              <View className="flex-row items-end gap-3">
-                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#a8a29e" className="max-h-32 min-h-12 flex-1 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900" />
-                <Pressable onPress={send} disabled={draft.trim().length < 2 || disabled} accessibilityRole="button" accessibilityLabel="Send question" accessibilityState={{ disabled: draft.trim().length < 2 || disabled, busy: sending }} className={`h-12 w-12 items-center justify-center rounded-xl ${draft.trim().length >= 2 && !disabled ? "bg-brand-600" : "bg-gray-200"}`}><Ionicons name="send" size={20} color={draft.trim().length >= 2 && !disabled ? "#fff" : COLORS.textMuted} /></Pressable>
+          {newReply ? <Pressable onPress={() => { stickToBottom.current = true; setNewReply(false); listRef.current?.scrollToEnd({ animated: true }); }} accessibilityRole="button" className="mb-3 min-h-10 flex-row items-center justify-center gap-1.5 self-center rounded-full bg-primary px-4 py-2"><Ionicons name="arrow-down" size={14} color="#ffffff" /><Text className="text-sm font-semibold text-white">New reply</Text></Pressable> : null}
+          {error ? <View className="w-full self-center pb-3" style={{ maxWidth: CHAT_WIDTH + horizontalPadding * 2, paddingHorizontal: horizontalPadding }}><Text accessibilityRole="alert" className="rounded-xl bg-red-50 p-3 text-sm leading-5 text-red-700">{error}</Text></View> : null}
+          <View className="bg-white">
+            <View className="w-full self-center pb-3 pt-2" style={{ maxWidth: CHAT_WIDTH + horizontalPadding * 2, paddingHorizontal: horizontalPadding }}>
+              <View className="flex-row items-end gap-2 rounded-3xl border border-gray-300 bg-white py-1.5 pl-4 pr-1.5" style={{ shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#8A9B98" className="max-h-32 min-h-11 flex-1 py-2.5 text-base text-gray-900" />
+                <Pressable onPress={send} disabled={draft.trim().length < 2 || disabled} accessibilityRole="button" accessibilityLabel="Send question" accessibilityState={{ disabled: draft.trim().length < 2 || disabled, busy: sending }} className={`h-10 w-10 items-center justify-center rounded-full ${draft.trim().length >= 2 && !disabled ? "bg-primary" : "bg-gray-200"}`}>
+                  {sending ? <ActivityIndicator size="small" color={COLORS.textMuted} /> : <Ionicons name="arrow-up" size={20} color={draft.trim().length >= 2 && !disabled ? "#fff" : COLORS.textMuted} />}
+                </Pressable>
               </View>
-              <Text className="mt-2 text-xs leading-4 text-gray-400">Include your device model, symptoms, and any steps you have already tried.</Text>
+              <Text className="mt-2 text-center text-xs leading-4 text-gray-400">PixelPatch AI can make mistakes. Leave anything risky, like opening batteries, to a technician.</Text>
             </View>
           </View>
         </KeyboardAvoidingView>

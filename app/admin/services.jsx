@@ -86,7 +86,7 @@ function SearchBox({ value, onChange, placeholder }) {
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor="#a8a29e"
+        placeholderTextColor="#8A9B98"
         autoCapitalize="none"
         autoCorrect={false}
         accessibilityLabel={placeholder}
@@ -135,7 +135,7 @@ function ShopsPane({ status, version, selectedId, onSelect, compact }) {
             onPress={() => onSelect(ALL_SHOPS)}
             accessibilityRole="button"
             accessibilityState={{ selected: selectedId === null && !compact }}
-            className={`min-h-12 flex-row items-center gap-3 rounded-lg border px-3 py-2 ${selectedId === null && !compact ? "border-brand-500 bg-brand-50" : "border-gray-200 bg-white"}`}
+            className={`min-h-12 flex-row items-center gap-3 rounded-lg border px-3 py-2 ${selectedId === null && !compact ? "border-teal-500 bg-teal-50" : "border-gray-200 bg-white"}`}
           >
             <Ionicons name="layers-outline" size={20} color={COLORS.primary} />
             <View className="flex-1">
@@ -159,7 +159,7 @@ function ShopsPane({ status, version, selectedId, onSelect, compact }) {
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             accessibilityLabel={`${item.shop_name}: ${item.pending} waiting, ${item.rejected} rejected`}
-            className={`mx-4 mb-2 min-h-14 flex-row items-center gap-3 rounded-lg border px-3 py-2.5 ${active ? "border-brand-500 bg-brand-50" : "border-gray-200 bg-white active:bg-gray-50"}`}
+            className={`mx-4 mb-2 min-h-14 flex-row items-center gap-3 rounded-lg border px-3 py-2.5 ${active ? "border-teal-500 bg-teal-50" : "border-gray-200 bg-white active:bg-gray-50"}`}
           >
             <View className="flex-1">
               <View className="flex-row items-center gap-1.5">
@@ -245,7 +245,7 @@ function ServicesPane({ status, version, shop, onBack, onOpen, selection, setSel
       renderItem={({ item }) => {
         const checked = selection.has(item.id);
         return (
-          <View className={`mx-4 flex-row items-center border-b border-gray-100 ${checked ? "bg-brand-50" : ""}`}>
+          <View className={`mx-4 flex-row items-center border-b border-gray-100 ${checked ? "bg-teal-50" : ""}`}>
             <Checkbox checked={checked} onPress={() => toggle(item.id)} disabled={busy} label={`Select ${item.name}`} />
             <Pressable onPress={() => onOpen(item)} accessibilityRole="button" accessibilityLabel={`Review ${item.name}`} className="min-h-14 flex-1 flex-row items-center gap-2 py-2 pr-1 active:bg-gray-50">
               <View className="flex-1">
@@ -369,10 +369,10 @@ export default function AdminServices() {
                   onPress={() => { setStatus(tab.key); setMessage(null); }}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: active }}
-                  className={`min-h-11 flex-row items-center gap-2 rounded-full px-4 ${active ? "bg-brand-600" : "bg-gray-100"}`}
+                  className={`min-h-11 flex-row items-center gap-2 rounded-full px-4 ${active ? "bg-primary" : "bg-gray-100"}`}
                 >
                   <Text className={`text-sm font-semibold ${active ? "text-white" : "text-gray-700"}`}>{tab.label}</Text>
-                  {count !== undefined ? <Text className={`text-xs font-bold ${active ? "text-brand-100" : "text-gray-500"}`}>{count}</Text> : null}
+                  {count !== undefined ? <Text className={`text-xs font-bold ${active ? "text-primary-soft" : "text-gray-500"}`}>{count}</Text> : null}
                 </Pressable>
               );
             })}
@@ -450,7 +450,7 @@ export default function AdminServices() {
           <View>
             <View className="flex-row flex-wrap items-center gap-2">
               <StatusBadge status={detail.review_status} />
-              <Text className="text-xs font-semibold text-brand-600">{categoryLabel(detail.category)}</Text>
+              <Text className="text-xs font-semibold text-primary">{categoryLabel(detail.category)}</Text>
             </View>
             <Text className="mt-2 text-lg font-bold text-gray-900">{detail.name}</Text>
             <Text selectable className={`mt-2 text-sm leading-6 ${detail.description ? "text-gray-700" : "text-gray-400"}`}>{detail.description || "No description provided."}</Text>

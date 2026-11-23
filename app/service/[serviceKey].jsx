@@ -12,6 +12,7 @@ import { useResponsive } from "../../lib/useResponsive";
 import { formatAddress } from "../../lib/format";
 import { COLORS } from "../../constants/theme";
 
+import { SHOW_BACK_BUTTONS } from "../../lib/navigation";
 export default function ServiceDetail() {
   const { serviceKey } = useLocalSearchParams();
   const router = useRouter();
@@ -40,6 +41,9 @@ export default function ServiceDetail() {
       return Number(b.rating_average || 0) - Number(a.rating_average || 0) || String(a.shop_name || "").localeCompare(String(b.shop_name || ""));
     });
   const cardWidth = isMobile ? "100%" : isDesktop ? "32%" : "48.5%";
+  // Gaps are margins, not "spread apart", so a short last row starts on the left.
+  const columns = isMobile ? 1 : isDesktop ? 3 : 2;
+  const cardGap = isDesktop ? "2%" : "3%";
 
   return (
     <ScrollView
@@ -51,22 +55,24 @@ export default function ServiceDetail() {
     >
       {/* The in-page "Back to services" link replaces the stack header. */}
       <Stack.Screen options={{ title: service.name || "Service", headerShown: false }} />
-      <Pressable onPress={() => router.push("/services")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
-        <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
-        <Text className="text-sm font-semibold text-brand-600">Back to services</Text>
-      </Pressable>
+      {SHOW_BACK_BUTTONS ? (
+        <Pressable onPress={() => router.push("/services")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
+          <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
+          <Text className="text-sm font-semibold text-primary">Back to services</Text>
+        </Pressable>
+      ) : null}
 
       <View className={`mb-6 gap-5 rounded-2xl border border-gray-200 bg-white p-5 ${isDesktop ? "flex-row items-center" : ""}`}>
         <View style={isDesktop ? { flex: 2, minWidth: 0 } : undefined}>
-          <View className="mb-3 h-12 w-12 items-center justify-center rounded-xl bg-brand-50"><Ionicons name={SERVICE_ICONS[service.category] || "build-outline"} size={25} color={COLORS.primary} /></View>
-          <Text className="text-xs font-semibold text-brand-600">{serviceCategory(service.category)}</Text>
+          <View className="mb-3 h-12 w-12 items-center justify-center rounded-xl bg-teal-50"><Ionicons name={SERVICE_ICONS[service.category] || "build-outline"} size={25} color={COLORS.primary} /></View>
+          <Text className="text-xs font-semibold text-primary">{serviceCategory(service.category)}</Text>
           <Text accessibilityRole="header" className="mt-2 text-2xl font-bold text-gray-900">{service.name}</Text>
           <Text className="mt-2 text-sm leading-6 text-gray-500">Compare shops offering this service, then open a shop to explore its details and request a repair.</Text>
         </View>
-        <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined} className="rounded-xl bg-brand-50 p-4">
-          <Text className="text-xs font-medium text-brand-700">Listed base price range</Text>
-          <Text className="mt-2 text-2xl font-bold text-brand-600">{servicePriceRange(service.min_price, service.max_price)}</Text>
-          <Text className="mt-2 text-xs leading-5 text-brand-800">Your shop assesses the device before preparing a quotation. These listed prices help you compare options.</Text>
+        <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined} className="rounded-xl bg-teal-50 p-4">
+          <Text className="text-xs font-medium text-teal-800">Listed base price range</Text>
+          <Text className="mt-2 text-2xl font-bold text-price">{servicePriceRange(service.min_price, service.max_price)}</Text>
+          <Text className="mt-2 text-xs leading-5 text-primary-soft-foreground">Your shop assesses the device before preparing a quotation. These listed prices help you compare options.</Text>
         </View>
       </View>
 
@@ -82,7 +88,7 @@ export default function ServiceDetail() {
         <View className="flex-row flex-wrap items-center gap-2">
           <Text className="text-xs font-medium text-gray-500">Sort by</Text>
           {[["rating", "Shop rating"], ["lowest", "Lowest base price"], ["highest", "Highest base price"]].map(([key, label]) => (
-            <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-brand-600" : "bg-gray-50"}`}>
+            <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-primary" : "bg-gray-50"}`}>
               <Text className={`text-xs font-semibold ${sort === key ? "text-white" : "text-gray-500"}`}>{label}</Text>
             </Pressable>
           ))}
@@ -90,12 +96,12 @@ export default function ServiceDetail() {
       </View>
       <View className="mb-4 flex-row flex-wrap items-center justify-between gap-2">
         <Text className="text-sm text-gray-500">Showing {filtered.length} of {shops.length} shops</Text>
-        {query || sort !== "rating" ? <Pressable onPress={() => { setQuery(""); setSort("rating"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
+        {query || sort !== "rating" ? <Pressable onPress={() => { setQuery(""); setSort("rating"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">Reset filters</Text></Pressable> : null}
       </View>
 
-      <View className="mb-5 flex-row flex-wrap justify-between gap-y-4">
-        {filtered.map((shop) => (
-          <View key={shop.shop_id} style={{ width: cardWidth }} className="rounded-2xl border border-gray-200 bg-white p-5">
+      <View className="mb-5 flex-row flex-wrap gap-y-4">
+        {filtered.map((shop, index) => (
+          <View key={shop.shop_id} style={{ width: cardWidth, marginRight: (index + 1) % columns === 0 ? 0 : cardGap }} className="rounded-2xl border border-gray-200 bg-white p-5">
             <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
               <View className="h-11 w-11 items-center justify-center rounded-xl bg-gray-50"><Ionicons name="storefront-outline" size={23} color={COLORS.primary} /></View>
               <ServiceRating rating={shop.rating_average} />
@@ -105,7 +111,7 @@ export default function ServiceDetail() {
             <View className="mt-3 flex-row items-start gap-2"><Ionicons name="location-outline" size={16} color={COLORS.textMuted} /><Text className="flex-1 text-sm leading-5 text-gray-500">{formatAddress(shop) || "Address not listed"}</Text></View>
             <View className="my-4 rounded-xl bg-gray-50 p-3">
               <Text className="text-xs text-gray-500">Listed base price</Text>
-              <Text className="mt-1 text-xl font-bold text-brand-600">{servicePrice(shop.base_price)}</Text>
+              <Text className="mt-1 text-xl font-bold text-price">{servicePrice(shop.base_price)}</Text>
               <View className="mt-3 flex-row items-start gap-2"><Ionicons name="time-outline" size={16} color={COLORS.textMuted} /><Text className="flex-1 text-xs leading-5 text-gray-500">Estimated turnaround: {shop.estimated_timeframe || "Ask the shop"}</Text></View>
             </View>
             <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${shop.shop_id}`)} />

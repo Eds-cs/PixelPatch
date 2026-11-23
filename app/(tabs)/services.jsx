@@ -44,6 +44,8 @@ export default function Services() {
   const rows = [];
   for (let index = 0; index < filtered.length; index += columns) rows.push(filtered.slice(index, index + columns));
   const cardWidth = isMobile ? "100%" : isDesktop ? "32%" : "48.5%";
+  // Gaps are margins, not "spread apart", so a short last row starts on the left.
+  const cardGap = isDesktop ? "2%" : "3%";
 
   return (
     <AsyncList
@@ -60,11 +62,11 @@ export default function Services() {
             <Button title="Refresh" variant="outline" loading={refreshing} onPress={refresh} />
           </View>
 
-          <View className="mb-5 flex-row items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50 p-4">
+          <View className="mb-5 flex-row items-start gap-3 rounded-2xl border border-primary-soft bg-teal-50 p-4">
             <Ionicons name="shield-checkmark-outline" size={25} color={COLORS.primary} />
             <View className="flex-1">
-              <Text className="text-sm font-bold text-brand-900">Compare with a little more clarity</Text>
-              <Text className="mt-1 text-sm leading-5 text-brand-800">These services are offered by verified shops. Listed base prices help you compare; your shop assesses the device before preparing the final quotation.</Text>
+              <Text className="text-sm font-bold text-teal-950">Compare with a little more clarity</Text>
+              <Text className="mt-1 text-sm leading-5 text-primary-soft-foreground">These services are offered by verified shops. Listed base prices help you compare; your shop assesses the device before preparing the final quotation.</Text>
             </View>
           </View>
 
@@ -75,9 +77,9 @@ export default function Services() {
                 <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">What device needs help?</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {["", ...categories].map((value) => (
-                    <Pressable key={value} onPress={() => setCategory(value)} accessibilityRole="button" accessibilityLabel={value ? `Filter ${serviceCategory(value)} services` : "All device categories"} accessibilityState={{ selected: category === value }} className={`min-h-11 flex-row items-center gap-2 rounded-lg border px-3 py-2 ${category === value ? "border-brand-600 bg-brand-50" : "border-gray-200"}`}>
+                    <Pressable key={value} onPress={() => setCategory(value)} accessibilityRole="button" accessibilityLabel={value ? `Filter ${serviceCategory(value)} services` : "All device categories"} accessibilityState={{ selected: category === value }} className={`min-h-11 flex-row items-center gap-2 rounded-lg border px-3 py-2 ${category === value ? "border-primary bg-teal-50" : "border-gray-200"}`}>
                       <Ionicons name={SERVICE_ICONS[value] || "grid-outline"} size={17} color={category === value ? COLORS.primary : COLORS.textMuted} />
-                      <Text className={`text-sm font-semibold ${category === value ? "text-brand-700" : "text-gray-600"}`}>{value ? serviceCategory(value) : "All devices"}</Text>
+                      <Text className={`text-sm font-semibold ${category === value ? "text-teal-800" : "text-gray-600"}`}>{value ? serviceCategory(value) : "All devices"}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -87,7 +89,7 @@ export default function Services() {
               <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Sort services</Text>
               <View className="flex-row flex-wrap gap-2">
                 {SORTS.map((item) => (
-                  <Pressable key={item.key} onPress={() => setSort(item.key)} accessibilityRole="button" accessibilityLabel={`Sort by ${item.label}`} accessibilityState={{ selected: sort === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === item.key ? "bg-brand-600" : "bg-gray-50"}`}>
+                  <Pressable key={item.key} onPress={() => setSort(item.key)} accessibilityRole="button" accessibilityLabel={`Sort by ${item.label}`} accessibilityState={{ selected: sort === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === item.key ? "bg-primary" : "bg-gray-50"}`}>
                     <Text className={`text-xs font-semibold ${sort === item.key ? "text-white" : "text-gray-500"}`}>{item.label}</Text>
                   </Pressable>
                 ))}
@@ -97,23 +99,23 @@ export default function Services() {
 
           <View className="mb-4 flex-row flex-wrap items-center justify-between gap-2">
             <Text className="text-sm text-gray-500">{filtered.length} of {services.length} featured services</Text>
-            {query || category || sort !== "recommended" ? <Pressable onPress={() => { setQuery(""); setCategory(""); setSort("recommended"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
+            {query || category || sort !== "recommended" ? <Pressable onPress={() => { setQuery(""); setCategory(""); setSort("recommended"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">Reset filters</Text></Pressable> : null}
           </View>
         </View>
       }
       renderItem={({ item: row }) => (
-        <View className="mb-4 flex-row items-stretch justify-between">
-          {row.map((service) => (
-            <Pressable key={service.service_key} onPress={() => router.push(`/service/${encodeURIComponent(service.service_key)}`)} accessibilityRole="button" accessibilityLabel={`Compare shops for ${service.name}, ${serviceCategory(service.category)}`} style={{ width: cardWidth }} className="rounded-2xl border border-gray-200 bg-white p-5 active:bg-brand-50">
+        <View className="mb-4 flex-row items-stretch">
+          {row.map((service, index) => (
+            <Pressable key={service.service_key} onPress={() => router.push(`/service/${encodeURIComponent(service.service_key)}`)} accessibilityRole="button" accessibilityLabel={`Compare shops for ${service.name}, ${serviceCategory(service.category)}`} style={{ width: cardWidth, marginRight: index < columns - 1 ? cardGap : 0 }} className="rounded-2xl border border-gray-200 bg-white p-5 active:bg-teal-50">
               <View className="mb-4 flex-row items-center gap-3">
-                <View className="h-12 w-12 items-center justify-center rounded-xl bg-brand-50"><Ionicons name={SERVICE_ICONS[service.category] || "build-outline"} size={25} color={COLORS.primary} /></View>
-                <Text className="flex-1 text-xs font-semibold text-brand-600">{serviceCategory(service.category)}</Text>
+                <View className="h-12 w-12 items-center justify-center rounded-xl bg-teal-50"><Ionicons name={SERVICE_ICONS[service.category] || "build-outline"} size={25} color={COLORS.primary} /></View>
+                <Text className="flex-1 text-xs font-semibold text-primary">{serviceCategory(service.category)}</Text>
               </View>
               <Text className="text-lg font-bold text-gray-900">{service.name}</Text>
               <View className="mt-3"><ServiceRating rating={service.avg_shop_rating} average /></View>
               <View className="my-4 rounded-xl bg-gray-50 p-3">
                 <Text className="text-xs text-gray-500">Listed base price range</Text>
-                <Text className="mt-1 text-lg font-bold text-brand-600">{servicePriceRange(service.min_price, service.max_price)}</Text>
+                <Text className="mt-1 text-lg font-bold text-price">{servicePriceRange(service.min_price, service.max_price)}</Text>
                 <Text className="mt-1 text-xs leading-5 text-gray-400">Final quotation follows assessment.</Text>
               </View>
               <View className="flex-row items-center gap-2">
@@ -121,7 +123,7 @@ export default function Services() {
                 <Text className="flex-1 text-sm text-gray-600">{service.shop_count} verified shop{Number(service.shop_count) === 1 ? "" : "s"} offering this</Text>
               </View>
               <View className="mt-5 flex-row items-center justify-between gap-2 border-t border-gray-100 pt-4">
-                <Text className="flex-1 text-sm font-bold text-brand-600">Compare shops</Text>
+                <Text className="flex-1 text-sm font-bold text-primary">Compare shops</Text>
                 <Ionicons name="arrow-forward-outline" size={19} color={COLORS.primary} />
               </View>
             </Pressable>

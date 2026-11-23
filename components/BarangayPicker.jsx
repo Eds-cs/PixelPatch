@@ -86,7 +86,7 @@ export default function BarangayPicker({
           value={query}
           onChangeText={setQuery}
           placeholder="Search barangays"
-          placeholderTextColor="#a8a29e"
+          placeholderTextColor="#8A9B98"
           accessibilityLabel="Search barangays"
           autoCorrect={false}
           className="mb-3 h-11 rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900"
@@ -101,7 +101,7 @@ export default function BarangayPicker({
               accessibilityRole="button"
               accessibilityState={{ selected }}
               className={`min-h-11 flex-row items-center rounded-lg px-3 ${
-                selected ? "bg-brand-50" : "active:bg-gray-100"
+                selected ? "bg-teal-50" : "active:bg-gray-100"
               }`}
             >
               <Text
@@ -129,7 +129,7 @@ export default function BarangayPicker({
             accessibilityRole="button"
             className="mt-3 min-h-11 justify-center border-t border-gray-100 pt-3"
           >
-            <Text className="text-sm font-semibold text-brand-600">I&apos;m not in Zamboanga City</Text>
+            <Text className="text-sm font-semibold text-primary">I&apos;m not in Zamboanga City</Text>
           </Pressable>
         ) : null}
       </Modal>

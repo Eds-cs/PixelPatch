@@ -1,0 +1,26 @@
+# deploy/Caddyfile
+# SITE_ADDRESS is the server's web address, e.g.
+# pixelpatch.southeastasia.cloudapp.azure.com. Caddy gets and renews the HTTPS
+# certificate for it automatically (ports 80 and 443 must be open).
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# API, live chat (websockets) and uploaded photos go to the API container.
+	handle /api/* {
+		reverse_proxy api:5000
+	}
+	handle /socket.io/* {
+		reverse_proxy api:5000
+	}
+	handle /uploads/* {
+		reverse_proxy api:5000
+	}
+
+	# Everything else is the website. Unknown paths (/shop/4, /repairs...)
+	# return index.html so links and page refreshes work.
+	handle {
+		root * /srv
+		try_files {path} {path}.html /index.html
+		file_server
+	}
+}

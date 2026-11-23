@@ -88,23 +88,23 @@ export default function ChatList() {
             <View className={isMobile ? "" : "flex-1"}><Text accessibilityRole="header" className="text-2xl font-bold text-gray-900">Messages</Text><Text className="mt-1 text-sm leading-5 text-gray-500">Keep your repair conversations in one place.</Text></View>
             {isBusiness ? <Button title="Refresh" variant="outline" onPress={refresh} loading={refreshing} /> : <Button title="New conversation" onPress={() => { setStartError(null); setNewChatOpen(true); }} />}
           </View>
-          <View className="mb-5 flex-row items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50 p-4">
+          <View className="mb-5 flex-row items-start gap-3 rounded-2xl border border-primary-soft bg-teal-50 p-4">
             <Ionicons name="chatbubbles-outline" size={25} color={COLORS.primary} />
-            <View className="flex-1"><Text className="text-sm font-bold text-brand-900">A direct line to your repair shop</Text><Text className="mt-1 text-sm leading-5 text-brand-800">Ask about your device, clarify a quotation, or follow up on repair progress.</Text></View>
+            <View className="flex-1"><Text className="text-sm font-bold text-teal-950">{isBusiness ? "Your customers' questions" : "A direct line to your repair shop"}</Text><Text className="mt-1 text-sm leading-5 text-primary-soft-foreground">{isBusiness ? "Customers can message you from your shop page before or during a repair. Reply here." : "Ask about your device, clarify a quotation, or follow up on repair progress."}</Text></View>
           </View>
           <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-            <TextField label="Search conversations" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder="Shop name or latest message" />
+            <TextField label="Search conversations" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder={isBusiness ? "Customer name or latest message" : "Shop name or latest message"} />
             <View className="flex-row flex-wrap gap-2">
               {[["all", "All conversations"], ["messages", "With messages"], ["empty", "No messages yet"]].map(([key, label]) => (
-                <Pressable key={key} onPress={() => setFilter(key)} accessibilityRole="button" accessibilityState={{ selected: filter === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${filter === key ? "bg-brand-600" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${filter === key ? "text-white" : "text-gray-600"}`}>{label}</Text></Pressable>
+                <Pressable key={key} onPress={() => setFilter(key)} accessibilityRole="button" accessibilityState={{ selected: filter === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${filter === key ? "bg-primary" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${filter === key ? "text-white" : "text-gray-600"}`}>{label}</Text></Pressable>
               ))}
             </View>
           </View>
           <View className="mb-4 flex-row flex-wrap items-center justify-between gap-2">
             <View className="gap-1"><Text className="text-sm text-gray-500">{filtered.length} of {conversations.length} conversations</Text><Text className={`text-xs ${connected ? "text-emerald-700" : "text-gray-400"}`}>{connected ? "Live updates connected" : "Live updates disconnected"}</Text></View>
             <View className="flex-row flex-wrap gap-4">
-              {query || filter !== "all" ? <Pressable onPress={() => { setQuery(""); setFilter("all"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
-              <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
+              {query || filter !== "all" ? <Pressable onPress={() => { setQuery(""); setFilter("all"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">Reset filters</Text></Pressable> : null}
+              <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
             </View>
           </View>
         </View>
@@ -114,16 +114,16 @@ export default function ChatList() {
         const mine = String(item.last_sender_id) === String(user?.id);
         const hasMessage = Boolean(item.last_message_id);
         return (
-          <Pressable onPress={() => router.push(`/chat/${item.id}`)} accessibilityRole="button" accessibilityLabel={`Open conversation with ${title}`} className="mb-3 rounded-2xl border border-gray-200 bg-white p-4 active:bg-brand-50">
+          <Pressable onPress={() => router.push(`/chat/${item.id}`)} accessibilityRole="button" accessibilityLabel={`Open conversation with ${title}`} className="mb-3 rounded-2xl border border-gray-200 bg-white p-4 active:bg-teal-50">
             <View className="flex-row items-start gap-3">
-              <View className="h-12 w-12 items-center justify-center rounded-xl bg-brand-50"><Text className="text-lg font-bold text-brand-700">{title.charAt(0).toUpperCase()}</Text></View>
+              <View className="h-12 w-12 items-center justify-center rounded-xl bg-teal-50"><Text className="text-lg font-bold text-teal-800">{title.charAt(0).toUpperCase()}</Text></View>
               <View className="flex-1">
                 <View className="flex-row flex-wrap items-start justify-between gap-2">
                   <Text className="text-base font-bold text-gray-900" style={{ flexShrink: 1 }}>{title}</Text>
                   {hasMessage ? <Text className="text-xs text-gray-400">{chatDate(item.last_message_timestamp)}</Text> : null}
                 </View>
                 <Text numberOfLines={isDesktop ? 1 : 2} className={`mt-2 text-sm leading-5 ${hasMessage ? "text-gray-600" : "text-gray-400"}`}>{hasMessage ? `${mine ? "You: " : ""}${item.last_message_text || "Message"}` : "No messages yet. Say hello to get started."}</Text>
-                <Text className="mt-3 text-xs font-semibold text-brand-600">Open conversation →</Text>
+                <Text className="mt-3 text-xs font-semibold text-primary">Open conversation →</Text>
               </View>
             </View>
           </Pressable>
@@ -135,7 +135,7 @@ export default function ChatList() {
       {startError ? <Text accessibilityRole="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{startError}</Text> : null}
       {availableShops.loading ? <ActivityIndicator color={COLORS.primary} /> : availableShops.error ? <View><Text className="mb-3 text-sm text-gray-500">{availableShops.error}</Text><Button title="Try again" variant="outline" onPress={availableShops.refresh} loading={availableShops.refreshing} /></View> : (
         (availableShops.data ?? []).map((shop) => (
-          <Pressable key={shop.id} onPress={() => startConversation(shop)} disabled={Boolean(starting)} accessibilityRole="button" accessibilityLabel={`Open conversation with ${shop.name}`} accessibilityState={{ disabled: Boolean(starting), busy: starting === shop.id }} className="mb-3 min-h-12 flex-row items-center gap-3 rounded-xl border border-gray-200 p-4 active:bg-brand-50">
+          <Pressable key={shop.id} onPress={() => startConversation(shop)} disabled={Boolean(starting)} accessibilityRole="button" accessibilityLabel={`Open conversation with ${shop.name}`} accessibilityState={{ disabled: Boolean(starting), busy: starting === shop.id }} className="mb-3 min-h-12 flex-row items-center gap-3 rounded-xl border border-gray-200 p-4 active:bg-teal-50">
             <Ionicons name="storefront-outline" size={22} color={COLORS.primary} />
             <View className="flex-1"><Text className="text-sm font-bold text-gray-900">{shop.name}</Text><Text className="mt-1 text-xs text-gray-500">{[shop.barangay, shop.province].filter(Boolean).join(", ") || "Location not listed"}</Text></View>
             {starting === shop.id ? <ActivityIndicator color={COLORS.primary} /> : <Ionicons name="arrow-forward-outline" size={18} color={COLORS.primary} />}

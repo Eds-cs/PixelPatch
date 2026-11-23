@@ -7,7 +7,8 @@ export const getShopById = (req, res) => {
   const sql = `
     SELECT 
       s.*, 
-      a.street, a.barangay, a.province, a.region, a.country 
+      a.street, a.barangay, a.city, a.province, a.region, a.country,
+      a.postal_code, a.latitude, a.longitude
     FROM shops s
     LEFT JOIN addresses a ON a.id = s.address_id
     WHERE s.id = ?

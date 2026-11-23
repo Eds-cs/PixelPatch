@@ -5,7 +5,7 @@
 //   2. POST /api/auth/register with the form and the code(s) creates it.
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import { Link } from "expo-router";
+import { Link, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -34,6 +34,9 @@ const onlyDigits = (value) => value.replace(/\D/g, "").slice(0, 6);
 
 export default function SignUp() {
   const { signup, login } = useAuth();
+  // Keeps "where to go after signing in" when switching to sign-in.
+  const { redirect } = useLocalSearchParams();
+  const loginHref = redirect ? { pathname: "/login", params: { redirect } } : "/login";
 
   const [form, setForm] = useState({
     first_name: "",
@@ -182,7 +185,7 @@ export default function SignUp() {
           <View className="w-full max-w-md self-center">
             {step === "verify" ? (
               <>
-                <Text className="mb-2 text-3xl font-extrabold text-brand-600">
+                <Text className="mb-2 text-3xl font-extrabold text-gray-900">
                   {phoneVerification ? "Verify your details" : "Verify your email"}
                 </Text>
                 <Text className="mb-6 text-base leading-6 text-gray-500">
@@ -197,7 +200,7 @@ export default function SignUp() {
                 </Text>
 
                 {notice ? (
-                  <Text className="mb-6 rounded-lg bg-brand-50 p-3 text-sm text-brand-800">{notice}</Text>
+                  <Text className="mb-6 rounded-lg bg-teal-50 p-3 text-sm text-primary-soft-foreground">{notice}</Text>
                 ) : null}
                 {errors.form ? (
                   <Text accessibilityRole="alert" className="mb-6 rounded-lg bg-red-50 p-3 text-sm text-red-700">
@@ -243,7 +246,7 @@ export default function SignUp() {
                     disabled={resending}
                     className={resending ? "opacity-50" : ""}
                   >
-                    <Text className="text-sm font-medium text-brand-600">
+                    <Text className="text-sm font-medium text-primary">
                       {resending ? "Sending…" : "Resend code"}
                     </Text>
                   </Pressable>
@@ -260,13 +263,13 @@ export default function SignUp() {
               </>
             ) : (
               <>
-                <Text className="mb-2 text-3xl font-extrabold text-brand-600">Create account</Text>
+                <Text className="mb-2 text-3xl font-extrabold text-gray-900">Create account</Text>
                 <Text className="mb-3 text-base text-gray-500">
                   Join PixelPatch to get your devices repaired.
                 </Text>
-                <View className="mb-8 flex-row items-center gap-2 self-start rounded-full bg-brand-50 px-3 py-1.5">
+                <View className="mb-8 flex-row items-center gap-2 self-start rounded-full bg-teal-50 px-3 py-1.5">
                   <Ionicons name="location-outline" size={14} color={COLORS.primary} />
-                  <Text className="text-xs font-medium text-brand-800">Available in Zamboanga City only</Text>
+                  <Text className="text-xs text-primary-soft-foreground">Available in Zamboanga City only</Text>
                 </View>
 
                 {errors.form ? (
@@ -408,9 +411,14 @@ export default function SignUp() {
 
                 <View className="mt-6 flex-row justify-center">
                   <Text className="text-sm text-gray-600">Already have an account? </Text>
-                  <Link href="/login" className="text-sm font-semibold text-brand-600">
-                    Sign in
-                  </Link>
+                  <Link href={loginHref}>
+                <Text className="text-sm font-semibold text-primary">Sign in</Text>
+              </Link>
+                </View>
+                <View className="mt-4 flex-row justify-center">
+                  <Link href="/">
+                <Text className="text-sm font-medium text-gray-500">Browse without an account</Text>
+              </Link>
                 </View>
               </>
             )}

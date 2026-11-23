@@ -124,31 +124,31 @@ export default function Repairs() {
             <TextField label="Search your repairs" placeholder="Device, shop name, or repair #" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
             <View className="flex-row flex-wrap gap-2">
               {FILTERS.map((item) => (
-                <Pressable key={item.key} onPress={() => setFilter(item.key)} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} className={`min-h-11 flex-row items-center gap-2 rounded-lg px-3 py-2 ${filter === item.key ? "bg-brand-600" : "bg-gray-50"}`}>
+                <Pressable key={item.key} onPress={() => setFilter(item.key)} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} className={`min-h-11 flex-row items-center gap-2 rounded-lg px-3 py-2 ${filter === item.key ? "bg-primary" : "bg-gray-50"}`}>
                   <Text className={`text-sm font-semibold ${filter === item.key ? "text-white" : "text-gray-600"}`}>{item.label}</Text>
-                  <Text className={`text-xs ${filter === item.key ? "text-brand-100" : "text-gray-400"}`}>{counts[item.key]}</Text>
+                  <Text className={`text-xs ${filter === item.key ? "text-primary-soft" : "text-gray-400"}`}>{counts[item.key]}</Text>
                 </Pressable>
               ))}
             </View>
             <View className="mt-3 flex-row flex-wrap items-center gap-2">
               <Text className="text-xs text-gray-500">Sort by</Text>
               {[["newest", "Newest"], ["oldest", "Oldest"], ["active", "Active requests first"]].map(([key, label]) => (
-                <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-brand-50" : ""}`}><Text className={`text-xs font-semibold ${sort === key ? "text-brand-700" : "text-gray-500"}`}>{label}</Text></Pressable>
+                <Pressable key={key} onPress={() => setSort(key)} accessibilityRole="button" accessibilityLabel={`Sort by ${label}`} accessibilityState={{ selected: sort === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${sort === key ? "bg-teal-50" : ""}`}><Text className={`text-xs font-semibold ${sort === key ? "text-teal-800" : "text-gray-500"}`}>{label}</Text></Pressable>
               ))}
             </View>
           </View>
           <View className="mb-4 flex-row flex-wrap items-center justify-between gap-2">
             <Text className="text-sm text-gray-500">{filtered.length} of {repairs.length} requests</Text>
             <View className="flex-row flex-wrap gap-4">
-              {query || filter !== "all" || sort !== "newest" ? <Pressable onPress={() => { setQuery(""); setFilter("all"); setSort("newest"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">Reset filters</Text></Pressable> : null}
-              <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-brand-600">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
+              {query || filter !== "all" || sort !== "newest" ? <Pressable onPress={() => { setQuery(""); setFilter("all"); setSort("newest"); }} accessibilityRole="button" className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">Reset filters</Text></Pressable> : null}
+              <Pressable onPress={refresh} disabled={refreshing} accessibilityRole="button" accessibilityState={{ busy: refreshing, disabled: refreshing }} className="min-h-11 justify-center"><Text className="text-sm font-semibold text-primary">{refreshing ? "Refreshing…" : "Refresh"}</Text></Pressable>
             </View>
           </View>
           {isDesktop && filtered.length ? <View className="mb-2 flex-row gap-5 px-5">{[["Device & shop", 3], ["Repair update", 4], ["Request details", 2]].map(([label, flex]) => <Text key={label} style={{ flex }} className="text-xs font-semibold uppercase text-gray-400">{label}</Text>)}</View> : null}
         </View>
       }
       renderItem={({ item }) => (
-        <Pressable onPress={() => router.push(`/repair/${item.id}`)} accessibilityRole="button" accessibilityLabel={`View repair #${item.id} for ${deviceName(item)} at ${item.shop_name || "your shop"}`} className="mb-4 rounded-2xl border border-gray-200 bg-white p-5 active:bg-brand-50">
+        <Pressable onPress={() => router.push(`/repair/${item.id}`)} accessibilityRole="button" accessibilityLabel={`View repair #${item.id} for ${deviceName(item)} at ${item.shop_name || "your shop"}`} className="mb-4 rounded-2xl border border-gray-200 bg-white p-5 active:bg-teal-50">
           <View className={isDesktop ? "flex-row items-start gap-5" : ""}>
             <View style={isDesktop ? { flex: 3, minWidth: 0 } : undefined}>
               <View className="mb-3 flex-row flex-wrap items-center justify-between gap-2">
@@ -167,7 +167,7 @@ export default function Repairs() {
             <View style={isDesktop ? { flex: 2, minWidth: 0 } : undefined} className={isDesktop ? "" : "mt-4 border-t border-gray-100 pt-3"}>
               <Text className="text-xs text-gray-400">Requested</Text>
               <Text className="mt-1 text-xs text-gray-600">{requestedDate(item)}</Text>
-              <View className="mt-4 flex-row items-center gap-2"><Text className="text-sm font-bold text-brand-600">View repair</Text><Ionicons name="arrow-forward-outline" size={17} color={COLORS.primary} /></View>
+              <View className="mt-4 flex-row items-center gap-2"><Text className="text-sm font-bold text-primary">View repair</Text><Ionicons name="arrow-forward-outline" size={17} color={COLORS.primary} /></View>
             </View>
           </View>
         </Pressable>

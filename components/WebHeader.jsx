@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Animated, Easing, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { usePathname, useRouter } from "expo-router";
 
@@ -16,9 +16,17 @@ const CLIENT_NAV = [
   { label: "Chats", href: "/chat" },
 ];
 
+// Signed-out visitors: the pages they can browse without an account.
+const GUEST_NAV = [
+  { label: "Home", href: "/", exact: true },
+  { label: "Services", href: "/services" },
+  { label: "Help", href: "/help" },
+];
+
 const BUSINESS_NAV = [
   { label: "Dashboard", href: "/business/dashboard", exact: true },
   { label: "Repairs", href: "/business/repairs" },
+  { label: "Messages", href: "/business/messages" },
   { label: "Disputes", href: "/business/disputes" },
   { label: "Employees", href: "/business/employees" },
   { label: "Services", href: "/business/services" },
@@ -43,11 +51,29 @@ function isActive(pathname, href, exact) {
 export default function WebHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isBusiness, isAdmin, logout } = useAuth();
+  const { user, isLoggedIn, isBusiness, isAdmin, logout } = useAuth();
   const { layout, isMobile, isDesktop, horizontalPadding } = useResponsive();
   const [menuPath, setMenuPath] = useState(null);
   const menuOpen = isMobile && menuPath === pathname;
-  const navigation = isAdmin ? ADMIN_NAV : isBusiness ? BUSINESS_NAV : CLIENT_NAV;
+  // Phone menu: a panel that slides in from the right edge over a dimmed page.
+  // 0 = hidden off the right edge, 1 = fully open.
+  const { width: screenWidth } = useWindowDimensions();
+  const panelWidth = Math.min(320, Math.round(screenWidth * 0.85));
+  // Created once and kept for the life of the header.
+  const [slide] = useState(() => new Animated.Value(0));
+  const useNativeDriver = Platform.OS !== "web";
+  const openMenu = () => {
+    slide.setValue(0);
+    setMenuPath(pathname);
+  };
+  // Slide in once the modal is on screen (onShow), so no effect is needed.
+  const animateIn = () =>
+    Animated.timing(slide, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver }).start();
+  const closeMenu = () =>
+    Animated.timing(slide, { toValue: 0, duration: 200, easing: Easing.in(Easing.cubic), useNativeDriver }).start(() =>
+      setMenuPath(null)
+    );
+  const navigation = !isLoggedIn ? GUEST_NAV : isAdmin ? ADMIN_NAV : isBusiness ? BUSINESS_NAV : CLIENT_NAV;
   const profileHref = isAdmin ? "/admin/account" : isBusiness ? "/business/profile" : "/profile";
   // Visible label: the signed-in person's first name, else one word for the role.
   const firstName = String(user?.first_name ?? "").trim();
@@ -70,16 +96,39 @@ export default function WebHeader() {
         onPress={() => navigate(item.href)}
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
-        className={`rounded-md px-3 py-3 ${active ? "bg-brand-50" : ""}`}
+        className={`rounded-md px-3 py-3 ${active ? "bg-teal-50" : ""}`}
       >
-        <Text className={`text-sm font-semibold ${active ? "text-brand-700" : "text-gray-600"}`}>
+        <Text className={`text-sm font-semibold ${active ? "text-teal-800" : "text-gray-600"}`}>
           {item.label}
         </Text>
       </Pressable>
     );
   });
 
-  const accountActions = (
+  // Visitors come back to the page they were on after signing in.
+  const authLink = (screen) =>
+    pathname && pathname !== "/" ? { pathname: screen, params: { redirect: pathname } } : screen;
+
+  const guestActions = (
+    <View className={isMobile ? "mt-4 gap-2 border-t border-gray-200 pt-4" : "flex-row items-center gap-2"}>
+      <Pressable
+        onPress={() => navigate(authLink("/login"))}
+        accessibilityRole="link"
+        className={`rounded-md px-3 py-3 ${isMobile ? "border border-gray-300 items-center" : ""}`}
+      >
+        <Text className="text-sm font-semibold text-gray-700">Sign in</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => navigate(authLink("/signup"))}
+        accessibilityRole="link"
+        className="items-center rounded-md bg-primary px-4 py-3 active:bg-teal-800"
+      >
+        <Text className="text-sm font-semibold text-white">Create account</Text>
+      </Pressable>
+    </View>
+  );
+
+  const accountActions = !isLoggedIn ? guestActions : (
     <View className={isMobile ? "mt-4 border-t border-gray-200 pt-3" : "flex-row items-center"}>
       <Pressable
         onPress={() => navigate(profileHref)}
@@ -115,13 +164,13 @@ export default function WebHeader() {
           accessibilityRole="link"
           className="mr-4 shrink-0 py-3"
         >
-          <Text className="text-2xl font-extrabold text-brand-600">PixelPatch</Text>
+          <Text className="text-2xl font-extrabold text-gray-900">Pixel<Text className="text-primary">Patch</Text></Text>
         </Pressable>
 
         {isDesktop ? <View className="flex-1 flex-row items-center">{links}</View> : null}
         {isMobile ? (
           <Pressable
-            onPress={() => setMenuPath(pathname)}
+            onPress={openMenu}
             accessibilityRole="button"
             accessibilityLabel="Open navigation menu"
             accessibilityState={{ expanded: menuOpen }}
@@ -137,24 +186,53 @@ export default function WebHeader() {
         </ScrollView>
       ) : null}
       </View>
-      <Modal visible={menuOpen} animationType="slide" onRequestClose={() => setMenuPath(null)} accessibilityViewIsModal supportedOrientations={["portrait", "landscape"]}>
-        <SafeAreaView className="flex-1 bg-white">
-          <View className="min-h-16 flex-row items-center justify-between border-b border-gray-200 px-4">
-            <Text accessibilityRole="header" className="text-xl font-bold text-brand-600">PixelPatch</Text>
-            <Pressable
-              onPress={() => setMenuPath(null)}
-              accessibilityRole="button"
-              accessibilityLabel="Close navigation menu"
-              className="h-12 w-12 items-center justify-center"
-            >
-              <Ionicons name="close-outline" size={28} color={COLORS.text} />
-            </Pressable>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            {links}
-            {accountActions}
-          </ScrollView>
-        </SafeAreaView>
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="none"
+        onShow={animateIn}
+        onRequestClose={closeMenu}
+        accessibilityViewIsModal
+        supportedOrientations={["portrait", "landscape"]}
+      >
+        <View className="flex-1 flex-row justify-end">
+          {/* Dimmed page behind the panel; tapping it closes the menu. */}
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(7, 17, 16, 0.45)", opacity: slide }]}>
+            <Pressable onPress={closeMenu} accessibilityRole="button" accessibilityLabel="Close navigation menu" style={StyleSheet.absoluteFill} />
+          </Animated.View>
+          <Animated.View
+            style={{
+              width: panelWidth,
+              height: "100%",
+              transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [panelWidth, 0] }) }],
+              shadowColor: "#000",
+              shadowOpacity: 0.2,
+              shadowRadius: 16,
+              shadowOffset: { width: -4, height: 0 },
+              elevation: 16,
+              // Set directly: className isn't applied to Animated.View on the web.
+              backgroundColor: COLORS.surface,
+            }}
+          >
+            <SafeAreaView edges={["top", "bottom", "right"]} className="flex-1">
+              <View className="min-h-16 flex-row items-center justify-between border-b border-gray-200 px-4">
+                <Text accessibilityRole="header" className="text-xl font-extrabold text-gray-900">Pixel<Text className="text-primary">Patch</Text></Text>
+                <Pressable
+                  onPress={closeMenu}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close navigation menu"
+                  className="h-12 w-12 items-center justify-center"
+                >
+                  <Ionicons name="close-outline" size={28} color={COLORS.text} />
+                </Pressable>
+              </View>
+              <ScrollView contentContainerStyle={{ padding: 16 }}>
+                {links}
+                {accountActions}
+              </ScrollView>
+            </SafeAreaView>
+          </Animated.View>
+        </View>
       </Modal>
     </SafeAreaView>
   );

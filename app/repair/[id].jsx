@@ -36,6 +36,7 @@ import { openCheckout, pollPaymentStatus, isTerminal } from "../../lib/payments"
 import { COLORS } from "../../constants/theme";
 import { useResponsive } from "../../lib/useResponsive";
 
+import { SHOW_BACK_BUTTONS } from "../../lib/navigation";
 const confirm = (title, message, onConfirm) => {
   if (Platform.OS === "web") {
     if (window.confirm(`${title}\n\n${message}`)) onConfirm();
@@ -194,10 +195,12 @@ export default function RepairDetail() {
       {/* The in-page "Back to my repairs" link replaces the stack header. */}
       <Stack.Screen options={{ title: `Repair #${id}`, headerShown: false }} />
 
-      <Pressable onPress={() => router.push("/repairs")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
-        <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
-        <Text className="text-sm font-semibold text-brand-600">Back to my repairs</Text>
-      </Pressable>
+      {SHOW_BACK_BUTTONS ? (
+        <Pressable onPress={() => router.push("/repairs")} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-start">
+          <Ionicons name="arrow-back-outline" size={18} color={COLORS.primary} />
+          <Text className="text-sm font-semibold text-primary">Back to my repairs</Text>
+        </Pressable>
+      ) : null}
       <View className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
         <View className="flex-row flex-wrap items-start justify-between gap-3">
           <View className="flex-1">
@@ -207,7 +210,7 @@ export default function RepairDetail() {
           </View>
           <RepairStatusBadge status={repair.status} decision={repair.decision} clientApproved={repair.client_approved} />
         </View>
-        {!isRejected && !isCancelled ? <View className="mt-4 rounded-xl bg-brand-50 p-4"><Text className="text-xs font-bold uppercase text-brand-700">Your repair update</Text><Text className="mt-1 text-sm leading-6 text-brand-800">{nextUpdate}</Text></View> : null}
+        {!isRejected && !isCancelled ? <View className="mt-4 rounded-xl bg-teal-50 p-4"><Text className="text-xs font-bold uppercase text-teal-800">Your repair update</Text><Text className="mt-1 text-sm leading-6 text-primary-soft-foreground">{nextUpdate}</Text></View> : null}
         <View className="mt-4 flex-row flex-wrap gap-3">
           {repair.shop_id ? <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${repair.shop_id}`)} /> : null}
           <Button title="My messages" variant="outline" onPress={() => router.push("/chat")} />

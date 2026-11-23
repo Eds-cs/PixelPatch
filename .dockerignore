@@ -1,0 +1,14 @@
+# Build context for deploy/web.Dockerfile (the website). Keep it small and
+# never send secrets into an image.
+.git
+node_modules
+server
+legacy-web
+uploads
+dist
+web-build
+.expo
+.env
+.env.*
+!.env.example
+deploy/.env

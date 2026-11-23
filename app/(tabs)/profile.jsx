@@ -59,16 +59,16 @@ export default function Profile() {
       contentContainerStyle={{ padding: 16, maxWidth: 720, width: "100%", alignSelf: "center" }}
     >
       <View className="mb-6 items-center rounded-xl border border-gray-200 bg-white p-6">
-        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-brand-100">
-          <Text className="text-2xl font-bold text-brand-700">
+        <View className="mb-3 h-20 w-20 items-center justify-center rounded-full bg-primary-soft">
+          <Text className="text-2xl font-bold text-teal-800">
             {(user?.first_name || "?").charAt(0).toUpperCase()}
           </Text>
         </View>
         <Text className="text-lg font-bold text-gray-900">{fullName || "PixelPatch user"}</Text>
         <Text className="mt-0.5 text-sm text-gray-500">{user?.email}</Text>
         {isBusiness ? (
-          <View className="mt-2 rounded-full bg-brand-100 px-3 py-1">
-            <Text className="text-xs font-semibold text-brand-700">Business account</Text>
+          <View className="mt-2 rounded-full bg-primary-soft px-3 py-1">
+            <Text className="text-xs font-semibold text-teal-800">Business account</Text>
           </View>
         ) : null}
       </View>

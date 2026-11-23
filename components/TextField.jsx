@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
 // `right` is an optional element (for example an icon button) shown inside the
 // field at its right edge.
-export default function TextField({ label, error, className = "", right = null, ...props }) {
+export default function TextField({ label, error, className = "", right = null, onFocus, onBlur, ...props }) {
+  // Shows which field is selected with a darker border (the browser's focus
+  // outline is turned off in global.css).
+  const [focused, setFocused] = useState(false);
   return (
     <View className={`mb-4 ${className}`}>
       {label ? (
@@ -11,10 +15,12 @@ export default function TextField({ label, error, className = "", right = null, 
       <View className="justify-center">
         <TextInput
           accessibilityLabel={label}
-          placeholderTextColor="#a8a29e"
+          placeholderTextColor="#8A9B98"
           className={`h-12 rounded-lg border bg-white px-4 text-base text-gray-900 ${
-            error ? "border-red-500" : "border-gray-300"
+            error ? "border-red-500" : focused ? "border-primary" : "border-gray-300"
           } ${right ? "pr-12" : ""}`}
+          onFocus={(event) => { setFocused(true); onFocus?.(event); }}
+          onBlur={(event) => { setFocused(false); onBlur?.(event); }}
           {...props}
         />
         {right ? <View className="absolute bottom-0 right-0 top-0 justify-center">{right}</View> : null}

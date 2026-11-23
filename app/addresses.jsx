@@ -196,7 +196,7 @@ export default function Addresses() {
               onPress={() => openEdit(item)}
               accessibilityRole="button"
               accessibilityLabel={`Edit address ${item.label || formatAddress(item)}`}
-              className="flex-row items-start p-4 active:bg-brand-50"
+              className="flex-row items-start p-4 active:bg-teal-50"
             >
               <Ionicons
                 name={isShopAddress(item) ? "storefront-outline" : "location-outline"}
@@ -209,8 +209,8 @@ export default function Addresses() {
                     {item.label || (isShopAddress(item) ? "Shop address" : "Address")}
                   </Text>
                   {Number(item.is_default) ? (
-                    <View className="rounded-full bg-brand-100 px-2 py-0.5">
-                      <Text className="text-xs font-semibold text-brand-700">Default</Text>
+                    <View className="rounded-full bg-primary-soft px-2 py-0.5">
+                      <Text className="text-xs font-semibold text-teal-800">Default</Text>
                     </View>
                   ) : null}
                   {isShopAddress(item) ? (
@@ -244,7 +244,7 @@ export default function Addresses() {
                   accessibilityState={{ busy: defaultingId === item.id, disabled: Boolean(defaultingId) }}
                   className="min-h-11 justify-center self-start"
                 >
-                  <Text className="text-sm font-semibold text-brand-600">
+                  <Text className="text-sm font-semibold text-primary">
                     {defaultingId === item.id ? "Setting default…" : "Set as default"}
                   </Text>
                 </Pressable>
@@ -284,7 +284,7 @@ export default function Addresses() {
             This is your shop&apos;s address, shown to customers. It can&apos;t be changed from My addresses.
           </Text>
         ) : !isNew && usedCount(editing) ? (
-          <Text className="mb-4 rounded-lg bg-brand-50 p-3 text-xs leading-5 text-brand-800">
+          <Text className="mb-4 rounded-lg bg-teal-50 p-3 text-xs leading-5 text-primary-soft-foreground">
             This address is part of a repair request, so it can&apos;t be deleted. You can still correct it.
           </Text>
         ) : null}

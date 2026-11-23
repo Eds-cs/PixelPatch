@@ -1,3 +1,90 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+  PixelPatch design tokens: palette A (teal and amber).
+  Values are space-separated RGB channels so Tailwind opacity modifiers
+  work, e.g. bg-primary/10. Every text/background pair was checked at
+  4.5:1 contrast or better (WCAG AA) in both light and dark mode.
+  Keep in sync with constants/theme.js.
+*/
+
+:root {
+  /* Surfaces */
+  --color-background: 248 250 250;      /* #F8FAFA  app canvas */
+  --color-surface: 255 255 255;         /* #FFFFFF  cards, sheets */
+  --color-surface-muted: 241 245 245;   /* #F1F5F5  inputs, chips */
+  --color-border: 226 232 232;          /* #E2E8E8 */
+
+  /* Text */
+  --color-foreground: 15 31 30;         /* #0F1F1E */
+  --color-muted: 82 99 95;              /* #52635F  secondary text */
+
+  /* Brand: teal */
+  --color-primary: 15 118 110;          /* #0F766E  main buttons, links */
+  --color-primary-foreground: 255 255 255;
+  --color-primary-soft: 204 251 241;    /* #CCFBF1  tinted backgrounds */
+  --color-primary-soft-foreground: 19 78 74; /* #134E4A */
+
+  /* Accent: amber */
+  --color-accent: 245 158 11;           /* #F59E0B  fills, stars, highlights */
+  --color-accent-foreground: 69 26 3;   /* #451A03  text on accent fill */
+  --color-price: 180 83 9;              /* #B45309  prices as text */
+
+  /* Status */
+  --color-success: 21 128 61;           /* #15803D  completed, paid */
+  --color-success-soft: 220 252 231;    /* #DCFCE7 */
+  --color-warning: 161 98 7;            /* #A16207  needs client action */
+  --color-warning-soft: 254 249 195;    /* #FEF9C3 */
+  --color-danger: 185 28 28;            /* #B91C1C  cancelled, disputed */
+  --color-danger-soft: 254 226 226;     /* #FEE2E2 */
+  --color-danger-fill: 220 38 38;       /* #DC2626  destructive buttons */
+  --color-info: 29 78 216;              /* #1D4ED8  requested, in review */
+  --color-info-soft: 219 234 254;       /* #DBEAFE */
+  --color-neutral: 71 85 105;           /* #475569  closed, refunded */
+  --color-neutral-soft: 241 245 249;    /* #F1F5F9 */
+}
+
+/*
+  Dark mode is OFF for now. Most screens still use fixed colors (bg-white,
+  text-gray-900...), so switching only the tokens would leave dark buttons
+  on white cards. Once screens use the tokens throughout, turn this on by
+  changing the selector below back to:
+    @media (prefers-color-scheme: dark) { :root { ... } }
+
+  .pixelpatch-dark-palette-disabled {
+    --color-background: 11 21 20;       #0B1514
+    --color-surface: 17 31 30;          #111F1E
+    --color-surface-muted: 24 42 40;    #182A28
+    --color-border: 36 59 57;           #243B39
+    --color-foreground: 230 242 241;    #E6F2F1
+    --color-muted: 155 176 173;         #9BB0AD
+    --color-primary: 45 212 191;        #2DD4BF
+    --color-primary-foreground: 4 47 46;   #042F2E
+    --color-primary-soft: 19 78 74;     #134E4A
+    --color-primary-soft-foreground: 153 246 228;  #99F6E4
+    --color-accent: 251 191 36;         #FBBF24
+    --color-accent-foreground: 69 26 3; #451A03
+    --color-price: 252 211 77;          #FCD34D
+    --color-success: 74 222 128;        #4ADE80
+    --color-success-soft: 20 83 45;     #14532D
+    --color-warning: 250 204 21;        #FACC15
+    --color-warning-soft: 66 32 6;      #422006
+    --color-danger: 248 113 113;        #F87171
+    --color-danger-soft: 69 10 10;      #450A0A
+    --color-danger-fill: 220 38 38;     #DC2626
+    --color-info: 96 165 250;           #60A5FA
+    --color-info-soft: 23 37 84;        #172554
+    --color-neutral: 203 213 225;       #CBD5E1
+    --color-neutral-soft: 30 41 59;     #1E293B
+  }
+*/
+
+/* Web only: no browser focus outline on text boxes. Shared fields show focus
+   with a darker border instead (components/TextField.jsx). */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+}

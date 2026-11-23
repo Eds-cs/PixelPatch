@@ -32,7 +32,7 @@ export default function AsyncList({
           Couldn&apos;t load this
         </Text>
         <Text className="text-center text-sm text-gray-500">{error}</Text>
-        <Text className="mt-4 text-center text-sm text-brand-600" onPress={onRefresh}>
+        <Text className="mt-4 text-center text-sm text-primary" onPress={onRefresh}>
           Tap to retry
         </Text>
       </View>
