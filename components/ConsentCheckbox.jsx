@@ -40,18 +40,51 @@ function PolicyLink({ href, children }) {
   );
 }
 
-export default function ConsentCheckbox({ checked, onChange, error, disabled, what = "using PixelPatch" }) {
+// Opens a pop-up instead of a page (onPress given).
+function PolicyButton({ onPress, children }) {
+  return (
+    <Text onPress={onPress} accessibilityRole="button" className="font-semibold text-primary underline">
+      {children}
+    </Text>
+  );
+}
+
+/**
+ * By default the links go to the /terms and /privacy pages. Pass
+ * onOpenTerms / onOpenPrivacy (and the labels) to open pop-ups instead, as the
+ * business registration does with the business policies.
+ */
+export default function ConsentCheckbox({
+  checked,
+  onChange,
+  error,
+  disabled,
+  what = "using PixelPatch",
+  termsLabel = "Terms of Service",
+  privacyLabel = "Privacy Policy",
+  onOpenTerms,
+  onOpenPrivacy,
+}) {
+  const terms = onOpenTerms ? (
+    <PolicyButton onPress={onOpenTerms}>{termsLabel}</PolicyButton>
+  ) : (
+    <PolicyLink href="/terms">{termsLabel}</PolicyLink>
+  );
+  const privacy = onOpenPrivacy ? (
+    <PolicyButton onPress={onOpenPrivacy}>{privacyLabel}</PolicyButton>
+  ) : (
+    <PolicyLink href="/privacy">{privacyLabel}</PolicyLink>
+  );
   return (
     <Checkbox
       checked={checked}
       onChange={onChange}
       error={error}
       disabled={disabled}
-      label="I agree to the Terms of Service and Privacy Policy"
+      label={`I agree to the ${termsLabel} and ${privacyLabel}`}
     >
       <Text className="text-sm leading-6 text-gray-700">
-        I have read and agree to the <PolicyLink href="/terms">Terms of Service</PolicyLink> and the{" "}
-        <PolicyLink href="/privacy">Privacy Policy</PolicyLink> for {what}.
+        I have read and agree to the {terms} and the {privacy} for {what}.
       </Text>
     </Checkbox>
   );

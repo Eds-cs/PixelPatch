@@ -12,6 +12,7 @@ import api from "../../lib/api";
 import { useFetch } from "../../lib/useFetch";
 import { confirmAction } from "../../lib/confirm";
 import { useResponsive } from "../../lib/useResponsive";
+import { CUSTOM_CATEGORY_MAX, OFFERED_CATEGORIES, categoryLabel as deviceLabel, categoryProblem } from "../../lib/serviceCategories";
 import { COLORS } from "../../constants/theme";
 
 const METHODS = [
@@ -19,15 +20,15 @@ const METHODS = [
   { key: "accepts_dropoff", label: "Drop-off", icon: "storefront-outline", hint: "The client brings it in" },
   { key: "accepts_onsite", label: "On-site", icon: "location-outline", hint: "A technician visits" },
 ];
-const FALLBACK_CATEGORIES = ["SMARTPHONE", "LAPTOP", "DESKTOP", "TABLET", "SMARTWATCH", "CONTROLLER", "OTHER"];
 const EMPTY_FORM = {
-  name: "", category: "", description: "", base_price: "", estimated_timeframe: "",
+  name: "", category: "", custom_category: "", description: "", base_price: "", estimated_timeframe: "",
   accepts_pickup: false, accepts_dropoff: true, accepts_onsite: false,
 };
 const money = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
   ? "₱" + Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   : "Not priced";
-const categoryLabel = (value) => value ? String(value).toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "Uncategorized";
+// "PC", "Tablet"… or, for Others, the typed device (lib/serviceCategories.js).
+const categoryLabel = (value, custom) => (value ? deviceLabel(value, custom) : "Uncategorized");
 const supports = (service, key) => Number(service[key]) === 1;
 // shop_services.review_status: clients only see APPROVED services.
 const REVIEW_STYLE = {
@@ -73,13 +74,15 @@ export default function BusinessServices() {
   const services = data?.services ?? [];
   const waiting = services.filter((item) => item.review_status === "PENDING").length;
   const rejected = services.filter((item) => item.review_status === "REJECTED").length;
-  const allCategories = data?.categories?.length ? data.categories : FALLBACK_CATEGORIES;
+  // The five offered categories, plus an older one the edited service still uses.
+  const legacyCategory = editing && editing !== "new" && !OFFERED_CATEGORIES.includes(editing.category) ? editing.category : null;
+  const allCategories = legacyCategory ? [...OFFERED_CATEGORIES, legacyCategory] : OFFERED_CATEGORIES;
   const categories = [...new Set(services.map((item) => item.category).filter(Boolean))].sort();
   const prices = services.filter((item) => item.base_price !== null && item.base_price !== "" && Number.isFinite(Number(item.base_price))).map((item) => Number(item.base_price));
   const needle = query.trim().toLowerCase();
   const filtered = services.filter((item) =>
     (!category || item.category === category) && (!method || supports(item, method)) &&
-    (!needle || [item.name, item.description, item.category, item.estimated_timeframe].join(" ").toLowerCase().includes(needle))
+    (!needle || [item.name, item.description, item.category, item.custom_category, item.estimated_timeframe].join(" ").toLowerCase().includes(needle))
   ).sort((a, b) => {
     const nameOrder = String(a.name || "").localeCompare(String(b.name || "")) || Number(a.id) - Number(b.id);
     const priceA = a.base_price === null || a.base_price === "" || a.base_price === undefined ? NaN : Number(a.base_price);
@@ -104,6 +107,7 @@ export default function BusinessServices() {
     setForm({
       name: service.name ?? "",
       category: service.category ?? "",
+      custom_category: service.custom_category ?? "",
       description: service.description ?? "",
       base_price: service.base_price !== null && service.base_price !== undefined ? String(Number(service.base_price)) : "",
       estimated_timeframe: service.estimated_timeframe ?? "",
@@ -119,6 +123,10 @@ export default function BusinessServices() {
   const validate = () => {
     if (!form.name.trim()) return "Enter a service name.";
     if (!form.category) return "Choose a device category.";
+    if (form.category !== legacyCategory) {
+      const problem = categoryProblem(form.category, form.custom_category);
+      if (problem) return problem;
+    }
     const price = Number(form.base_price);
     if (!form.base_price.trim() || !Number.isFinite(price) || price <= 0) return "Enter a base price above 0.";
     if (!form.estimated_timeframe.trim()) return "Enter an estimated turnaround (for example, 1-2 days).";
@@ -245,7 +253,7 @@ export default function BusinessServices() {
               <View style={isDesktop ? { flex: 4, minWidth: 0 } : undefined}>
                 <View className="mb-2 flex-row flex-wrap items-center gap-2">
                   <ReviewBadge status={item.review_status} />
-                  <Text className="text-xs font-semibold text-primary">{categoryLabel(item.category)}</Text>
+                  <Text className="text-xs font-semibold text-primary">{categoryLabel(item.category, item.custom_category)}</Text>
                 </View>
                 <Text className="text-base font-bold text-gray-900">{item.name || "Unnamed service"}</Text>
                 {item.review_status === "REJECTED" && item.review_note ? <Text className="mt-2 rounded-lg bg-red-50 p-2 text-xs leading-5 text-red-700">Admin: {item.review_note}</Text> : null}
@@ -301,6 +309,16 @@ export default function BusinessServices() {
             </Pressable>
           ))}
         </View>
+        {form.category === "OTHER" ? (
+          <TextField
+            label="What device is it for?"
+            value={form.custom_category}
+            onChangeText={setField("custom_category")}
+            placeholder="e.g. Game console, Smartwatch, Printer"
+            maxLength={CUSTOM_CATEGORY_MAX}
+            editable={!busy}
+          />
+        ) : null}
 
         <View className={isMobile ? "" : "flex-row gap-3"}>
           <View className={isMobile ? "" : "flex-1"}>

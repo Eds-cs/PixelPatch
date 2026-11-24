@@ -1,5 +1,6 @@
 // server/sockets/chatSocket.js
 import jwt from "jsonwebtoken";
+import { isSuspended } from "../utils/accountStatus.js";
 import db from "../config/db.js";
 
 const isChatParticipant = (chatId, userId) =>
@@ -21,18 +22,21 @@ const isChatParticipant = (chatId, userId) =>
   });
 
 export default function setupChatSockets(io) {
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     // expect token sent in auth: { token } from client
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("No token"));
 
+    let decoded;
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = decoded; // { id, role_id, ... }
-      return next();
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
       return next(new Error("Invalid token"));
     }
+    // Suspended accounts can't chat (utils/accountStatus.js).
+    if (await isSuspended(decoded.id)) return next(new Error("Account suspended"));
+    socket.user = decoded; // { id, role_id, ... }
+    return next();
   });
 
   io.on("connection", (socket) => {

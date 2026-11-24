@@ -7,16 +7,23 @@
 // GET  /api/admin/shops?status=PENDING|VERIFIED|ALL&q=&limit=&offset=
 // POST /api/admin/shops/:id/approve { approve_services }
 // POST /api/admin/shops/:id/reject  { note }
+// POST /api/admin/shops/:id/documents/:attachmentId/link -> { url } (5-minute view link)
+//
+// A shop can only be approved with a business permit on file (AGENTS.md, "Business rules").
 import { useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Platform, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 
 import Button from "../../components/Button";
 import TextField from "../../components/TextField";
 import Modal from "../../components/Modal";
 import { Checkbox } from "../../components/ConsentCheckbox";
-import api from "../../lib/api";
+import { AdminEmpty, AdminNotice, AdminPageHeader, AdminTabs } from "../../components/AdminUI";
+import api, { mediaUrl } from "../../lib/api";
 import { formatPhone } from "../../lib/phone";
+import { shopTermsLabel } from "../../lib/paymentTerms";
+import { categoryLabel } from "../../lib/serviceCategories";
 import { usePagedFetch, useDebouncedValue } from "../../lib/usePagedFetch";
 import { useResponsive } from "../../lib/useResponsive";
 import { COLORS } from "../../constants/theme";
@@ -65,11 +72,63 @@ function Detail({ icon, label, children }) {
   );
 }
 
+function deliveryText(shop) {
+  if (shop.is_pickup == null && shop.is_dropoff == null && shop.is_onsite == null) return "Not set";
+  const methods = [
+    Number(shop.is_dropoff) ? "Drop-off" : null,
+    Number(shop.is_pickup) ? "Pickup" : null,
+    Number(shop.is_onsite) ? "On-site" : null,
+  ].filter(Boolean);
+  return methods.join(", ") || "None";
+}
+
+function DocumentRow({ shopId, doc }) {
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState(null);
+  const view = async () => {
+    setOpening(true);
+    setError(null);
+    try {
+      const { data } = await api.post(`/admin/shops/${shopId}/documents/${doc.attachment_id}/link`);
+      const url = mediaUrl(data.url);
+      if (Platform.OS === "web") window.open(url, "_blank", "noopener");
+      else await WebBrowser.openBrowserAsync(url);
+    } catch (e) {
+      setError(e.message || "Couldn't open this document.");
+    } finally {
+      setOpening(false);
+    }
+  };
+  return (
+    <View className="mb-1.5 rounded-lg bg-gray-50 px-3 py-2">
+      <View className="flex-row flex-wrap items-center justify-between gap-2">
+        <View className="flex-1 flex-row items-center" style={{ minWidth: 180 }}>
+          <Ionicons
+            name={doc.mime_type === "application/pdf" ? "document-text-outline" : "image-outline"}
+            size={16}
+            color={COLORS.textMuted}
+          />
+          <View className="ml-2 flex-1">
+            <Text className="text-sm font-semibold text-gray-800">{doc.label}</Text>
+            <Text className="text-xs text-gray-500" numberOfLines={1}>{doc.file_name}</Text>
+          </View>
+        </View>
+        <View className="w-28">
+          <Button title="View" variant="outline" loading={opening} onPress={view} />
+        </View>
+      </View>
+      {error ? <Text className="mt-1 text-xs text-red-600">{error}</Text> : null}
+    </View>
+  );
+}
+
 function ShopCard({ shop, isMobile, onApprove, onReject }) {
   const pending = Number(shop.is_verified) === 0;
   const waitingServices = shop.services.filter((svc) => svc.review_status === "PENDING").length;
   const owner = [shop.owner_first_name, shop.owner_last_name].filter(Boolean).join(" ") || "—";
   const address = [shop.street, shop.barangay, shop.city].filter(Boolean).join(", ") || "—";
+  const documents = shop.documents ?? [];
+  const hasPermit = documents.some((doc) => doc.type === "BUSINESS_PERMIT");
 
   return (
     <View className="mb-4 rounded-2xl border border-gray-200 bg-white p-4">
@@ -95,6 +154,7 @@ function ShopCard({ shop, isMobile, onApprove, onReject }) {
             {formatPhone(shop.phone_number)} · {shop.email}
           </Detail>
           <Detail icon="location-outline" label="Address">{address}</Detail>
+          <Detail icon="car-outline" label="Service methods">{deliveryText(shop)}</Detail>
         </View>
         <View className={isMobile ? "" : "flex-1"}>
           <Detail icon="time-outline" label="Opening hours">
@@ -105,8 +165,30 @@ function ShopCard({ shop, isMobile, onApprove, onReject }) {
               ? `${shop.payout_method} · ${shop.payout_account_name} · ${masked(shop.payout_account_number)}`
               : "None registered"}
           </Detail>
+          <Detail icon="receipt-outline" label="TIN">{shop.payout_tin || "Not given"}</Detail>
+          <Detail icon="wallet-outline" label="Payment options">{shopTermsLabel(shop)}</Detail>
         </View>
       </View>
+
+      {shop.description ? (
+        <Detail icon="information-circle-outline" label="About the shop">{shop.description}</Detail>
+      ) : null}
+
+      <Text className="mb-2 mt-1 text-xs font-semibold uppercase text-gray-400">
+        Documents ({documents.length})
+      </Text>
+      {documents.map((doc) => (
+        <DocumentRow key={doc.attachment_id} shopId={shop.id} doc={doc} />
+      ))}
+      {pending && !hasPermit ? (
+        <Text className="mb-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          No business permit was uploaded, so this shop can&apos;t be approved. Reject it and ask the owner to
+          register again with their permit.
+        </Text>
+      ) : null}
+      {!pending && documents.length === 0 ? (
+        <Text className="mb-2 text-sm text-gray-500">None on file (approved before documents were required).</Text>
+      ) : null}
 
       <Text className="mb-2 mt-1 text-xs font-semibold uppercase text-gray-400">
         Services ({shop.services.length})
@@ -115,7 +197,7 @@ function ShopCard({ shop, isMobile, onApprove, onReject }) {
         shop.services.map((svc) => (
           <View key={svc.id} className="mb-1.5 flex-row flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2">
             <Text className="flex-1 text-sm text-gray-800" style={{ minWidth: 160 }}>
-              {svc.name} <Text className="text-xs text-gray-500">· {String(svc.category).toLowerCase()}</Text>
+              {svc.name} <Text className="text-xs text-gray-500">· {categoryLabel(svc.category, svc.custom_category)}</Text>
             </Text>
             <Text className="text-sm font-semibold text-gray-900">{money(svc.base_price)}</Text>
             <Text className="text-xs text-gray-500">{svc.estimated_timeframe}</Text>
@@ -131,7 +213,7 @@ function ShopCard({ shop, isMobile, onApprove, onReject }) {
             <Button title="Reject" variant="outline" onPress={() => onReject(shop)} />
           </View>
           <View className={isMobile ? "" : "w-44"}>
-            <Button title="Approve" onPress={() => onApprove(shop, waitingServices)} />
+            <Button title="Approve" disabled={!hasPermit} onPress={() => onApprove(shop, waitingServices)} />
           </View>
         </View>
       ) : null}
@@ -195,31 +277,11 @@ export default function AdminShops() {
 
   const header = (
     <View>
-      <Text accessibilityRole="header" className="text-2xl font-bold text-gray-900">Shops</Text>
-      <Text className="mb-4 mt-1 text-sm leading-5 text-gray-500">
-        Review new business registrations. Approved shops are listed for clients and their owners get the business portal.
-      </Text>
-
-      <View className="mb-3 flex-row flex-wrap gap-2">
-        {TABS.map((tab) => {
-          const active = status === tab.key;
-          const count = tab.key === "ALL" ? null : counts[tab.key];
-          return (
-            <Pressable
-              key={tab.key}
-              onPress={() => setStatus(tab.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              className={`min-h-11 flex-row items-center justify-center rounded-lg px-3 py-2 ${active ? "bg-primary" : "bg-white border border-gray-200"}`}
-            >
-              <Text className={`text-sm font-semibold ${active ? "text-white" : "text-gray-700"}`}>
-                {tab.label}
-                {count !== null && count !== undefined ? ` (${count})` : ""}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <AdminPageHeader
+        title="Shops"
+        description="Review new business registrations and their documents. Approved shops are listed for clients and their owners get the business portal."
+      />
+      <AdminTabs tabs={TABS} value={status} onChange={setStatus} counts={{ PENDING: counts.PENDING, VERIFIED: counts.VERIFIED }} />
 
       <TextField
         label="Search"
@@ -229,15 +291,7 @@ export default function AdminShops() {
         autoCapitalize="none"
       />
 
-      {message ? (
-        <View className="mb-4 flex-row items-start gap-2 rounded-lg bg-teal-50 p-3">
-          <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />
-          <Text className="flex-1 text-sm text-teal-900">{message}</Text>
-          <Pressable onPress={() => setMessage(null)} accessibilityLabel="Dismiss" hitSlop={8}>
-            <Ionicons name="close" size={18} color={COLORS.textMuted} />
-          </Pressable>
-        </View>
-      ) : null}
+      <AdminNotice message={message} onDismiss={() => setMessage(null)} />
       {list.error ? <Text className="mb-4 text-sm text-red-600">{list.error}</Text> : null}
     </View>
   );
@@ -267,12 +321,10 @@ export default function AdminShops() {
           list.loading ? (
             <ActivityIndicator color={COLORS.primary} />
           ) : (
-            <View className="items-center rounded-2xl border border-gray-200 bg-white p-8">
-              <Ionicons name="storefront-outline" size={32} color={COLORS.textMuted} />
-              <Text className="mt-2 text-center text-sm text-gray-500">
-                {status === "PENDING" ? "No registrations are waiting. Nice work!" : "No shops match."}
-              </Text>
-            </View>
+            <AdminEmpty
+              icon="storefront-outline"
+              text={status === "PENDING" ? "No registrations are waiting. Nice work!" : "No shops match."}
+            />
           )
         }
         onEndReached={list.loadMore}

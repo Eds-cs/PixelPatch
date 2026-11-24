@@ -116,10 +116,10 @@ export function AuthProvider({ children }) {
     refreshSession().catch(() => {});
   }, [loading, token, refreshSession]);
   useEffect(() => {
-    setUnauthorizedHandler((failedToken) => {
+    setUnauthorizedHandler((failedToken, message) => {
       if (signingOut.current || !tokenRef.current || failedToken !== tokenRef.current) return;
       signingOut.current = true;
-      setSessionNotice("Your session has expired. Please sign in again.");
+      setSessionNotice(message || "Your session has expired. Please sign in again.");
       logout().finally(() => {
         signingOut.current = false;
       });

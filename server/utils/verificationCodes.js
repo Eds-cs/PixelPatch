@@ -18,12 +18,17 @@ export function createCodeStore({ ttlMs = 10 * 60 * 1000, cooldownMs = 60 * 1000
   };
 
   return {
-    /** New code for `key`, or { tooSoon: true } if one was sent within the cooldown. */
+    /**
+     * New code for `key`, or { tooSoon: true, retryAfterMs } if one was sent
+     * within the cooldown.
+     */
     issue(key, data = {}) {
       prune();
       const now = Date.now();
       const existing = records.get(key);
-      if (existing && now - existing.sentAt < cooldownMs) return { tooSoon: true };
+      if (existing && now - existing.sentAt < cooldownMs) {
+        return { tooSoon: true, retryAfterMs: cooldownMs - (now - existing.sentAt) };
+      }
       const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
       records.set(key, { codeHash: hash(code), expiresAt: now + ttlMs, sentAt: now, attempts: 0, data });
       return { code };

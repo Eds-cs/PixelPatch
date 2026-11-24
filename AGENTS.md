@@ -576,8 +576,26 @@ Xendit payment callbacks.
 ```
 
 Admin portal (admin role only, enforced by `server/middleware/adminMiddleware.js`,
-which re-checks `users.role_id` in the database on every request). Currently:
-summary counts and shop-service review:
+which re-checks `users.role_id` in the database on every request). Screens
+share `components/AdminUI.jsx`; sections with work waiting show a count in the
+navigation (`lib/adminSummary.js`).
+
+* `GET /admin/summary`: dashboard to-do counts and navigation badges:
+  shops to verify, services to review, disputes needing an admin, repairs
+  waiting on a shop for over 2 days (each with the oldest item's time).
+  The dispute and repair conditions are `DISPUTE_NEEDS_ADMIN_SQL` and
+  `REPAIR_AWAITING_SHOP_SQL` in `controllers/admin/serviceReviewController.js`.
+* Users: `GET /admin/users?filter=ALL|CLIENT|BUSINESS|ADMIN|SUSPENDED&q=`,
+  `GET /admin/users/:id`, `POST /admin/users/:id/suspend { reason }`,
+  `POST /admin/users/:id/reactivate`. Roles are NOT changed here. Admins
+  and your own account can't be suspended. See "Suspended accounts" in section 18.
+* Repairs (READ-ONLY): `GET /admin/repairs?view=WAITING|OVERDUE|ACTIVE|COMPLETED|CLOSED|ALL&q=`,
+  `GET /admin/repairs/:id`. Admins never change a repair's workflow fields.
+* Disputes: `GET /admin/disputes?view=NEEDS_ADMIN|IN_PROGRESS|RESOLVED|ALL&q=`,
+  `GET /admin/disputes/:id`, `POST /admin/disputes/:id/decide { outcome: REFUND|RESERVICE|DECLINE, note }`.
+  See business rule 7 in section 20.
+
+Shop-service review:
 
 * `GET /admin/services/shops?status=&q=&limit=&offset=` (shops with per-status counts, most waiting first)
 * `GET /admin/services?status=&shop_id=&q=&limit=&offset=` (paged, `{ services, total, counts }`)
@@ -585,6 +603,7 @@ summary counts and shop-service review:
 * `POST /admin/services/:id/approve`, `POST /admin/services/:id/reject`
 * `GET /admin/shops?status=PENDING|VERIFIED|ALL&q=&limit=&offset=` (business registrations)
 * `POST /admin/shops/:id/approve { approve_services }`, `POST /admin/shops/:id/reject { note }`
+* `POST /admin/shops/:id/documents/:attachmentId/link` (5-minute view link for a submitted document)
 
 Admin lists are paged server-side; use `lib/usePagedFetch.js` for new long lists.
 
@@ -789,6 +808,10 @@ The client may:
 
 The repair must not proceed directly from quotation creation to active repair without the required client action.
 
+Once the client approves or cancels, the quotation is locked: the business
+can't change its price, parts, warranty or payment terms (see "Payment terms"
+in section 20).
+
 Cancellation is allowed while the client has not yet decided
 (`client_approved IS NULL`), the request is not rejected, `status` is
 `PENDING` or `REVIEW`, and `payment_status` is not `PAID`. Cancelling also sets
@@ -978,6 +1001,18 @@ Passwords use:
 bcryptjs
 ```
 
+## Suspended accounts (since 2026-11-24)
+
+An admin can suspend an account (`users.suspended_at`, `suspended_reason`,
+`suspended_by`). A suspended account can't sign in (password or Google), and
+its existing 7-day tokens stop working: `authRequired`, `GET /auth/session` and
+the chat socket all check `isSuspended` (`server/utils/accountStatus.js`),
+which caches each answer for 30 seconds; suspending or reactivating clears it.
+API calls answer `401 { code: "ACCOUNT_SUSPENDED" }`, and `lib/api.js` signs
+the app out showing that message. A shop whose owner is suspended can't
+receive new repair requests. Nothing is deleted; reactivating restores access.
+Any new way of authenticating must also check `isSuspended`.
+
 ---
 
 # 19. Frontend authentication storage
@@ -1028,23 +1063,201 @@ not a business: business routes refuse role 2 even if the admin owns a shop. Bef
 inspect the live `user_roles` and `users` tables and confirm the affected
 ownership and authorization behavior.
 
-## Becoming a business (since 2026-11-23)
+## Becoming a business (since 2026-11-23; documents since 2026-11-24)
 
-1. A client registers a shop (`POST /business-register`, `app/become-partner.jsx`).
+1. Only an existing client account (role 1) signs up a shop, from
+   `app/become-partner.jsx` (`POST /business-register`, multipart). The form
+   has five steps, and the server re-checks every field. Every error names
+   its field (`{ message, field }`, e.g. `business_phone`,
+   `service.1.price`, `documents.BUSINESS_PERMIT`); the app highlights that
+   input in red and jumps to its step. Optional inputs are labelled
+   "(optional)".
+   * Business: name, email, phone, description of the shop (20 to 1000 characters).
+     - The business email must be real: disposable inboxes and domains that
+       can't receive mail are refused (`server/utils/emailChecks.js`), and the
+       applicant must enter a 6-digit code sent to it
+       (`POST /business-register/email-code`, then `/email-verify`, which
+       returns a signed 2-hour token sent with the registration). One code a
+       minute (the app shows a countdown), 5 codes per 30 minutes per
+       account, 5 wrong guesses per code (`server/utils/businessEmailVerification.js`).
+     - The business phone can't be used by another shop or another user's
+       account (the applicant's own number is allowed):
+       `businessPhoneTaken` in `server/utils/phone.js`, checked on Continue
+       (`POST /business-register/check-phone`) and again on submit.
+   * Location: the shop's address, which MUST be in Zamboanga City (a
+     barangay from `server/utils/serviceArea.js`; city/province/region are
+     set by the server), plus open days and hours.
+   * Services: how customers reach the shop (drop-off, pickup, on-site; at
+     least one; saved to `shop_service_types` and each service's `accepts_*`),
+     and each service's device, name, description, price and turnaround.
+     Devices offered (here and in the business Services screen): Smartphone,
+     Tablet, Laptop, PC (`DESKTOP`) and Others, where the shop types the
+     device (`shop_services.custom_category`). CONTROLLER and SMARTWATCH are
+     no longer offered; existing services keep them
+     (`server/utils/serviceCategories.js`, `lib/serviceCategories.js`).
+   * Payout: only GCash is offered for now (decided 2026-11-24; PixelPatch may
+     support one wallet at first). Maya and bank transfer, including the bank
+     name (`shop_payouts.bank_name`), are built but switched off:
+     `ENABLED_PAYOUT_METHODS` in `server/utils/payoutMethods.js` and
+     `lib/payoutMethods.js`. Also the business TIN (`shop_payouts.tin`), and
+     how clients pay the shop by default (online deposit percentage and
+     whether cash is accepted; see "Payment terms").
+   * Documents: proof of a legitimate business. The business (Mayor's)
+     permit is REQUIRED; DTI/SEC registration and BIR Form 2303 are optional.
+     PDF/JPG/PNG, 10 MB each. See "Shop documents" below.
+   * Agreement: the **Business** Terms of Service and **Business** Privacy
+     Policy (`lib/policies/business.js`), opened in a pop-up
+     (`components/PolicyModal.jsx`), not a separate page. They are written
+     from the business rules and payment terms below: update them when those
+     change. Not yet reviewed by a lawyer.
    The shop is saved with `is_verified = 0` and the account STAYS role 1.
 2. An admin reviews it in `app/admin/shops.jsx`:
-   * approve (`POST /admin/shops/:id/approve`): `is_verified = 1`, the owner
-     becomes role 3 (only if role 1; admins keep role 2), optionally the
-     registration's pending services are approved, and the owner is emailed.
+   * approve (`POST /admin/shops/:id/approve`): refused unless a business
+     permit is on file. Then `is_verified = 1`, the documents are marked
+     `SUCCESS`, the owner becomes role 3 (only if role 1; admins keep role 2),
+     optionally the registration's pending services are approved, and the
+     owner is emailed.
    * reject (`POST /admin/shops/:id/reject { note }`): the application (shop,
-     services, payout, address) is deleted, the owner stays a client and is
-     emailed the reason, and may apply again.
+     services, payout, delivery methods, documents and their files, address)
+     is deleted, the owner stays a client and is emailed the reason, and may
+     apply again.
 3. `GET /auth/session` re-reads the role from the database and returns a new
    token. `lib/auth.jsx` calls it once per app start (and the partner page's
    "Check status" button), replacing the token only when the role changed.
 
 `/my-shop` returns `isVerified`; the root layout sends non-business accounts
 away from `app/business/` to `/become-partner`, which shows the status.
+
+## Shop documents (since 2026-11-24)
+
+Types, storage and view links live in `server/utils/shopDocuments.js` (keep
+`DOCUMENTS` in `app/become-partner.jsx` in sync). Rows: one `attachments` row
+per file, one `shop_documents` row per registration (`PENDING`, `SUCCESS` on
+approval), and `shop_documents_attachments` linking them
+(`attachment_id = attachments.id`, `type` = the document key).
+
+The files are private: they are stored under `uploads/private/shop-documents/`,
+which `server.js` never serves. An admin opens one through
+`POST /admin/shops/:id/documents/:attachmentId/link`, which returns a signed
+`/api/shop-documents/<token>` link valid for 5 minutes. Never put permits
+under a public upload path or return `file_path` to the app.
+
+Shops approved before 2026-11-24 have no documents on file.
+
+## Business rules (agreed 2026-11-24, authoritative)
+
+These are the intended rules for repair shops, agreed with the project owner.
+Like section 15, they are business logic, not a description of the current UI:
+do not change them without explicit instruction. Many are NOT built yet; the
+status after each rule says what exists today. When building one, update its
+status here.
+
+1. **Shop verification.** Only shops verified by an admin can operate on the
+   platform. Verification requires proof of a legitimate business, such as a
+   DTI registration or Mayor's permit. Shops must be in Zamboanga City.
+   *Status: built (see "Becoming a business"); a business permit is required.*
+2. **Subscription plan.** Shops must keep an active monthly or yearly
+   subscription to be listed and to receive repair requests. If a
+   subscription lapses, the shop is hidden from clients and cannot accept new
+   requests, but it must still complete repairs already in progress. Plan
+   prices are set by the platform.
+   *Status: NOT built. `subscription_plans` and `subscriptions` exist with 0
+   rows; listings and request creation do not check subscriptions.*
+3. **Service approval.** Every service a shop adds or renames must be approved
+   by an admin before clients can see it.
+   *Status: built (`shop_services.review_status`, see the schema reference).*
+4. **Quotations and warranties.** Each repair request receives one quotation,
+   sent only by the main business account. It covers services, parts, any
+   possible additional costs, the estimated completion date and any warranty.
+   The shop sets its own warranty terms.
+   *Status: mostly built (sections 15 and 17; warranties in
+   `request_quotation_warranties`). "Possible additional costs" has no field
+   yet.*
+5. **Cash confirmation.** The shop owner, or the member assigned to the
+   repair, confirms receipt of cash balances in the app.
+   *Status: NOT built. The terms that allow a cash balance exist (see
+   "Payment terms" below), but payments are still Xendit only and nothing
+   records cash.*
+6. **Payouts.** Payments made through the platform are held and released in
+   full to the shop after the repair is completed and the dispute period has
+   passed, less any payment processing fees.
+   The dispute period is **7 days** after the repair is completed: if no
+   dispute is opened in that time, the payout is released.
+   *Status: NOT built. `shop_payouts` stores the account (status `PENDING`,
+   never verified); nothing holds or releases money.*
+7. **Dispute response.** Shops must respond to a dispute within a set time.
+   If they don't, the dispute goes to an admin for resolution.
+   The shop has **2 days** from when the dispute is opened.
+   *Status: admin side built (2026-11-24). A dispute needs an admin when the
+   client declined the shop's offer (`REJECTED`) or it's been `OPEN` for over
+   2 days; it then appears in Admin → Disputes and on the dashboard. The
+   admin decides refund, re-service, or decline: the dispute becomes
+   `RESOLVED` with `proposed_resolution` = the decision (`NULL` = complaint
+   declined), and the explanation is added to `dispute_edits` as `ADMIN`.
+   NOT built: notifying the shop before the 2 days run out, emails about
+   the decision, and actually moving refund money.*
+8. **Staff and technicians.** Shop owners may add staff and technicians as
+   members of their shop, similar to contributors on GitHub. Members have
+   limited access: they can view only the repairs assigned to them and
+   confirm payments related to those repairs. Only the main business account
+   can send quotations and assign repairs to members, and it keeps full
+   control of the shop's services, members, payouts and disputes. When a
+   member is removed, their open repairs return to the main account for
+   reassignment, and their past repairs stay on the shop's record. The
+   platform does not vet individual members, and the shop is responsible for
+   their actions.
+   *Status: NOT built. `shop_employees` are records without sign-in accounts;
+   repairs are assigned to them (`request_assignments`), but members cannot
+   log in or see anything.*
+
+## Payment terms (agreed 2026-11-24, authoritative)
+
+PixelPatch takes **no commission** on repairs. It earns from shop
+subscriptions (rule 2). So cash costs the platform nothing; online payment
+exists to protect clients (disputes, backjobs), not to earn fees.
+
+Every job is paid in two parts:
+
+* **Online deposit:** a whole-number percentage (0-100%) of the quotation
+  total, paid online (Xendit) before work starts. Always online.
+* **Balance:** the rest, paid when the repair is done: online, or in cash if
+  the quotation allows it. With a 100% deposit there is no balance, so cash
+  can't apply.
+
+Clients can always pay online. Online money is held by PixelPatch and released
+to the shop 7 days after completion (rule 6), so it can be refunded through a
+dispute. Cash goes straight to the shop: a cash dispute can only end in a
+backjob, a refund the shop pays directly, or action on the shop's account.
+Tell clients this where they see the terms.
+
+Who sets what:
+
+* **Shop defaults** (`shops.accepts_cash`, `shops.default_deposit_percent`),
+  chosen at registration (Payout step) and changed in the business profile
+  (`PUT /business/shop/payment-terms`). Shown to clients on the shop page.
+* **Each quotation** (`request_quotations.deposit_percent`, `allow_cash`)
+  copies the defaults when it is created; the shop may change them for that
+  job. A quotation can't allow cash if the shop doesn't accept cash. Changing
+  the defaults never changes a quotation already sent.
+* A shop that accepts cash may set a 0% deposit (an all-cash job).
+
+**Quotations lock on approval.** Once the client approves (or cancels), the
+quotation's price, parts, warranty and payment terms can't be changed
+(`updateQuotation` refuses with 409). Only the estimated completion date can
+still be set (`PUT .../quotation/completion`), because payment needs one.
+
+Rules live in `server/utils/paymentTerms.js` and `lib/paymentTerms.js` (keep
+them in sync); the controls are `components/PaymentTermsFields.jsx`, and the
+client view is `QuotationSection` in `components/RepairSummary.jsx`.
+
+*Status: the terms are stored, edited and shown (2026-11-24). Payment does
+NOT follow them yet: `generatePaymentLink` still charges the full total
+online, and assignment, start and completion still require
+`payment_status = 'PAID'`. Until the deposit/balance flow is built, clients
+see terms the payment step doesn't honour, so build that before going live
+with deposits below 100% or cash. Building it changes section 15 Step 6 and
+the "start repair before payment" restriction in section 17: those changes
+are intended, but update both sections when you make them.*
 
 ---
 
@@ -1882,6 +2095,8 @@ request_id                  FK -> service_requests.id   (NOT unique)
 assessment_id               FK -> request_assessments.id
 labor_fee                   decimal(10,0) NOT NULL
 estimated_cost              decimal(10,2) NOT NULL
+deposit_percent             tinyint unsigned NOT NULL DEFAULT 100   (0-100, CHECK; added 2026-11-24)
+allow_cash                  tinyint(1) NOT NULL DEFAULT 0           (balance may be paid in cash; added 2026-11-24)
 estimated_completion_time   datetime NULL
 is_parts_needed             tinyint(1) NOT NULL
 status                      enum('PENDING','PAID','CANCELLED') NOT NULL
@@ -2009,7 +2224,7 @@ resolution, and the client accepts or rejects it.
 ```text
 id
 dispute_id   FK -> disputes.id  ON DELETE CASCADE
-edited_by    enum('CLIENT','BUSINESS') NOT NULL
+edited_by    enum('CLIENT','BUSINESS','ADMIN') NOT NULL   (ADMIN added 2026-11-24: an admin's decision)
 content      text NOT NULL
 created_at   datetime NOT NULL DEFAULT current_timestamp()
 ```
@@ -2034,6 +2249,7 @@ email           varchar(100) NOT NULL UNIQUE
 phone           varchar(20) NULL   (optional; nullable since 2026-11-16)
 password_hash   varchar(255) NOT NULL
 photo_url       longtext NULL
+suspended_at, suspended_reason (varchar 500), suspended_by (int, no FK)   NULL   (added 2026-11-24; section 18)
 created_at, updated_at   datetime (defaults / auto-update)
 ```
 
@@ -2056,6 +2272,8 @@ description              text NOT NULL
 address_id               FK -> addresses.id  NOT NULL
 phone_number             varchar(20) NOT NULL     (NOT "phone")
 email                    varchar(100) NOT NULL
+accepts_cash             tinyint(1) NOT NULL DEFAULT 0                    (added 2026-11-24)
+default_deposit_percent  tinyint unsigned NOT NULL DEFAULT 100 (0-100, CHECK; added 2026-11-24)
 open_time, closing_time  time NOT NULL
 days_from, days_to       varchar(255) NOT NULL
 is_verified              tinyint(1) NOT NULL   (0 = pending, 1 = verified)
@@ -2117,6 +2335,8 @@ id
 shop_id               FK -> shops.id
 name                  varchar(100) NOT NULL
 category              enum('SMARTPHONE','DESKTOP','CONTROLLER','TABLET','SMARTWATCH','LAPTOP','OTHER') NOT NULL
+                      (offered since 2026-11-24: SMARTPHONE, TABLET, LAPTOP, DESKTOP = "PC", OTHER)
+custom_category       varchar(60) NULL   (the typed device when category = 'OTHER'; added 2026-11-24)
 description           text NOT NULL
 base_price            decimal(10,2) NOT NULL
 estimated_timeframe   varchar(255) NOT NULL     (NOT "timeframe")
@@ -2159,14 +2379,16 @@ drop-off while its services say pickup).
 
 Resolve a shop's delivery methods with `server/utils/shopDeliveryTypes.js`:
 an explicit row wins; otherwise a method is accepted when any of the shop's
-services accepts it. Business registration does not write this table.
+services accepts it. Business registration writes one row per new shop
+(since 2026-11-24), from the delivery methods chosen in the form.
 
 ### shop_payouts
 
 ```text
 id
 shop_id          FK -> shops.id
-method           enum('CARD','GCASH','MAYA','BANK') NOT NULL   (BANK added 2026-11-16)
+method           enum('CARD','GCASH','MAYA','BANK') NOT NULL   (BANK added 2026-11-16; only GCASH offered since 2026-11-24)
+bank_name        varchar(100) NULL   (when method = 'BANK'; added 2026-11-24)
 account_name     varchar(100) NOT NULL
 account_number   varchar(50) NOT NULL
 tin              varchar(20) NULL
@@ -2252,19 +2474,20 @@ timestamp         datetime NOT NULL
 
 ```text
 activity_logs              (user_id FK -> users)
-attachments                (file_name, file_path, mime_type)
 auth_sessions              (user_id FK -> users, token, expires_at)
 conversation_suggestions   (conversation_id FK -> ai_conversations, reason)
 shop_suggestions           (PK shop_id + conversation_suggestion FK -> conversation_suggestions)
 discounts                  (shop_id FK -> shops, discount_code, unit, value, count, limit, valid_from, valid_until, is_active)
 notifications              (user_id FK -> users, message, is_read)
-shop_documents             (shop_id FK -> shops, status enum('SUCCESS','FAILED','PENDING'))
-shop_documents_attachments (shop_documents_id, type; No FK)
 subscription_plans         (plan_name, description, price, duration_days, customer_limit, features JSON, is_active)
 subscriptions              (shop_id FK -> shops, plan_id FK -> subscription_plans, renewal_date)
 ```
 
 Confirm the intended behavior before building on these.
+
+`attachments`, `shop_documents` and `shop_documents_attachments` are used by
+business registration since 2026-11-24 (see "Shop documents" in section 20).
+`shop_documents_attachments.attachment_id` holds an `attachments.id` (no FK).
 
 ---
 

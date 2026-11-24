@@ -1,12 +1,73 @@
 // app/(business)/profile.jsx — GET /api/shops/:id
+// Payment options: PUT /api/business/shop/payment-terms (lib/paymentTerms.js).
+import { useState } from "react";
 import { ActivityIndicator, Alert, Platform, RefreshControl, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../../components/Button";
+import PaymentTermsFields from "../../components/PaymentTermsFields";
+import api from "../../lib/api";
 import { useFetch } from "../../lib/useFetch";
 import { useShop } from "../../lib/shop";
 import { useAuth } from "../../lib/auth";
+import { shopTermsLabel, shopTermsProblem } from "../../lib/paymentTerms";
 import { COLORS } from "../../constants/theme";
+
+function PaymentOptions({ shop, onSaved, note, setNote }) {
+  const saved = {
+    depositPercent: String(shop?.default_deposit_percent ?? 100),
+    acceptsCash: Number(shop?.accepts_cash) === 1,
+  };
+  const [form, setForm] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const changed = form.depositPercent !== saved.depositPercent || form.acceptsCash !== saved.acceptsCash;
+  const problem = shopTermsProblem(form);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await api.put("/business/shop/payment-terms", {
+        deposit_percent: form.depositPercent,
+        accepts_cash: form.acceptsCash,
+      });
+      setNote("Saved. New quotations will use these options; quotations already sent keep theirs.");
+      await onSaved?.();
+    } catch (e) {
+      setError(e.message || "Couldn't save your payment options.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+      <Text className="text-base font-bold text-gray-900">Payment options</Text>
+      <Text className="mb-1 mt-1 text-sm text-gray-500">Clients see: {shopTermsLabel(shop)}</Text>
+      <Text className="mb-4 text-xs leading-5 text-gray-500">
+        Clients can always pay online. These are the defaults for new quotations; you can change them on
+        each quotation.
+      </Text>
+      <PaymentTermsFields value={form} onChange={setForm} disabled={busy} />
+      {problem && changed ? <Text className="mb-2 text-sm text-red-600">{problem}</Text> : null}
+      {error ? <Text className="mb-2 text-sm text-red-600">{error}</Text> : null}
+      {note ? <Text className="mb-2 text-sm text-teal-800">{note}</Text> : null}
+      <View className="mt-2 flex-row flex-wrap justify-end gap-3">
+        {changed ? (
+          <View className="w-32">
+            <Button title="Undo" variant="outline" onPress={() => setForm(saved)} disabled={busy} />
+          </View>
+        ) : null}
+        <View className="w-44">
+          <Button title="Save" loading={busy} disabled={!changed || Boolean(problem)} onPress={save} />
+        </View>
+      </View>
+    </View>
+  );
+}
 
 function Row({ icon, label, value }) {
   return (
@@ -23,6 +84,7 @@ function Row({ icon, label, value }) {
 export default function BusinessProfile() {
   const { shopId, loading: shopLoading, error: shopError } = useShop();
   const { user, logout } = useAuth();
+  const [termsNote, setTermsNote] = useState(null);
   const { data, error, loading, refreshing, refresh } = useFetch(
     shopId ? `/shops/${shopId}` : null,
     (d) => d.shop ?? null
@@ -100,6 +162,17 @@ export default function BusinessProfile() {
         <Row icon="call-outline" label="Shop phone" value={shop?.phone_number} />
         <Row icon="mail-outline" label="Shop email" value={shop?.email} />
       </View>
+
+      {shop ? (
+        // Keyed on the saved values so the form resets after a save or refresh.
+        <PaymentOptions
+          key={`${shop.default_deposit_percent}-${shop.accepts_cash}`}
+          shop={shop}
+          onSaved={refresh}
+          note={termsNote}
+          setNote={setTermsNote}
+        />
+      ) : null}
 
       <View className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
         <Row icon="person-outline" label="Owner" value={[user?.first_name, user?.last_name].filter(Boolean).join(" ")} />

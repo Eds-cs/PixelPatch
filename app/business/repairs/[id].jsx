@@ -36,6 +36,10 @@ import {
 } from "../../../components/RepairSummary";
 import api from "../../../lib/api";
 import { generatePaymentLink } from "../../../lib/payments";
+import { useShop } from "../../../lib/shop";
+import { useFetch } from "../../../lib/useFetch";
+import { parseDepositPercent } from "../../../lib/paymentTerms";
+import PaymentTermsFields from "../../../components/PaymentTermsFields";
 import { COLORS } from "../../../constants/theme";
 import { useResponsive } from "../../../lib/useResponsive";
 
@@ -54,6 +58,10 @@ export default function BusinessRepairDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { isMobile, isDesktop, horizontalPadding } = useResponsive();
+  // The shop's default payment terms, to start each quotation from.
+  const { shopId } = useShop();
+  const shopInfo = useFetch(shopId ? `/shops/${shopId}` : null, (d) => d.shop ?? null);
+  const shopAcceptsCash = Number(shopInfo.data?.accepts_cash) === 1;
 
   const [repair, setRepair] = useState(null);
   const [assessment, setAssessment] = useState(null);
@@ -90,7 +98,18 @@ export default function BusinessRepairDetail() {
     isPartsNeeded: false,
     partName: "",
     partPrice: "",
+    depositPercent: "100",
+    allowCash: false,
   });
+
+  const openQuote = () => {
+    setQuoteForm((form) => ({
+      ...form,
+      depositPercent: String(shopInfo.data?.default_deposit_percent ?? 100),
+      allowCash: shopAcceptsCash,
+    }));
+    setQuoteOpen(true);
+  };
 
   const load = useCallback(
     async (isRefresh) => {
@@ -303,7 +322,7 @@ export default function BusinessRepairDetail() {
             <Button title="Add assessment" className="mb-2" onPress={() => setAssessOpen(true)} />
           ) : null}
           {canQuote ? (
-            <Button title="Create quotation" className="mb-2" onPress={() => setQuoteOpen(true)} />
+            <Button title="Create quotation" className="mb-2" onPress={openQuote} />
           ) : null}
           {canSetCompletionDate ? (
             <Button
@@ -582,6 +601,7 @@ export default function BusinessRepairDetail() {
             loading={busy}
             disabled={
               !quoteForm.estimatedCompletionTime.trim() ||
+              parseDepositPercent(quoteForm.depositPercent) === null ||
               (quoteForm.warrantyCovered &&
                 (!Number.isSafeInteger(Number(quoteForm.warrantyValue)) || Number(quoteForm.warrantyValue) < 1))
             }
@@ -597,6 +617,8 @@ export default function BusinessRepairDetail() {
                     estimatedCompletionTime: quoteForm.estimatedCompletionTime.trim(),
                     isPartsNeeded: quoteForm.isPartsNeeded,
                     parts,
+                    depositPercent: Number(quoteForm.depositPercent),
+                    allowCash: shopAcceptsCash && quoteForm.allowCash,
                     warranty: quoteForm.warrantyCovered
                       ? {
                           isWarrantyCovered: true,
@@ -682,6 +704,24 @@ export default function BusinessRepairDetail() {
             />
           </View>
         ) : null}
+
+        <View className="mt-2 border-t border-gray-100 pt-4">
+          <Text className="mb-1 text-sm font-semibold text-gray-900">Payment for this job</Text>
+          <Text className="mb-3 text-xs leading-5 text-gray-500">
+            Starts from your Shop profile defaults. Once the client approves, the quotation can&apos;t be changed.
+          </Text>
+          <PaymentTermsFields
+            value={{ depositPercent: quoteForm.depositPercent, acceptsCash: quoteForm.allowCash }}
+            onChange={(next) =>
+              setQuoteForm((f) => ({ ...f, depositPercent: next.depositPercent, allowCash: next.acceptsCash }))
+            }
+            cashAvailable={shopAcceptsCash}
+            cashLabel="Allow cash for the balance"
+          />
+          {!shopAcceptsCash ? (
+            <Text className="text-xs text-gray-500">Your shop takes online payment only. Change this in Shop profile.</Text>
+          ) : null}
+        </View>
       </Modal>
 
       <Modal

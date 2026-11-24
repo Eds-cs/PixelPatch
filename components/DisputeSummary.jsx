@@ -36,6 +36,8 @@ export function formatDisputeDate(value) {
   }) : "Not recorded";
 }
 
-export function resolutionLabel(value) {
+// A RESOLVED dispute with no resolution was declined by a PixelPatch admin.
+export function resolutionLabel(value, status) {
+  if (!value && status === "RESOLVED") return "Complaint declined";
   return { REFUND: "Refund", RESERVICE: "Re-service" }[value] || value || "No proposal yet";
 }

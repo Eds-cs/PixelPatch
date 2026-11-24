@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "expo-router";
 import { useAuth } from "../lib/auth";
 import { COLORS } from "../constants/theme";
 import { useResponsive } from "../lib/useResponsive";
+import { adminBadge, useAdminSummary } from "../lib/adminSummary";
 
 const CLIENT_NAV = [
   { label: "Home", href: "/", exact: true },
@@ -38,12 +39,13 @@ const BROWSE_LINK = { label: "Browse PixelPatch", href: "/", exact: true, switch
 const MY_SHOP_LINK = { label: "My shop", href: "/business/dashboard", switcher: true };
 
 const ADMIN_NAV = [
+  // Work queues first (they show waiting counts), then oversight sections.
   { label: "Dashboard", href: "/admin/dashboard", exact: true },
-  { label: "Services", href: "/admin/services" },
   { label: "Shops", href: "/admin/shops" },
-  { label: "Users", href: "/admin/users" },
-  { label: "Repairs", href: "/admin/repairs" },
+  { label: "Services", href: "/admin/services" },
   { label: "Disputes", href: "/admin/disputes" },
+  { label: "Repairs", href: "/admin/repairs" },
+  { label: "Users", href: "/admin/users" },
   { label: "Payments", href: "/admin/payments" },
   { label: "Reviews", href: "/admin/reviews" },
 ];
@@ -57,6 +59,8 @@ export default function WebHeader() {
   const pathname = usePathname();
   const { user, isLoggedIn, isBusiness, isAdmin, logout } = useAuth();
   const { layout, isMobile, isDesktop, horizontalPadding } = useResponsive();
+  // Admins: how many items wait in each section (badges on the links).
+  const { summary: adminSummary } = useAdminSummary(Boolean(isAdmin));
   const [menuPath, setMenuPath] = useState(null);
   const menuOpen = isMobile && menuPath === pathname;
   // Phone menu: a panel that slides in from the right edge over a dimmed page.
@@ -104,11 +108,13 @@ export default function WebHeader() {
 
   const links = navigation.map((item) => {
     const active = !item.switcher && isActive(pathname, item.href, item.exact);
+    const badge = isAdmin ? adminBadge(adminSummary, item.href) : 0;
     return (
       <Pressable
         key={`${item.label}-${item.href}`}
         onPress={() => navigate(item.href)}
         accessibilityRole="link"
+        accessibilityLabel={badge ? `${item.label}, ${badge} waiting` : undefined}
         accessibilityState={{ selected: active }}
         className={`flex-row items-center rounded-md px-3 py-3 ${active ? "bg-teal-50" : ""}`}
       >
@@ -127,6 +133,11 @@ export default function WebHeader() {
         >
           {item.label}
         </Text>
+        {badge ? (
+          <View style={{ minWidth: 20 }} className="ml-1.5 items-center rounded-full bg-amber-500 px-1.5 py-0.5">
+            <Text className="text-xs font-bold text-white">{badge > 99 ? "99+" : badge}</Text>
+          </View>
+        ) : null}
       </Pressable>
     );
   });

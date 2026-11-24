@@ -15,6 +15,8 @@ import { formatAddress } from "../../lib/format";
 import { mapsDirectionsUrl, mapsSearchUrl, openInMaps } from "../../lib/maps";
 import { useFetch } from "../../lib/useFetch";
 import { useAuth } from "../../lib/auth";
+import { shopTermsLabel } from "../../lib/paymentTerms";
+import { categoryLabel } from "../../lib/serviceCategories";
 import api from "../../lib/api";
 import { COLORS } from "../../constants/theme";
 
@@ -23,9 +25,6 @@ const PESO = "₱";
 // Two columns from this width; below it, one column.
 const TWO_COLUMNS_AT = 900;
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-const titleCase = (value) =>
-  String(value ?? "").toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 const money = (value) =>
   Number.isFinite(Number(value)) ? `${PESO}${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : `${PESO}${value}`;
 const hhmm = (value) => String(value ?? "").slice(0, 5);
@@ -279,6 +278,10 @@ export default function ShopDetail() {
           {s.open_time && s.closing_time ? `${hhmm(s.open_time)} – ${hhmm(s.closing_time)}` : "Hours not listed"}
         </Text>
       </InfoRow>
+      <InfoRow icon="wallet-outline">
+        <Text className="text-sm text-gray-800">{shopTermsLabel(s)}</Text>
+        <Text className="text-xs text-gray-500">The exact terms are on each quotation.</Text>
+      </InfoRow>
       {s.phone_number ? (
         <InfoRow icon="call-outline" label={`Call ${s.name}`} onPress={() => Linking.openURL(`tel:${String(s.phone_number).replace(/\s/g, "")}`)}>
           <Text selectable className="text-sm text-gray-800">{s.phone_number}</Text>
@@ -320,7 +323,7 @@ export default function ShopDetail() {
               className="rounded-2xl border border-gray-200 bg-white p-4"
             >
               <Text className="text-base font-semibold text-gray-900">{svc.name}</Text>
-              {svc.category ? <Text className="mt-0.5 text-xs text-gray-500">{titleCase(svc.category)}</Text> : null}
+              {svc.category ? <Text className="mt-0.5 text-xs text-gray-500">{categoryLabel(svc.category, svc.custom_category)}</Text> : null}
               <View className="mt-4 flex-row items-end justify-between gap-2">
                 {svc.estimated_timeframe ? (
                   <View className="shrink-0 flex-row items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1">
