@@ -12,7 +12,7 @@
 // cannot be used to find out which emails are registered.
 import crypto from "crypto";
 import db from "../config/db.js";
-import { transporter } from "../config/mail.js";
+import { mailFrom, transporter } from "../config/mail.js";
 import { hashPassword } from "../utils/hash.js";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -68,7 +68,7 @@ export const requestPasswordReset = async (req, res) => {
     if (user) {
       try {
         await transporter.sendMail({
-          from: process.env.EMAIL_USER,
+          from: mailFrom(),
           to: user.email,
           subject: "Your PixelPatch password reset code",
           text:

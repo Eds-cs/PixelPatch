@@ -11,7 +11,7 @@ import { ENABLED_PAYOUT_METHODS } from "../utils/payoutMethods.js";
 import { businessEmailProblem, normalizeEmail } from "../utils/emailChecks.js";
 import { codeKey, emailCodes, emailTokenValid, signEmailToken } from "../utils/businessEmailVerification.js";
 import { CODE_MESSAGES } from "../utils/verificationCodes.js";
-import { transporter } from "../config/mail.js";
+import { mailFrom, transporter } from "../config/mail.js";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -64,7 +64,7 @@ export const sendBusinessEmailCode = async (req, res) => {
 
     try {
       await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+        from: mailFrom(),
         to: email,
         subject: "Your PixelPatch business email code",
         text:
