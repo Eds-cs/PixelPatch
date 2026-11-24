@@ -2,17 +2,19 @@
 // Shop service catalog management for the authenticated owner's shop.
 // Every query is scoped to req.shopId (set by businessShopRequired).
 import db from "../../config/db.js";
+import { OFFERED_CATEGORIES, validateCategory } from "../../utils/serviceCategories.js";
 
-// Verified shop_services.category enum values.
-const CATEGORIES = ["SMARTPHONE", "DESKTOP", "CONTROLLER", "TABLET", "SMARTWATCH", "LAPTOP", "OTHER"];
+// Categories offered for new services (utils/serviceCategories.js).
+const CATEGORIES = OFFERED_CATEGORIES;
 
 const text = (value) => String(value ?? "").trim();
 const flag = (value) => (value === true || value === 1 || value === "1" || value === "true" ? 1 : 0);
 
-// Returns { values } or { error }.
-function validateService(body) {
+// Returns { values } or { error }. `currentCategory` lets an existing service
+// keep a category that is no longer offered (CONTROLLER, SMARTWATCH).
+function validateService(body, currentCategory = null) {
   const name = text(body.name);
-  const category = text(body.category).toUpperCase();
+  const cat = validateCategory(body.category, body.custom_category, currentCategory);
   const description = text(body.description);
   const timeframe = text(body.estimated_timeframe);
   const price = Number(body.base_price);
@@ -23,7 +25,7 @@ function validateService(body) {
   };
 
   if (!name || name.length > 100) return { error: "Enter a service name (up to 100 characters)." };
-  if (!CATEGORIES.includes(category)) return { error: "Choose a device category." };
+  if (cat.error) return { error: cat.error };
   if (!Number.isFinite(price) || price <= 0 || price > 99999999.99) return { error: "Enter a base price above 0." };
   if (!timeframe || timeframe.length > 255) return { error: "Enter an estimated turnaround (for example, 1-2 days)." };
   if (!methods.accepts_pickup && !methods.accepts_dropoff && !methods.accepts_onsite) {
@@ -33,7 +35,8 @@ function validateService(body) {
   return {
     values: {
       name,
-      category,
+      category: cat.category,
+      custom_category: cat.customCategory,
       description,
       base_price: Math.round(price * 100) / 100,
       estimated_timeframe: timeframe,
@@ -72,11 +75,11 @@ export const createShopService = async (req, res) => {
   try {
     const [result] = await db.promise().query(
       `INSERT INTO shop_services
-        (shop_id, name, category, description, base_price, estimated_timeframe,
+        (shop_id, name, category, custom_category, description, base_price, estimated_timeframe,
          accepts_pickup, accepts_onsite, accepts_dropoff, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
-        req.shopId, values.name, values.category, values.description, values.base_price,
+        req.shopId, values.name, values.category, values.custom_category, values.description, values.base_price,
         values.estimated_timeframe, values.accepts_pickup, values.accepts_onsite, values.accepts_dropoff,
       ]
     );
@@ -90,12 +93,9 @@ export const createShopService = async (req, res) => {
 
 /* PUT /api/business/services/:id */
 export const updateShopService = async (req, res) => {
-  const { values, error } = validateService(req.body ?? {});
-  if (error) return res.status(400).json({ message: error });
-
   try {
     const [[current]] = await db.promise().query(
-      `SELECT ss.base_price, ss.name, ss.category, ss.description, ss.review_status,
+      `SELECT ss.base_price, ss.name, ss.category, ss.custom_category, ss.description, ss.review_status,
               (SELECT COUNT(*)
                FROM service_request_items sri
                JOIN request_quotations rq ON rq.request_id = sri.request_id
@@ -106,6 +106,9 @@ export const updateShopService = async (req, res) => {
     );
 
     if (!current) return res.status(404).json({ message: "Service not found" });
+
+    const { values, error } = validateService(req.body ?? {}, current.category);
+    if (error) return res.status(400).json({ message: error });
 
     // Payment-link amounts are recomputed from current base prices, so a price
     // change while a quotation is open would make the payment differ from the
@@ -123,12 +126,13 @@ export const updateShopService = async (req, res) => {
     const identityChanged =
       current.name !== values.name ||
       current.category !== values.category ||
+      String(current.custom_category ?? "") !== String(values.custom_category ?? "") ||
       String(current.description ?? "") !== values.description;
     const needsReview = identityChanged || current.review_status === "REJECTED";
 
     await db.promise().query(
       `UPDATE shop_services
-       SET name = ?, category = ?, description = ?, base_price = ?, estimated_timeframe = ?,
+       SET name = ?, category = ?, custom_category = ?, description = ?, base_price = ?, estimated_timeframe = ?,
            accepts_pickup = ?, accepts_onsite = ?, accepts_dropoff = ?, updated_at = NOW(),
            review_status = IF(?, 'PENDING', review_status),
            review_note = IF(?, NULL, review_note),
@@ -136,8 +140,8 @@ export const updateShopService = async (req, res) => {
            reviewed_at = IF(?, NULL, reviewed_at)
        WHERE id = ? AND shop_id = ?`,
       [
-        values.name, values.category, values.description, values.base_price, values.estimated_timeframe,
-        values.accepts_pickup, values.accepts_onsite, values.accepts_dropoff,
+        values.name, values.category, values.custom_category, values.description, values.base_price,
+        values.estimated_timeframe, values.accepts_pickup, values.accepts_onsite, values.accepts_dropoff,
         needsReview, needsReview, needsReview, needsReview,
         req.params.id, req.shopId,
       ]

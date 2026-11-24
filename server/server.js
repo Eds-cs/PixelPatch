@@ -19,7 +19,7 @@ import aiHistoryRoutes from "./routes/aiHistoryRoutes.js";
 import shopRoutes from "./routes/shops.js";
 import servicesRoutes from "./routes/services.js";
 import reviewsRoutes from "./routes/reviews.js";
-import documentsRoutes from "./routes/documents.js";
+import { serveShopDocument } from "./controllers/admin/shopReviewController.js";
 import shopServiceRoutes from "./routes/shopServiceRoutes.js";
 import repairRoutes from "./routes/repairRoutes.js";
 
@@ -46,6 +46,9 @@ import paymentRoutes from "./routes/business/paymentRoutes.js";
 
 // BUSINESS SERVICE CATALOG ROUTES
 import businessServiceRoutes from "./routes/business/serviceRoutes.js";
+
+// BUSINESS SHOP SETTINGS (payment terms)
+import shopSettingsRoutes from "./routes/business/shopSettingsRoutes.js";
 
 // ADMIN ROUTES (admin role only)
 import adminRoutes from "./routes/admin.js";
@@ -81,7 +84,11 @@ app.use((req, res, next) => {
 
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
+// uploads/private/ holds shop permits and other documents: never served as
+// static files. Admins open them through a signed link (below).
+app.use("/uploads/private", (req, res) => res.sendStatus(404));
 app.use("/uploads", express.static("uploads"));
+app.get("/api/shop-documents/:token", serveShopDocument);
 
 /* AUTH / USER */
 app.use("/api/users", userRoutes);
@@ -98,7 +105,6 @@ app.use("/api/user/profile", userProfileRoutes);
 app.use("/api/shops", shopRoutes);
 app.use("/api/shops", servicesRoutes);
 app.use("/api/shops", reviewsRoutes);
-app.use("/api/shops", documentsRoutes);
 app.use("/api/shop-services", shopServiceRoutes);
 
 /* REPAIR REQUEST ROUTES */
@@ -121,6 +127,7 @@ app.use("/api/business", paymentRoutes);
 
 // BUSINESS SERVICE CATALOG ROUTES
 app.use("/api/business", businessServiceRoutes);
+app.use("/api/business", shopSettingsRoutes);
 
 // ADMIN ROUTES
 app.use("/api/admin", adminRoutes);

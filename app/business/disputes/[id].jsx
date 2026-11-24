@@ -201,7 +201,7 @@ export default function BusinessDisputeDetail() {
 
       {dispute.proposed_resolution ? (
         <Section title="Your proposal">
-          <Row label="Resolution" value={resolutionLabel(dispute.proposed_resolution)} />
+          <Row label="Resolution" value={resolutionLabel(dispute.proposed_resolution, dispute.status)} />
           {dispute.shop_response ? (
             <Text className="mt-2 text-sm text-gray-700">{dispute.shop_response}</Text>
           ) : null}
@@ -210,9 +210,10 @@ export default function BusinessDisputeDetail() {
 
       <Section title="Response history">
         {dispute.history?.length ? dispute.history.map((entry) => (
-          <View key={entry.id} className={`mb-3 rounded-xl border p-4 ${entry.edited_by === "BUSINESS" ? "border-primary-soft bg-teal-50" : "border-gray-100 bg-gray-50"}`}>
+          <View key={entry.id} className={`mb-3 rounded-xl border p-4 ${entry.edited_by === "BUSINESS" ? "border-primary-soft bg-teal-50" : entry.edited_by === "ADMIN" ? "border-sky-200 bg-sky-50" : "border-gray-100 bg-gray-50"}`}>
             <View className="mb-2 flex-row flex-wrap justify-between gap-2">
-              <Text className="text-sm font-semibold text-gray-800">{entry.edited_by === "BUSINESS" ? "Your shop" : "Client"}</Text>
+              {/* ADMIN = a PixelPatch admin's decision (app/admin/disputes.jsx). */}
+              <Text className="text-sm font-semibold text-gray-800">{{ BUSINESS: "Your shop", ADMIN: "PixelPatch" }[entry.edited_by] ?? "Client"}</Text>
               <Text className="text-xs text-gray-500">{formatDisputeDate(entry.created_at)}</Text>
             </View>
             <Text selectable className="text-sm leading-6 text-gray-700">{entry.content || "No written message."}</Text>

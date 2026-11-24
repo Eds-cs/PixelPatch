@@ -1,6 +1,7 @@
 // server/controllers/repairController.js
 import db from "../config/db.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
+import { quotationTerms } from "../utils/paymentTerms.js";
 
 // service_requests.client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
 const CANCELLED_MESSAGE = "The client cancelled this repair request";
@@ -688,7 +689,9 @@ export const createQuotation = async (req, res) => {
       estimatedCompletionTime,
       isPartsNeeded,
       parts = [],
-      warranty
+      warranty,
+      depositPercent,
+      allowCash
     } = req.body;
 
     if (!isValidDateOnly(estimatedCompletionTime)) {
@@ -701,6 +704,17 @@ export const createQuotation = async (req, res) => {
         success: false,
         message: "Shop not found"
       });
+    }
+
+    // Payment terms for this job: the shop's defaults unless the form changed
+    // them. The quotation keeps its own copy (utils/paymentTerms.js).
+    const [shopRow] = await query(
+      "SELECT accepts_cash, default_deposit_percent FROM shops WHERE id = ? LIMIT 1",
+      [shopId]
+    );
+    const payment = quotationTerms(shopRow, { depositPercent, allowCash });
+    if (payment.error) {
+      return res.status(400).json({ success: false, message: payment.error });
     }
 
     /* -------------------------------------------------
@@ -774,14 +788,16 @@ export const createQuotation = async (req, res) => {
     try {
       result = await query(
         `INSERT INTO request_quotations
-         (request_id, assessment_id, labor_fee, estimated_cost,
+         (request_id, assessment_id, labor_fee, estimated_cost, deposit_percent, allow_cash,
           estimated_completion_time, is_parts_needed,
           status, created_at, updated_at)
-         VALUES (?, ?, 0, ?, ?, ?, 'PENDING', NOW(), NOW())`,
+         VALUES (?, ?, 0, ?, ?, ?, ?, ?, 'PENDING', NOW(), NOW())`,
         [
           id,
           assessmentId,
           estimatedCost,
+          payment.terms.depositPercent,
+          payment.terms.allowCash ? 1 : 0,
           estimatedCompletionTime || null,
           isPartsNeeded ? 1 : 0
         ]
@@ -916,7 +932,9 @@ export const updateQuotation = async (req, res) => {
       estimatedCompletionTime,
       isPartsNeeded,
       parts = [],
-      warranty
+      warranty,
+      depositPercent,
+      allowCash
     } = req.body;
 
     if (!isValidDateOnly(estimatedCompletionTime)) {
@@ -931,11 +949,15 @@ export const updateQuotation = async (req, res) => {
       });
     }
 
-    // 1️⃣ Get quotation + verify ownership + editable status
+    // 1️⃣ Get quotation + verify ownership + editable status. A quotation is
+    // locked once the client has approved (or cancelled): its price, parts,
+    // warranty and payment terms are what the client agreed to.
     const rows = await query(
-      `SELECT rq.id AS quotation_id
+      `SELECT rq.id AS quotation_id, rq.deposit_percent, rq.allow_cash, sr.client_approved,
+              s.accepts_cash, s.default_deposit_percent
        FROM request_quotations rq
        JOIN service_requests sr ON sr.id = rq.request_id
+       JOIN shops s ON s.id = sr.shop_id
        WHERE rq.request_id = ?
          AND sr.shop_id = ?
          AND rq.status = 'PENDING'
@@ -950,18 +972,38 @@ export const updateQuotation = async (req, res) => {
       });
     }
 
+    if (rows[0].client_approved !== null) {
+      return res.status(409).json({
+        success: false,
+        message: "The client has already responded to this quotation, so it can't be changed."
+      });
+    }
+
     const quotationId = rows[0].quotation_id;
+
+    // Payment terms: keep the quotation's own unless the form sends new ones.
+    const payment = quotationTerms(rows[0], {
+      depositPercent: depositPercent ?? rows[0].deposit_percent,
+      allowCash: allowCash ?? (Number(rows[0].allow_cash) === 1),
+    });
+    if (payment.error) {
+      return res.status(400).json({ success: false, message: payment.error });
+    }
 
     // 2️⃣ Update quotation (non-price fields)
     await query(
       `UPDATE request_quotations
        SET estimated_completion_time = ?,
            is_parts_needed = ?,
+           deposit_percent = ?,
+           allow_cash = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
         estimatedCompletionTime || null,
         isPartsNeeded ? 1 : 0,
+        payment.terms.depositPercent,
+        payment.terms.allowCash ? 1 : 0,
         quotationId
       ]
     );

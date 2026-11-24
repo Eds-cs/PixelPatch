@@ -12,6 +12,13 @@
 import db from "../../config/db.js";
 import { withTransaction } from "../../utils/transaction.js";
 import { transporter } from "../../config/mail.js";
+import {
+  DOCUMENT_TYPES,
+  absoluteDocumentPath,
+  removeFiles,
+  signDocumentLink,
+  verifyDocumentLink,
+} from "../../utils/shopDocuments.js";
 
 const MAX_PAGE = 100;
 const STATUSES = { PENDING: 0, VERIFIED: 1 };
@@ -68,18 +75,23 @@ export const listShopRegistrations = async (req, res) => {
       params
     );
     const [shops] = await db.promise().query(
-      `SELECT s.id, s.name, s.email, s.phone_number, s.open_time, s.closing_time,
+      `SELECT s.id, s.name, s.description, s.email, s.phone_number, s.accepts_cash, s.default_deposit_percent,
+              s.open_time, s.closing_time,
               s.days_from, s.days_to, s.is_verified, s.created_at,
               u.id AS owner_id, u.first_name AS owner_first_name, u.last_name AS owner_last_name,
               u.email AS owner_email, u.phone AS owner_phone, u.role_id AS owner_role_id,
               a.street, a.barangay, a.city, a.postal_code,
               p.method AS payout_method, p.account_name AS payout_account_name,
-              p.account_number AS payout_account_number
+              p.account_number AS payout_account_number, p.tin AS payout_tin,
+              t.is_pickup, t.is_dropoff, t.Is_onsite AS is_onsite
        FROM shops s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN addresses a ON a.id = s.address_id
        LEFT JOIN shop_payouts p ON p.id = (
          SELECT MAX(p2.id) FROM shop_payouts p2 WHERE p2.shop_id = s.id
+       )
+       LEFT JOIN shop_service_types t ON t.id = (
+         SELECT MAX(t2.id) FROM shop_service_types t2 WHERE t2.shop_id = s.id
        )
        ${whereSql}
        ORDER BY s.is_verified ASC, s.created_at ASC, s.id ASC
@@ -89,11 +101,23 @@ export const listShopRegistrations = async (req, res) => {
 
     const ids = shops.map((shop) => shop.id);
     let services = [];
+    let documents = [];
     if (ids.length) {
+      const placeholders = ids.map(() => "?").join(",");
       [services] = await db.promise().query(
-        `SELECT id, shop_id, name, category, base_price, estimated_timeframe, review_status
-         FROM shop_services WHERE shop_id IN (${ids.map(() => "?").join(",")})
+        `SELECT id, shop_id, name, category, custom_category, description, base_price, estimated_timeframe, review_status
+         FROM shop_services WHERE shop_id IN (${placeholders})
          ORDER BY id`,
+        ids
+      );
+      // File paths stay on the server; admins open a file through documentLink.
+      [documents] = await db.promise().query(
+        `SELECT sd.shop_id, sd.status, sda.attachment_id, sda.type, a.file_name, a.mime_type, a.created_at
+         FROM shop_documents sd
+         JOIN shop_documents_attachments sda ON sda.shop_documents_id = sd.id
+         JOIN attachments a ON a.id = sda.attachment_id
+         WHERE sd.shop_id IN (${placeholders})
+         ORDER BY sda.attachment_id`,
         ids
       );
     }
@@ -106,6 +130,9 @@ export const listShopRegistrations = async (req, res) => {
       shops: shops.map((shop) => ({
         ...shop,
         services: services.filter((svc) => svc.shop_id === shop.id),
+        documents: documents
+          .filter((doc) => doc.shop_id === shop.id)
+          .map((doc) => ({ ...doc, label: DOCUMENT_TYPES[doc.type]?.label ?? doc.type })),
       })),
       total: Number(total),
       counts: { PENDING: Number(counts.PENDING || 0), VERIFIED: Number(counts.VERIFIED || 0) },
@@ -135,7 +162,22 @@ export const approveShop = async (req, res) => {
       if (!shop) return { status: 404, message: "Shop not found" };
       if (Number(shop.is_verified) === 1) return { status: 409, message: "This shop is already approved." };
 
+      // Verification needs proof of a legitimate business (AGENTS.md, "Business rules").
+      const [[permit]] = await conn.query(
+        `SELECT COUNT(*) AS n FROM shop_documents sd
+         JOIN shop_documents_attachments sda ON sda.shop_documents_id = sd.id
+         WHERE sd.shop_id = ? AND sda.type = 'BUSINESS_PERMIT'`,
+        [shopId]
+      );
+      if (Number(permit.n) === 0) {
+        return {
+          status: 409,
+          message: "This application has no business permit. Reject it and ask the owner to register again with their permit.",
+        };
+      }
+
       await conn.query("UPDATE shops SET is_verified = 1, updated_at = NOW() WHERE id = ?", [shopId]);
+      await conn.query("UPDATE shop_documents SET status = 'SUCCESS', updated_at = NOW() WHERE shop_id = ?", [shopId]);
       // Clients become business accounts. Admins (role 2) keep their role.
       if (Number(shop.role_id) === CLIENT_ROLE) {
         await conn.query("UPDATE users SET role_id = ? WHERE id = ? AND role_id = ?", [
@@ -218,6 +260,24 @@ export const rejectShop = async (req, res) => {
       await conn.query("DELETE FROM shop_payouts WHERE shop_id = ?", [shopId]);
       await conn.query("DELETE FROM shop_service_types WHERE shop_id = ?", [shopId]);
       await conn.query("DELETE FROM shop_employees WHERE shop_id = ?", [shopId]);
+      // Submitted documents: link rows and attachment rows have no foreign
+      // keys, so delete them explicitly. The files go after the commit.
+      const [files] = await conn.query(
+        `SELECT a.id, a.file_path FROM shop_documents sd
+         JOIN shop_documents_attachments sda ON sda.shop_documents_id = sd.id
+         JOIN attachments a ON a.id = sda.attachment_id
+         WHERE sd.shop_id = ?`,
+        [shopId]
+      );
+      await conn.query(
+        `DELETE sda FROM shop_documents_attachments sda
+         JOIN shop_documents sd ON sd.id = sda.shop_documents_id
+         WHERE sd.shop_id = ?`,
+        [shopId]
+      );
+      if (files.length) {
+        await conn.query("DELETE FROM attachments WHERE id IN (?)", [files.map((f) => f.id)]);
+      }
       await conn.query("DELETE FROM shop_documents WHERE shop_id = ?", [shopId]);
       await conn.query("DELETE FROM discounts WHERE shop_id = ?", [shopId]);
       await conn.query("DELETE FROM subscriptions WHERE shop_id = ?", [shopId]);
@@ -240,12 +300,13 @@ export const rejectShop = async (req, res) => {
           [CLIENT_ROLE, shop.owner_id, BUSINESS_ROLE, shop.owner_id]
         );
       }
-      return { status: 200, shop };
+      return { status: 200, shop, filePaths: files.map((f) => f.file_path) };
     });
 
     if (result.status !== 200) return res.status(result.status).json({ message: result.message });
 
     const { shop } = result;
+    removeFiles(result.filePaths);
     const emailed = await notifyOwner(
       shop.email,
       "Your PixelPatch business registration",
@@ -259,5 +320,56 @@ export const rejectShop = async (req, res) => {
   } catch (err) {
     console.error("rejectShop:", { code: err.code });
     res.status(500).json({ message: "Couldn't reject this shop." });
+  }
+};
+
+/* POST /api/admin/shops/:id/documents/:attachmentId/link
+   A view link for one submitted document, valid for 5 minutes. The files are
+   private, and a plain link lets the app open them in the browser or a PDF viewer. */
+export const documentLink = async (req, res) => {
+  const shopId = Number(req.params.id);
+  const attachmentId = Number(req.params.attachmentId);
+  if (!Number.isSafeInteger(shopId) || !Number.isSafeInteger(attachmentId)) {
+    return res.status(400).json({ message: "Invalid document" });
+  }
+  try {
+    const [[doc]] = await db.promise().query(
+      `SELECT sda.attachment_id FROM shop_documents sd
+       JOIN shop_documents_attachments sda ON sda.shop_documents_id = sd.id
+       WHERE sd.shop_id = ? AND sda.attachment_id = ?`,
+      [shopId, attachmentId]
+    );
+    if (!doc) return res.status(404).json({ message: "Document not found" });
+    res.json({ url: `/api/shop-documents/${signDocumentLink(attachmentId)}` });
+  } catch (err) {
+    console.error("documentLink:", { code: err.code });
+    res.status(500).json({ message: "Couldn't open this document." });
+  }
+};
+
+/* GET /api/shop-documents/:token  (no sign-in; the signed token is the permission) */
+export const serveShopDocument = async (req, res) => {
+  const attachmentId = verifyDocumentLink(req.params.token);
+  if (!attachmentId) return res.status(403).send("This link has expired. Open the document again from the admin portal.");
+  try {
+    const [[file]] = await db.promise().query(
+      `SELECT a.file_path, a.mime_type FROM attachments a
+       JOIN shop_documents_attachments sda ON sda.attachment_id = a.id
+       WHERE a.id = ?`,
+      [attachmentId]
+    );
+    if (!file) return res.status(404).send("Document not found.");
+    res.set({
+      "Content-Type": file.mime_type,
+      "Content-Disposition": "inline",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "private, no-store",
+    });
+    res.sendFile(absoluteDocumentPath(file.file_path), (err) => {
+      if (err && !res.headersSent) res.status(404).send("Document not found.");
+    });
+  } catch (err) {
+    console.error("serveShopDocument:", { code: err.code });
+    res.status(500).send("Couldn't open this document.");
   }
 };

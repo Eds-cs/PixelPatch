@@ -652,3 +652,39 @@ SET FOREIGN_KEY_CHECKS = 1;
 ALTER TABLE devices
   ADD COLUMN IF NOT EXISTS device_type ENUM('PHONE','LAPTOP','DESKTOP') NULL DEFAULT NULL AFTER user_id,
   ADD COLUMN IF NOT EXISTS specs LONGTEXT NULL DEFAULT NULL AFTER brand;
+
+-- 2026-11-24: payment terms (server/sql/2026-11-24_payment_terms.sql)
+ALTER TABLE shops
+  ADD COLUMN IF NOT EXISTS accepts_cash TINYINT(1) NOT NULL DEFAULT 0 AFTER email,
+  ADD COLUMN IF NOT EXISTS default_deposit_percent TINYINT UNSIGNED NOT NULL DEFAULT 100 AFTER accepts_cash;
+
+ALTER TABLE request_quotations
+  ADD COLUMN IF NOT EXISTS deposit_percent TINYINT UNSIGNED NOT NULL DEFAULT 100 AFTER estimated_cost,
+  ADD COLUMN IF NOT EXISTS allow_cash TINYINT(1) NOT NULL DEFAULT 0 AFTER deposit_percent;
+
+ALTER TABLE shops
+  DROP CONSTRAINT IF EXISTS chk_shops_default_deposit_percent;
+ALTER TABLE shops
+  ADD CONSTRAINT chk_shops_default_deposit_percent CHECK (default_deposit_percent <= 100);
+
+ALTER TABLE request_quotations
+  DROP CONSTRAINT IF EXISTS chk_quotations_deposit_percent;
+ALTER TABLE request_quotations
+  ADD CONSTRAINT chk_quotations_deposit_percent CHECK (deposit_percent <= 100);
+
+-- 2026-11-24: typed device for Others services, bank name (server/sql/2026-11-24_service_other_and_bank_name.sql)
+ALTER TABLE shop_services
+  ADD COLUMN IF NOT EXISTS custom_category VARCHAR(60) NULL DEFAULT NULL AFTER category;
+
+ALTER TABLE shop_payouts
+  ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100) NULL DEFAULT NULL AFTER method;
+
+-- 2026-11-24: account suspension (server/sql/2026-11-24_user_suspension.sql)
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS suspended_at DATETIME NULL DEFAULT NULL AFTER photo_url,
+  ADD COLUMN IF NOT EXISTS suspended_reason VARCHAR(500) NULL DEFAULT NULL AFTER suspended_at,
+  ADD COLUMN IF NOT EXISTS suspended_by INT NULL DEFAULT NULL AFTER suspended_reason;
+
+-- 2026-11-24: admin dispute decisions (server/sql/2026-11-24_dispute_admin_decisions.sql)
+ALTER TABLE dispute_edits
+  MODIFY edited_by ENUM('CLIENT', 'BUSINESS', 'ADMIN') NOT NULL;

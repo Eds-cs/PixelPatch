@@ -21,6 +21,7 @@ import Modal from "../../components/Modal";
 import api from "../../lib/api";
 import { usePagedFetch, useDebouncedValue } from "../../lib/usePagedFetch";
 import { useResponsive } from "../../lib/useResponsive";
+import { categoryLabel as deviceLabel } from "../../lib/serviceCategories";
 import { COLORS } from "../../constants/theme";
 
 const TABS = [
@@ -40,7 +41,8 @@ const ALL_SHOPS = { shop_id: null, shop_name: "All shops" };
 const money = (value) => Number.isFinite(Number(value))
   ? "₱" + Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   : "—";
-const categoryLabel = (value) => value ? String(value).toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "Uncategorized";
+// For "Others", the device the shop typed (lib/serviceCategories.js).
+const categoryLabel = (value, custom) => (value ? deviceLabel(value, custom) : "Uncategorized");
 const methodsOf = (service) => METHODS.filter(([key]) => Number(service[key]) === 1).map(([, label]) => label);
 function when(value, withTime = true) {
   if (!value) return "—";
@@ -254,7 +256,7 @@ function ServicesPane({ status, version, shop, onBack, onOpen, selection, setSel
                   {status === "ALL" ? <StatusBadge status={item.review_status} /> : null}
                 </View>
                 <Text numberOfLines={1} className="mt-0.5 text-xs text-gray-500">
-                  {[shop.shop_id ? null : item.shop_name, categoryLabel(item.category), money(item.base_price), methodsOf(item).join(" / ") || "No methods"].filter(Boolean).join(" · ")}
+                  {[shop.shop_id ? null : item.shop_name, categoryLabel(item.category, item.custom_category), money(item.base_price), methodsOf(item).join(" / ") || "No methods"].filter(Boolean).join(" · ")}
                 </Text>
                 {item.review_status === "REJECTED" && item.review_note ? <Text numberOfLines={1} className="mt-0.5 text-xs text-red-700">Reason: {item.review_note}</Text> : null}
               </View>
@@ -450,7 +452,7 @@ export default function AdminServices() {
           <View>
             <View className="flex-row flex-wrap items-center gap-2">
               <StatusBadge status={detail.review_status} />
-              <Text className="text-xs font-semibold text-primary">{categoryLabel(detail.category)}</Text>
+              <Text className="text-xs font-semibold text-primary">{categoryLabel(detail.category, detail.custom_category)}</Text>
             </View>
             <Text className="mt-2 text-lg font-bold text-gray-900">{detail.name}</Text>
             <Text selectable className={`mt-2 text-sm leading-6 ${detail.description ? "text-gray-700" : "text-gray-400"}`}>{detail.description || "No description provided."}</Text>

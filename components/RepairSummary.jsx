@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { statusBadgeClasses } from "../constants/theme";
+import { quotationAmounts, quotationTermsText } from "../lib/paymentTerms";
 
 const PESO = "₱";
 
@@ -163,7 +164,28 @@ export function QuotationSection({ quotation }) {
       <View className="mt-2 border-t border-gray-100 pt-2">
         <RepairRow label="Total" value={formatPeso(total)} />
       </View>
+      <QuotationPaymentTerms quotation={quotation} />
     </RepairSection>
+  );
+}
+
+// How this quotation is paid: online deposit, then the balance (lib/paymentTerms.js).
+function QuotationPaymentTerms({ quotation }) {
+  const { depositPercent, deposit, balance, allowCash } = quotationAmounts(quotation);
+  return (
+    <View className="mt-2 border-t border-gray-100 pt-2">
+      <RepairRow label={`Online deposit (${depositPercent}%)`} value={formatPeso(deposit)} />
+      {balance > 0 ? (
+        <RepairRow label={allowCash ? "Balance (online or cash)" : "Balance (online)"} value={formatPeso(balance)} />
+      ) : null}
+      <Text className="mt-1 text-xs leading-5 text-gray-500">{quotationTermsText(quotation)}</Text>
+      {allowCash ? (
+        <Text className="mt-1 text-xs leading-5 text-gray-500">
+          Online payments are held by PixelPatch and can be refunded through a dispute. Cash goes straight to
+          the shop and can&apos;t be refunded through PixelPatch.
+        </Text>
+      ) : null}
+    </View>
   );
 }
 

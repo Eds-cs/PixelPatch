@@ -109,6 +109,8 @@ export const getClientRepairById = async (req, res) => {
       SELECT
         id,
         estimated_cost,
+        deposit_percent,
+        allow_cash,
         estimated_completion_time,
         DATE_FORMAT(estimated_completion_time, '%Y-%m-%d') AS estimated_completion_date,
         status

@@ -69,11 +69,17 @@ router.post(
       // Only admin-verified shops take requests. Public lists already hide
       // unverified shops; this closes the direct-link route.
       const [[shop]] = await db.promise().query(
-        "SELECT is_verified, user_id FROM shops WHERE id = ? LIMIT 1",
+        `SELECT s.is_verified, s.user_id, owner.suspended_at AS owner_suspended_at
+         FROM shops s JOIN users owner ON owner.id = s.user_id
+         WHERE s.id = ? LIMIT 1`,
         [shop_id]
       );
       if (!shop || Number(shop.is_verified) !== 1) {
         return res.status(400).json({ message: "This shop isn't accepting repair requests yet." });
+      }
+      // A suspended owner can't sign in to answer requests (utils/accountStatus.js).
+      if (shop.owner_suspended_at) {
+        return res.status(400).json({ message: "This shop isn't accepting repair requests right now." });
       }
       // Shop owners may book repairs at other shops, never their own.
       if (Number(shop.user_id) === Number(req.user.id)) {

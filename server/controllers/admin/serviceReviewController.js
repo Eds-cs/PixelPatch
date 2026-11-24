@@ -29,14 +29,36 @@ async function statusCounts() {
   return Object.fromEntries(STATUSES.map((key) => [key, Number(rows.find((row) => row.review_status === key)?.n || 0)]));
 }
 
-/* GET /api/admin/summary — counts for the admin dashboard */
+// A dispute needs an admin when the client turned down the shop's proposal
+// (REJECTED), or the shop hasn't answered within 2 days (AGENTS.md, business
+// rule 7). Shared with the disputes and repairs admin screens.
+export const DISPUTE_NEEDS_ADMIN_SQL =
+  "(d.status = 'REJECTED' OR (d.status = 'OPEN' AND d.created_at < NOW() - INTERVAL 2 DAY))";
+// A repair is stuck when the shop hasn't accepted or rejected it within 2 days
+// (the client didn't cancel).
+export const REPAIR_AWAITING_SHOP_SQL =
+  "(sr.decision = 'PENDING' AND (sr.client_approved IS NULL OR sr.client_approved <> 0) AND sr.created_at < NOW() - INTERVAL 2 DAY)";
+
+/* GET /api/admin/summary — counts for the admin dashboard and navigation.
+   The *_since fields are the oldest waiting item's timestamp (null if none). */
 export const getAdminSummary = async (req, res) => {
   try {
     const [[counts]] = await db.promise().query(
       `SELECT
          (SELECT COUNT(*) FROM shop_services WHERE review_status = 'PENDING') AS pending_services,
+         (SELECT MIN(updated_at) FROM shop_services WHERE review_status = 'PENDING') AS pending_services_since,
          (SELECT COUNT(*) FROM shops WHERE is_verified = 0) AS pending_shops,
+         (SELECT MIN(created_at) FROM shops WHERE is_verified = 0) AS pending_shops_since,
+         (SELECT COUNT(*) FROM disputes d WHERE ${DISPUTE_NEEDS_ADMIN_SQL}) AS disputes_need_admin,
+         (SELECT MIN(d.created_at) FROM disputes d WHERE ${DISPUTE_NEEDS_ADMIN_SQL}) AS disputes_need_admin_since,
+         (SELECT COUNT(*) FROM disputes WHERE status IN ('OPEN', 'SHOP_PROPOSED')) AS active_disputes,
+         (SELECT COUNT(*) FROM service_requests sr WHERE ${REPAIR_AWAITING_SHOP_SQL}) AS repairs_awaiting_shop,
+         (SELECT MIN(sr.created_at) FROM service_requests sr WHERE ${REPAIR_AWAITING_SHOP_SQL}) AS repairs_awaiting_shop_since,
+         (SELECT COUNT(*) FROM service_requests
+           WHERE decision <> 'REJECTED' AND status <> 'COMPLETED'
+             AND (client_approved IS NULL OR client_approved <> 0)) AS active_repairs,
          (SELECT COUNT(*) FROM users) AS users,
+         (SELECT COUNT(*) FROM shops WHERE is_verified = 1) AS verified_shops,
          (SELECT COUNT(*) FROM shops) AS shops,
          (SELECT COUNT(*) FROM disputes WHERE status = 'OPEN') AS open_disputes`
     );
@@ -110,8 +132,8 @@ export const listServicesForReview = async (req, res) => {
     params.push(shopId);
   }
   if (q) {
-    where.push("(ss.name LIKE ? OR ss.category LIKE ? OR ss.description LIKE ? OR s.name LIKE ?)");
-    params.push(likePattern(q), likePattern(q), likePattern(q), likePattern(q));
+    where.push("(ss.name LIKE ? OR ss.category LIKE ? OR ss.custom_category LIKE ? OR ss.description LIKE ? OR s.name LIKE ?)");
+    params.push(likePattern(q), likePattern(q), likePattern(q), likePattern(q), likePattern(q));
   }
   const from = `
     FROM shop_services ss
@@ -122,7 +144,7 @@ export const listServicesForReview = async (req, res) => {
 
   try {
     const [services] = await db.promise().query(
-      `SELECT ss.id, ss.shop_id, ss.name, ss.category, ss.description, ss.base_price,
+      `SELECT ss.id, ss.shop_id, ss.name, ss.category, ss.custom_category, ss.description, ss.base_price,
               ss.estimated_timeframe, ss.accepts_pickup, ss.accepts_dropoff, ss.accepts_onsite,
               ss.review_status, ss.review_note,
               DATE_FORMAT(ss.reviewed_at, '%Y-%m-%dT%H:%i:%s') AS reviewed_at,

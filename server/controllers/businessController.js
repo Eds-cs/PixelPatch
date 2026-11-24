@@ -3,290 +3,359 @@ import db from "../config/db.js";
 import { withTransaction } from "../utils/transaction.js";
 import { resolveShopIdForUser } from "./repairController.js";
 import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
-import { normalizePhone, PHONE_MESSAGE } from "../utils/phone.js";
+import { normalizePhone, PHONE_MESSAGE, PHONE_TAKEN_MESSAGE, businessPhoneTaken } from "../utils/phone.js";
+import { DOCUMENT_TYPES, removeUploadedFiles, uploadedDocuments } from "../utils/shopDocuments.js";
+import { validateShopTerms } from "../utils/paymentTerms.js";
+import { validateCategory } from "../utils/serviceCategories.js";
+import { ENABLED_PAYOUT_METHODS } from "../utils/payoutMethods.js";
+import { businessEmailProblem, normalizeEmail } from "../utils/emailChecks.js";
+import { codeKey, emailCodes, emailTokenValid, signEmailToken } from "../utils/businessEmailVerification.js";
+import { CODE_MESSAGES } from "../utils/verificationCodes.js";
+import { transporter } from "../config/mail.js";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const TIME_UNITS = ["HOURS", "DAYS", "WEEKS"];
+const MAX_SERVICES = 20;
+const MAX_PRICE = 99999999.99; // shop_services.base_price is decimal(10,2)
 
+// Multipart sends nested values as JSON text.
+function parseJson(value, fallback) {
+  if (value && typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
 
-// Payout methods offered by app/become-partner.jsx (shop_payouts.method also
-// allows CARD for older data).
-const PAYOUT_METHODS = ["GCASH", "MAYA", "BANK"];
+const text = (value) => String(value ?? "").trim();
+const truthy = (value) => value === true || value === "true" || value === 1 || value === "1";
+const wholeNumber = (value) => (/^\d{1,3}$/.test(text(value)) ? Number(text(value)) : null);
 
-// Register a new business/shop
+// Philippine TIN: 9 digits, optionally with a 3- or 5-digit branch code.
+// Stored as "123-456-789" or "123-456-789-000(00)".
+function normalizeTin(value) {
+  const digits = text(value).replace(/[\s-]/g, "");
+  if (!/^\d{9}(\d{3}|\d{5})?$/.test(digits)) return null;
+  return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9), digits.slice(9)].filter(Boolean).join("-");
+}
 
+/* ------------------------------------------------------------------
+   Business email code (utils/businessEmailVerification.js)
+------------------------------------------------------------------ */
+
+/* POST /api/business-register/email-code { email } */
+export const sendBusinessEmailCode = async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  try {
+    const problem = await businessEmailProblem(email);
+    if (problem) return res.status(400).json({ field: "business_email", message: problem });
+
+    const issued = emailCodes.issue(codeKey(req.user.id, email));
+    if (issued.tooSoon) {
+      const retryAfter = Math.ceil(issued.retryAfterMs / 1000);
+      return res.status(429).json({
+        field: "business_email",
+        message: `A code was just sent. You can request another in ${retryAfter} seconds.`,
+        retry_after: retryAfter,
+      });
+    }
+
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: "Your PixelPatch business email code",
+        text:
+          `Your code to verify this email for your PixelPatch shop is: ${issued.code}\n\n` +
+          "It expires in 10 minutes. If you didn't register a shop on PixelPatch, you can ignore this email.",
+      });
+    } catch (mailErr) {
+      emailCodes.cancel(codeKey(req.user.id, email));
+      console.error("business email code send failed:", mailErr.code || mailErr.message);
+      return res.status(502).json({
+        field: "business_email",
+        message: "We couldn't send an email to this address. Check it and try again.",
+      });
+    }
+    return res.json({ success: true, message: `We sent a 6-digit code to ${email}.`, retry_after: 60 });
+  } catch (err) {
+    console.error("sendBusinessEmailCode:", { code: err.code, message: err.message });
+    return res.status(500).json({ message: "Couldn't send the code. Try again." });
+  }
+};
+
+/* POST /api/business-register/email-verify { email, code } -> { token } */
+export const verifyBusinessEmailCode = (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const key = codeKey(req.user.id, email);
+  const result = emailCodes.check(key, req.body?.code);
+  if (result !== "ok") {
+    return res.status(400).json({ field: "email_code", message: CODE_MESSAGES[result] });
+  }
+  emailCodes.consume(key);
+  return res.json({ success: true, token: signEmailToken(req.user.id, email) });
+};
+
+/* POST /api/business-register/check-phone { phone } — early feedback on step 1. */
+export const checkBusinessPhone = async (req, res) => {
+  const phone = normalizePhone(req.body?.phone);
+  if (!phone) return res.status(400).json({ field: "business_phone", message: PHONE_MESSAGE });
+  try {
+    if (await businessPhoneTaken(db, phone, req.user.id)) {
+      return res.status(409).json({ field: "business_phone", message: PHONE_TAKEN_MESSAGE });
+    }
+    return res.json({ success: true, available: true });
+  } catch (err) {
+    console.error("checkBusinessPhone:", { code: err.code });
+    return res.status(500).json({ message: "Couldn't check the number. Try again." });
+  }
+};
+
+/* ------------------------------------------------------------------
+   Registration
+------------------------------------------------------------------ */
+
+/**
+ * Every problem with the form, checked before anything is saved.
+ * Returns { field, error } (field names the input the app highlights) or { data }.
+ */
+async function validateRegistration(body, documents, userId) {
+  const bad = (field, error) => ({ field, error });
+
+  const name = text(body.business_name);
+  if (name.length < 2 || name.length > 100) return bad("business_name", "Business name must be 2 to 100 characters.");
+
+  const email = normalizeEmail(body.business_email);
+  const emailProblem = await businessEmailProblem(email);
+  if (emailProblem) return bad("business_email", emailProblem);
+  if (!emailTokenValid(body.business_email_token, userId, email)) {
+    return bad("business_email", "Verify this email with the code we send to it.");
+  }
+
+  const phone = normalizePhone(body.business_phone);
+  if (!phone) return bad("business_phone", PHONE_MESSAGE);
+  if (await businessPhoneTaken(db, phone, userId)) return bad("business_phone", PHONE_TAKEN_MESSAGE);
+
+  const description = text(body.description);
+  if (description.length < 20 || description.length > 1000) {
+    return bad("description", "Describe your shop in 20 to 1000 characters.");
+  }
+
+  // Shops must be in Zamboanga City, the only area PixelPatch serves.
+  const street = text(body.street);
+  if (!street || street.length > 255) return bad("street", "Enter the shop's street address (up to 255 characters).");
+  const barangay = canonicalBarangay(body.barangay);
+  if (!barangay) return bad("barangay", SERVICE_AREA_MESSAGE);
+  const postalCode = text(body.postal_code);
+  if (postalCode && !/^\d{4}$/.test(postalCode)) return bad("postal_code", "Postal code must be 4 digits.");
+
+  if (!DAYS.includes(body.days_from) || !DAYS.includes(body.days_to)) return bad("days", "Choose the days you're open.");
+  const openTime = text(body.open_time);
+  const closeTime = text(body.close_time);
+  if (!TIME_RE.test(openTime)) return bad("open_time", "Choose your opening time.");
+  if (!TIME_RE.test(closeTime)) return bad("close_time", "Choose your closing time.");
+  if (closeTime.slice(0, 5) <= openTime.slice(0, 5)) return bad("close_time", "Closing time must be after opening time.");
+
+  const deliveryIn = parseJson(body.delivery, {});
+  const delivery = {
+    pickup: truthy(deliveryIn.pickup),
+    dropoff: truthy(deliveryIn.dropoff),
+    onsite: truthy(deliveryIn.onsite),
+  };
+  if (!delivery.pickup && !delivery.dropoff && !delivery.onsite) {
+    return bad("delivery", "Choose at least one way customers can get their device repaired.");
+  }
+
+  const servicesIn = parseJson(body.services, null);
+  if (!Array.isArray(servicesIn) || servicesIn.length === 0) return bad("services", "Add at least one service.");
+  if (servicesIn.length > MAX_SERVICES) return bad("services", `Add up to ${MAX_SERVICES} services. You can add more later.`);
+  const services = [];
+  for (const [i, svc] of servicesIn.entries()) {
+    const f = (name) => `service.${i}.${name}`;
+    const label = `Service ${i + 1}`;
+    const cat = validateCategory(svc?.category, svc?.custom_category);
+    if (cat.error) return bad(text(svc?.category).toUpperCase() === "OTHER" ? f("custom_category") : f("category"), `${label}: ${cat.error}`);
+    const serviceName = text(svc.repair_service);
+    if (!serviceName || serviceName.length > 100) return bad(f("repair_service"), `${label}: name the repair service (up to 100 characters).`);
+    const serviceDescription = text(svc.description);
+    if (!serviceDescription || serviceDescription.length > 1000) {
+      return bad(f("description"), `${label}: describe what the service includes (up to 1000 characters).`);
+    }
+    const price = Number(text(svc.price));
+    if (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE) return bad(f("price"), `${label}: enter a price above 0.`);
+    const from = wholeNumber(svc.time_from);
+    const to = wholeNumber(svc.time_to);
+    if (!from || !to || from > to) return bad(f("turnaround"), `${label}: enter a turnaround like 1 to 3, with the smaller number first.`);
+    const unit = text(svc.time_unit).toUpperCase();
+    if (!TIME_UNITS.includes(unit)) return bad(f("turnaround"), `${label}: choose hours, days or weeks.`);
+    services.push({
+      name: serviceName,
+      category: cat.category,
+      customCategory: cat.customCategory,
+      description: serviceDescription,
+      price: Math.round(price * 100) / 100,
+      timeframe: `${from}-${to} ${unit}`,
+    });
+  }
+
+  const payment = parseJson(body.payment, {});
+  if (!ENABLED_PAYOUT_METHODS.includes(payment.payment_method)) return bad("payment_method", "Choose a payout method.");
+  let bankName = null;
+  if (payment.payment_method === "BANK") {
+    bankName = text(payment.bank_name);
+    if (bankName.length < 2 || bankName.length > 100) return bad("bank_name", "Choose or type your bank.");
+  }
+  const accountName = text(payment.account_name);
+  if (!accountName || accountName.length > 100) return bad("account_name", "Enter the account holder's name (up to 100 characters).");
+  let accountNumber = text(payment.account_number);
+  if (payment.payment_method === "BANK") {
+    accountNumber = accountNumber.replace(/[\s-]/g, "");
+    if (!/^\d{6,20}$/.test(accountNumber)) return bad("account_number", "Bank account number must be 6 to 20 digits.");
+  } else {
+    accountNumber = normalizePhone(accountNumber);
+    if (!accountNumber) return bad("account_number", PHONE_MESSAGE);
+  }
+  const tin = normalizeTin(payment.tin);
+  if (!tin) return bad("tin", "Enter the business TIN: 9 digits, or 12 to 14 with the branch code.");
+  // How clients pay this shop by default (utils/paymentTerms.js).
+  const shopTerms = validateShopTerms(payment);
+  if (shopTerms.error) return bad("deposit_percent", shopTerms.error);
+
+  for (const [type, info] of Object.entries(DOCUMENT_TYPES)) {
+    if (info.required && !documents.some((doc) => doc.type === type)) {
+      return bad(`documents.${type}`, `Upload your ${info.label.charAt(0).toLowerCase()}${info.label.slice(1)}.`);
+    }
+  }
+  if (!truthy(payment.terms) || !truthy(payment.privacy)) {
+    return bad("terms", "Agree to the Business Terms and Business Privacy Policy to submit.");
+  }
+
+  return {
+    data: {
+      name, email, phone, description, barangay, street,
+      postalCode: postalCode || SERVICE_AREA.postal_code,
+      daysFrom: body.days_from, daysTo: body.days_to, openTime, closeTime,
+      delivery, services,
+      payout: { method: payment.payment_method, bankName, accountName, accountNumber, tin },
+      terms: shopTerms.terms,
+    },
+  };
+}
+
+// Register a new business/shop.
+// POST /api/business-register (multipart): shop fields, `services`, `delivery`
+// and `payment` as JSON text, and the documents in DOCUMENT_TYPES as files.
+// The account stays a client (role 1) with an unverified shop until an admin
+// approves it (controllers/admin/shopReviewController.js).
 export const registerBusiness = async (req, res) => {
   const userId = req.user.id;
-
-  const {
-    business_name,
-    business_email,
-    business_phone,
-    barangay,
-    street,
-    postal_code,
-    days_from,
-    days_to,
-    open_time,
-    close_time,
-    services,
-    payment
-  } = req.body;
+  const documents = uploadedDocuments(req);
+  // `field` names the input the app highlights (see validateRegistration).
+  const fail = (status, message, field) => {
+    removeUploadedFiles(req);
+    return res.status(status).json({ success: false, message, ...(field ? { field } : {}) });
+  };
 
   try {
-    // --------------------------------------------------
-    // 1. HARD VALIDATION — BUSINESS INFO
-    // --------------------------------------------------
-    if (
-      !business_name ||
-      !business_email ||
-      !business_phone ||
-      !barangay ||
-      !String(street ?? "").trim() ||
-      !days_from ||
-      !days_to ||
-      !open_time ||
-      !close_time
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Business information is incomplete"
-      });
-    }
+    const { error, field, data } = await validateRegistration(req.body ?? {}, documents, userId);
+    if (error) return fail(400, error, field);
 
-    const shopPhone = normalizePhone(business_phone);
-    if (!shopPhone) {
-      return res.status(400).json({ success: false, message: `Business phone: ${PHONE_MESSAGE}` });
-    }
-    const shopEmail = String(business_email).trim().toLowerCase();
-    if (!EMAIL_RE.test(shopEmail) || shopEmail.length > 100) {
-      return res.status(400).json({ success: false, message: "Enter a valid business email address." });
-    }
-    if (!TIME_RE.test(String(open_time)) || !TIME_RE.test(String(close_time))) {
-      return res.status(400).json({ success: false, message: "Enter valid opening and closing times." });
-    }
-
-    // Shops must be in Zamboanga City, the only area PixelPatch serves.
-    const shopBarangay = canonicalBarangay(barangay);
-    if (!shopBarangay) {
-      return res.status(400).json({ success: false, message: SERVICE_AREA_MESSAGE });
-    }
-
-    // --------------------------------------------------
-    // 2. HARD VALIDATION — SERVICES
-    // --------------------------------------------------
-    if (!Array.isArray(services) || services.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one service is required"
-      });
-    }
-
-    for (const svc of services) {
-      if (
-        !svc.category ||
-        !svc.repair_service ||
-        !svc.price ||
-        isNaN(parseFloat(svc.price)) ||
-        parseFloat(svc.price) <= 0 ||
-        !svc.time_from ||
-        !svc.time_to ||
-        !svc.time_unit
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid service data"
-        });
+    // One pooled connection for the whole registration: everything is
+    // committed together or rolled back together.
+    const result = await withTransaction(async (conn) => {
+      // Locking the user row makes a double submit wait here, so the
+      // duplicate check below sees the first registration.
+      await conn.query("SELECT id FROM users WHERE id = ? FOR UPDATE", [userId]);
+      const [existing] = await conn.query("SELECT is_verified FROM shops WHERE user_id = ? LIMIT 1", [userId]);
+      if (existing.length) {
+        return {
+          duplicate: Number(existing[0].is_verified) === 1
+            ? "User already has a registered shop"
+            : "Your business registration is already waiting for admin approval.",
+        };
       }
-    }
+      // Checked again under the lock, in case another shop took the number meanwhile.
+      if (await businessPhoneTaken(conn, data.phone, userId)) return { phoneTaken: true };
 
-    // --------------------------------------------------
-    // 3. HARD VALIDATION — PAYMENT
-    // --------------------------------------------------
-    if (
-      !payment ||
-      !PAYOUT_METHODS.includes(payment.payment_method) ||
-      !String(payment.account_name ?? "").trim() ||
-      String(payment.account_name).trim().length > 100 ||
-      !String(payment.account_number ?? "").trim() ||
-      String(payment.account_number).trim().length > 50 ||
-      payment.terms !== true ||
-      payment.privacy !== true
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment information is incomplete"
-      });
-    }
-
-    // --------------------------------------------------
-    // 4. BLOCK DUPLICATE SHOP
-    // --------------------------------------------------
-    const existingShop = await new Promise((resolve, reject) => {
-      db.query(
-        "SELECT id, is_verified FROM shops WHERE user_id = ? LIMIT 1",
-        [userId],
-        (err, rows) => (err ? reject(err) : resolve(rows))
-      );
-    });
-
-    if (existingShop.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: Number(existingShop[0].is_verified) === 1
-          ? "User already has a registered shop"
-          : "Your business registration is already waiting for admin approval."
-      });
-    }
-
-    // --------------------------------------------------
-    // 5. TRANSACTION — ALL OR NOTHING
-    // --------------------------------------------------
-    // One pooled connection for the whole registration: the address, shop,
-    // services and payout account are committed together or rolled back
-    // together. The account stays a client (role 1) until an admin approves
-    // the shop (POST /admin/shops/:id/approve makes it a business, role 3).
-    const shopId = await withTransaction(async (conn) => {
-      // -----------------------------
-      // ADDRESS INSERT
-      // -----------------------------
-      const [addressResult] = await conn.query(
-        `
-        INSERT INTO addresses (
-          user_id,
-          country,
-          region,
-          province,
-          city,
-          barangay,
-          street,
-          postal_code,
-          latitude,
-          longitude,
-          created_at,
-          updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        `,
-        [
-          userId,
-          SERVICE_AREA.country,
-          SERVICE_AREA.region,
-          SERVICE_AREA.province,
-          SERVICE_AREA.city,
-          shopBarangay,
-          String(street).trim(),
-          String(postal_code ?? "").trim() || SERVICE_AREA.postal_code,
-          null,              // latitude: not collected yet (unknown)
-          null               // longitude: not collected yet (unknown)
-        ]
+      const [address] = await conn.query(
+        `INSERT INTO addresses (user_id, country, region, province, city, barangay, street, postal_code,
+                                latitude, longitude, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NOW(), NOW())`,
+        [userId, SERVICE_AREA.country, SERVICE_AREA.region, SERVICE_AREA.province, SERVICE_AREA.city,
+          data.barangay, data.street, data.postalCode]
       );
 
-      const addressId = addressResult.insertId;
-
-      // -----------------------------
-      // SHOP INSERT
-      // -----------------------------
-      const [shopResult] = await conn.query(
-        `
-        INSERT INTO shops (
-          user_id,
-          name,
-          description,
-          address_id,
-          phone_number,
-          email,
-          open_time,
-          closing_time,
-          days_from,
-          days_to,
-          is_verified,
-          rating_average,
-          current_customer_count,
-          created_at,
-          updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        `,
-        [
-          userId,
-          String(business_name).trim(),
-          "Business profile created",
-          addressId,
-          shopPhone,
-          shopEmail,
-          open_time,
-          close_time,
-          days_from,
-          days_to,
-          0,        // is_verified
-          0.00,     // rating_average (initial)
-          0
-        ]
+      const [shop] = await conn.query(
+        `INSERT INTO shops (user_id, name, description, address_id, phone_number, email, accepts_cash,
+                            default_deposit_percent, open_time, closing_time, days_from, days_to, is_verified,
+                            rating_average, current_customer_count, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0.00, 0, NOW(), NOW())`,
+        [userId, data.name, data.description, address.insertId, data.phone, data.email,
+          data.terms.acceptsCash ? 1 : 0, data.terms.depositPercent, data.openTime, data.closeTime,
+          data.daysFrom, data.daysTo]
       );
+      const shopId = shop.insertId;
 
-      const newShopId = shopResult.insertId;
-
-      // -----------------------------
-      // SERVICES INSERT
-      // -----------------------------
-      for (const svc of services) {
+      // The shop's delivery methods, and the same methods on each service.
+      const { pickup, dropoff, onsite } = data.delivery;
+      await conn.query(
+        `INSERT INTO shop_service_types (shop_id, Is_onsite, is_dropoff, is_pickup, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NOW(), NOW())`,
+        [shopId, onsite ? 1 : 0, dropoff ? 1 : 0, pickup ? 1 : 0]
+      );
+      for (const svc of data.services) {
         await conn.query(
-          `
-          INSERT INTO shop_services (
-            shop_id,
-            name,
-            category,
-            description,
-            base_price,
-            estimated_timeframe,
-            accepts_pickup,
-            accepts_onsite,
-            accepts_dropoff,
-            created_at,
-            updated_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, NOW(), NOW())
-          `,
-          [
-            newShopId,
-            svc.repair_service,
-            svc.category.toUpperCase(),
-            "Registered service",
-            parseFloat(svc.price),
-            `${svc.time_from}-${svc.time_to} ${svc.time_unit}`
-          ]
+          `INSERT INTO shop_services (shop_id, name, category, custom_category, description, base_price,
+                                      estimated_timeframe, accepts_pickup, accepts_onsite, accepts_dropoff,
+                                      created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          [shopId, svc.name, svc.category, svc.customCategory, svc.description, svc.price, svc.timeframe,
+            pickup ? 1 : 0, onsite ? 1 : 0, dropoff ? 1 : 0]
         );
       }
 
-      // -----------------------------
-      // PAYOUT ACCOUNT
-      // -----------------------------
       // Starts PENDING; verification of the account is a separate step.
       await conn.query(
-        `INSERT INTO shop_payouts (shop_id, method, account_name, account_number, tin, status)
-         VALUES (?, ?, ?, ?, NULL, 'PENDING')`,
-        [
-          newShopId,
-          payment.payment_method,
-          String(payment.account_name).trim(),
-          String(payment.account_number).trim()
-        ]
+        `INSERT INTO shop_payouts (shop_id, method, bank_name, account_name, account_number, tin, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'PENDING')`,
+        [shopId, data.payout.method, data.payout.bankName, data.payout.accountName, data.payout.accountNumber,
+          data.payout.tin]
       );
 
-      return newShopId;
+      // Proof of business, checked by the admin (utils/shopDocuments.js).
+      const [submission] = await conn.query(
+        "INSERT INTO shop_documents (shop_id, status, created_at, updated_at) VALUES (?, 'PENDING', NOW(), NOW())",
+        [shopId]
+      );
+      for (const { type, file } of documents) {
+        const [attachment] = await conn.query(
+          `INSERT INTO attachments (file_name, file_path, mime_type, created_at, updated_at)
+           VALUES (?, ?, ?, NOW(), NOW())`,
+          [String(file.originalname || type).slice(0, 255), file.path.replace(/\\/g, "/"), file.mimetype]
+        );
+        await conn.query(
+          "INSERT INTO shop_documents_attachments (attachment_id, shop_documents_id, type) VALUES (?, ?, ?)",
+          [attachment.insertId, submission.insertId, type]
+        );
+      }
+
+      return { shopId };
     });
+
+    if (result.duplicate) return fail(400, result.duplicate);
+    if (result.phoneTaken) return fail(409, PHONE_TAKEN_MESSAGE, "business_phone");
 
     return res.json({
       success: true,
       pending: true,
       message: "Registration received. An admin will review your shop before it goes live.",
-      shop_id: shopId
+      shop_id: result.shopId,
     });
-
   } catch (err) {
-    console.error("❌ registerBusiness error:", err);
-    return res.status(500).json({ message: "Server error" });
+    console.error("registerBusiness error:", { code: err.code, message: err.message });
+    return fail(500, "Something went wrong saving your registration. Please try again.");
   }
 };
 
@@ -306,8 +375,6 @@ function query(sql, params = []) {
 export const getMyShop = async (req, res) => {
   try {
     const userId = req.user.id;
-
-    console.log("📌 getMyShop() called for user:", userId);
 
     // Use the promise-based wrapper
     const rows = await query(
@@ -337,10 +404,10 @@ export const getMyShop = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Error in getMyShop:", err);
+    console.error("getMyShop error:", { code: err.code });
     return res.status(500).json({
       success: false,
-      error: err.message
+      error: "Couldn't load your shop."
     });
   }
 };

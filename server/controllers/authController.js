@@ -6,6 +6,7 @@ import { OAuth2Client } from "google-auth-library";
 import { withTransaction } from "../utils/transaction.js";
 import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
 import { normalizePhone, PHONE_MESSAGE } from "../utils/phone.js";
+import { SUSPENDED_CODE, SUSPENDED_MESSAGE } from "../utils/accountStatus.js";
 import {
   normalizeEmail,
   verifySignupCodes,
@@ -197,6 +198,8 @@ export const login = (req, res) => {
       );
       if (!user || !hasPassword || !isMatch)
         return res.status(400).json({ error: "Incorrect email or password." });
+      // Only after the password matched, so this doesn't reveal suspended emails.
+      if (user.suspended_at) return res.status(403).json({ error: SUSPENDED_MESSAGE, code: SUSPENDED_CODE });
 
       const token = jwt.sign(
         { id: user.id, role_id: user.role_id },
@@ -233,11 +236,13 @@ export const login = (req, res) => {
 export const getSession = async (req, res) => {
   try {
     const [[user]] = await db.promise().query(
-      `SELECT id, role_id, first_name, middle_name, last_name, email, phone, photo_url
+      `SELECT id, role_id, first_name, middle_name, last_name, email, phone, photo_url, suspended_at
        FROM users WHERE id = ? LIMIT 1`,
       [req.user.id]
     );
     if (!user) return res.status(401).json({ error: "Account not found." });
+    if (user.suspended_at) return res.status(401).json({ error: SUSPENDED_MESSAGE, code: SUSPENDED_CODE });
+    delete user.suspended_at;
 
     const token = jwt.sign({ id: user.id, role_id: user.role_id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
@@ -270,6 +275,8 @@ export const googleLogin = async (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
 
       let user = result[0];
+
+      if (user?.suspended_at) return res.status(403).json({ error: SUSPENDED_MESSAGE, code: SUSPENDED_CODE });
 
       if (!user) {
         // Auto-create account for Google login

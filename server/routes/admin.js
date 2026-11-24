@@ -14,7 +14,11 @@ import {
   listShopRegistrations,
   approveShop,
   rejectShop,
+  documentLink,
 } from "../controllers/admin/shopReviewController.js";
+import { listUsers, getUser, suspendUser, reactivateUser } from "../controllers/admin/userAdminController.js";
+import { listRepairs, getRepair } from "../controllers/admin/repairAdminController.js";
+import { listDisputes, getDispute, decideDispute } from "../controllers/admin/disputeAdminController.js";
 
 const router = express.Router();
 router.use(authRequired, adminRequired);
@@ -32,5 +36,21 @@ router.post("/services/:id/reject", rejectService);
 router.get("/shops", listShopRegistrations);
 router.post("/shops/:id/approve", approveShop);
 router.post("/shops/:id/reject", rejectShop);
+router.post("/shops/:id/documents/:attachmentId/link", documentLink);
+
+// Accounts
+router.get("/users", listUsers);
+router.get("/users/:id", getUser);
+router.post("/users/:id/suspend", suspendUser);
+router.post("/users/:id/reactivate", reactivateUser);
+
+// Repairs (read-only)
+router.get("/repairs", listRepairs);
+router.get("/repairs/:id", getRepair);
+
+// Disputes
+router.get("/disputes", listDisputes);
+router.get("/disputes/:id", getDispute);
+router.post("/disputes/:id/decide", decideDispute);
 
 export default router;
