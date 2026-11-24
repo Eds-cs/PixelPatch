@@ -7,7 +7,7 @@
 //   2. POST /api/auth/register with the form and the code(s) creates the
 //      account (authController.register calls verifySignupCodes).
 import db from "../config/db.js";
-import { transporter } from "../config/mail.js";
+import { mailFrom, transporter } from "../config/mail.js";
 import { createCodeStore, CODE_MESSAGES } from "../utils/verificationCodes.js";
 import { normalizePhone, PHONE_MESSAGE } from "../utils/phone.js";
 import { sendSms, smsEnabled } from "../utils/sms.js";
@@ -45,7 +45,7 @@ export const startSignup = async (req, res) => {
 
     try {
       await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+        from: mailFrom(),
         to: email,
         subject: "Your PixelPatch verification code",
         text:

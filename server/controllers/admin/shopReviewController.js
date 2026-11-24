@@ -11,7 +11,7 @@
 //                emailed the reason so they can apply again.
 import db from "../../config/db.js";
 import { withTransaction } from "../../utils/transaction.js";
-import { transporter } from "../../config/mail.js";
+import { mailFrom, transporter } from "../../config/mail.js";
 import {
   DOCUMENT_TYPES,
   absoluteDocumentPath,
@@ -37,7 +37,7 @@ const likePattern = (text) => `%${String(text).replace(/[\\%_]/g, (c) => `\\${c}
 async function notifyOwner(to, subject, text) {
   if (!to || !process.env.EMAIL_USER) return false;
   try {
-    await transporter.sendMail({ from: process.env.EMAIL_USER, to, subject, text });
+    await transporter.sendMail({ from: mailFrom(), to, subject, text });
     return true;
   } catch (err) {
     console.error("shop review email failed:", err.code || err.message);
