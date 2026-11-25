@@ -169,9 +169,11 @@ export const analyzeIssue = async (req, res) => {
     const outcome = await withTransaction(async (conn) => {
       if (!conversationId) {
         const [created] = await conn.query(
+          // issue_category is NOT NULL with no default; strict SQL modes
+          // (the Docker MariaDB) refuse the row without it.
           `INSERT INTO ai_conversations
-          (user_id, title, ai_confidence, created_at, updated_at)
-          VALUES (?, 'New Chat', 0, NOW(), NOW())`,
+          (user_id, title, issue_category, ai_confidence, created_at, updated_at)
+          VALUES (?, 'New Chat', '', 0, NOW(), NOW())`,
           [userId]
         );
 

@@ -18,6 +18,9 @@ services:
     # Philippine time for NOW(); small memory settings for a 1 GB server.
     command:
       - --default-time-zone=+08:00
+      # Same SQL mode as XAMPP, where the app is developed: missing values get
+      # defaults instead of failing (MariaDB's default strict mode refuses them).
+      - --sql-mode=NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION
       - --innodb-buffer-pool-size=128M
       - --performance-schema=OFF
     volumes:
