@@ -1,5 +1,6 @@
 // Participant-scoped conversations with server-backed last-message previews.
 import { useCallback, useRef, useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -103,7 +104,7 @@ export default function ChatList() {
             <View className="flex-1"><Text className="text-sm font-bold text-teal-950">{shopMode ? "Your customers' questions" : "A direct line to your repair shop"}</Text><Text className="mt-1 text-sm leading-5 text-primary-soft-foreground">{shopMode ? "Customers can message you from your shop page before or during a repair. Reply here." : "Ask about your device, clarify a quotation, or follow up on repair progress."}</Text></View>
           </View>
           <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-            <TextField label="Search conversations" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder={shopMode ? "Customer name or latest message" : "Shop name or latest message"} />
+            <TextField label="Search conversations" maxLength={LIMITS.search} value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder={shopMode ? "Customer name or latest message" : "Shop name or latest message"} />
             <View className="flex-row flex-wrap gap-2">
               {[["all", "All conversations"], ["messages", "With messages"], ["empty", "No messages yet"]].map(([key, label]) => (
                 <Pressable key={key} onPress={() => setFilter(key)} accessibilityRole="button" accessibilityState={{ selected: filter === key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${filter === key ? "bg-primary" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${filter === key ? "text-white" : "text-gray-600"}`}>{label}</Text></Pressable>

@@ -1,5 +1,6 @@
 // Business repair queue. Workflow fields stay separate; stages below are view filters.
 import { useMemo, useState } from "react";
+import { LIMITS } from "../../../lib/inputLimits";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -223,7 +224,7 @@ export default function BusinessRepairs() {
               ))}
             </View>
             <View className="mt-4">
-              <TextField label="Search requests" placeholder="Device, customer, service, issue, or request #" value={query} onChangeText={setQuery} autoCapitalize="none" className="mb-0" />
+              <TextField label="Search requests" maxLength={LIMITS.search} placeholder="Device, customer, service, issue, or request #" value={query} onChangeText={setQuery} autoCapitalize="none" className="mb-0" />
             </View>
             <View className="mt-3 flex-row flex-wrap items-center gap-2">
               <Text className="mr-1 text-xs font-medium text-gray-500">Sort by</Text>

@@ -1455,6 +1455,33 @@ Backend MIME filtering and upload paths should be inspected before changing uplo
 
 Do not assume browser and native upload behavior are identical.
 
+## Upload security (since 2026-11-26)
+
+`/uploads` is served from the same address as the website, so a file that a
+browser treats as a page (HTML, SVG) would run with the site's access, which
+includes the token in localStorage. Before this fix `POST /upload/photo`
+accepted any file from anyone, signed in or not. Rules now:
+
+* Photos go through `server/middleware/upload.js` (`upload.single/array`):
+  PNG or JPEG only, 10 MB each. The saved name is random and its extension
+  comes from the type, never from the uploader's file name. After saving,
+  `requireFileTypes` (`server/utils/fileSignatures.js`) checks the file's
+  first bytes really are an image; otherwise every file of the request is
+  deleted and the API answers 400 `INVALID_FILE`.
+* Shop documents (`utils/shopDocuments.js`) get the same content check
+  (real PDF, JPEG or PNG).
+* `server.js` serves only `.png/.jpg/.jpeg` under `/uploads` (anything else
+  is a 404, including files uploaded before the fix), with `nosniff` and a
+  sandboxing Content-Security-Policy.
+* `POST /upload/photo` requires sign-in.
+* Never add an upload that keeps the uploader's extension or trusts the
+  claimed MIME type alone.
+
+Other input rules: SQL values always go through `?` placeholders (dynamic SQL
+pieces must be fixed strings chosen by code); `users.photo_url` must be an
+`/uploads/...` path or an `https://` URL; the server's final error handler
+answers JSON and never returns stack traces or raw database errors.
+
 ---
 
 # 28. Environment variables
@@ -1647,6 +1674,25 @@ Shared helpers commonly use named exports.
 Screens often use default exports.
 
 Preserve nearby formatting rather than unnecessarily reformatting entire files.
+
+## Text input limits (since 2026-11-26)
+
+Every text input has a length limit, and the server checks the same limit.
+The numbers live in `lib/inputLimits.js` (app) and
+`server/utils/inputLimits.js` (server); keep them in sync. Examples: names
+100, email 100 (the columns are varchar(100)), street 200, service name 80,
+service description 500, problem description, chat message, review, dispute
+text 1000, AI message 2000, search 100.
+
+* App: pass `maxLength={LIMITS.x}` to every `TextField`/`TextInput`.
+  `TextField` shows a counter on multi-line fields (`showCount` forces it).
+  `PasswordField` defaults to `LIMITS.password`.
+* Server: add `limitText({ field: ["Label", LIMITS.x] })` to the route (after
+  any upload middleware). It answers `400 { error, message, field,
+  code: "TEXT_TOO_LONG" }`, and also refuses objects or arrays in text fields.
+  `"parts[].name"` checks every item of an array. The chat socket uses
+  `textProblem` directly.
+* A new text column must be able to hold its limit; add a migration if not.
 
 ---
 

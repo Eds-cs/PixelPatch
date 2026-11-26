@@ -3,6 +3,7 @@
 // Searchable picker for Zamboanga City's barangays, the only area PixelPatch
 // serves. The server checks the same list (server/utils/serviceArea.js).
 import { useMemo, useState } from "react";
+import { LIMITS } from "../lib/inputLimits";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -85,7 +86,7 @@ export default function BarangayPicker({
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search barangays"
+          placeholder="Search barangays" maxLength={LIMITS.search}
           placeholderTextColor="#8A9B98"
           accessibilityLabel="Search barangays"
           autoCorrect={false}

@@ -11,6 +11,7 @@
 //
 // A shop can only be approved with a business permit on file (AGENTS.md, "Business rules").
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, FlatList, Platform, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
@@ -284,7 +285,7 @@ export default function AdminShops() {
       <AdminTabs tabs={TABS} value={status} onChange={setStatus} counts={{ PENDING: counts.PENDING, VERIFIED: counts.VERIFIED }} />
 
       <TextField
-        label="Search"
+        label="Search" maxLength={LIMITS.search}
         value={query}
         onChangeText={setQuery}
         placeholder="Shop name, shop email, or applicant"
@@ -371,7 +372,7 @@ export default function AdminShops() {
                 placeholder="e.g. The business phone number doesn't answer. Please check it and register again."
                 multiline
                 numberOfLines={4}
-                maxLength={1000}
+                maxLength={LIMITS.adminNote}
                 style={{ minHeight: 96, textAlignVertical: "top" }}
                 editable={!busy}
               />

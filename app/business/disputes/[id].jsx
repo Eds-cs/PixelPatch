@@ -2,6 +2,7 @@
 // The shop can only PROPOSE a resolution; accept/reject are client-side actions
 // (the server checks client_id on those routes).
 import { useCallback, useEffect, useState } from "react";
+import { LIMITS } from "../../../lib/inputLimits";
 import {
   ActivityIndicator,
   Alert,
@@ -254,7 +255,7 @@ export default function BusinessDisputeDetail() {
         ))}
 
         <TextField
-          label="Message to the client (optional)"
+          label="Message to the client (optional)" maxLength={LIMITS.disputeText}
           value={response}
           onChangeText={setResponse}
           placeholder="Explain your proposed resolution"

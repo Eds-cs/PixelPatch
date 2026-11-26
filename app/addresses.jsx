@@ -6,6 +6,7 @@
 // POST   /api/addresses/:id/default
 // DELETE /api/addresses/:id          (refused while a repair or shop uses it)
 import { useState } from "react";
+import { LIMITS } from "../lib/inputLimits";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -290,14 +291,14 @@ export default function Addresses() {
         ) : null}
 
         <TextField
-          label="Label (optional)"
+          label="Label (optional)" maxLength={LIMITS.addressLabel}
           value={form.label}
           onChangeText={setField("label")}
           placeholder="Home, Office…"
           editable={!busy && !locked}
         />
         <TextField
-          label="Street"
+          label="Street" maxLength={LIMITS.addressLine}
           value={form.street}
           onChangeText={setField("street")}
           placeholder="123 Rizal St."
@@ -312,7 +313,7 @@ export default function Addresses() {
           {SERVICE_AREA.city}, {SERVICE_AREA.province}, {SERVICE_AREA.country}
         </Text>
         <TextField
-          label="Postal code"
+          label="Postal code" maxLength={LIMITS.postalCode}
           value={form.postal_code}
           onChangeText={setField("postal_code")}
           placeholder={SERVICE_AREA.postal_code}

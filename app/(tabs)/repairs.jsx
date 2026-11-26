@@ -1,5 +1,6 @@
 // Customer repair tracking. Filters are presentation groups, not workflow states.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -121,7 +122,7 @@ export default function Repairs() {
           </View>
 
           <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-            <TextField label="Search your repairs" placeholder="Device, shop name, or repair #" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
+            <TextField label="Search your repairs" maxLength={LIMITS.search} placeholder="Device, shop name, or repair #" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
             <View className="flex-row flex-wrap gap-2">
               {FILTERS.map((item) => (
                 <Pressable key={item.key} onPress={() => setFilter(item.key)} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} className={`min-h-11 flex-row items-center gap-2 rounded-lg px-3 py-2 ${filter === item.key ? "bg-primary" : "bg-gray-50"}`}>

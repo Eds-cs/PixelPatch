@@ -3,10 +3,17 @@ import { Text, TextInput, View } from "react-native";
 
 // `right` is an optional element (for example an icon button) shown inside the
 // field at its right edge.
-export default function TextField({ label, error, className = "", right = null, onFocus, onBlur, ...props }) {
+//
+// Give every field a maxLength (limits live in lib/inputLimits.js; the server
+// checks the same numbers). Long, multi-line fields show a character counter;
+// pass showCount to force it on or off.
+export default function TextField({ label, error, className = "", right = null, onFocus, onBlur, showCount, maxLength, value, multiline, ...props }) {
   // Shows which field is selected with a darker border (the browser's focus
   // outline is turned off in global.css).
   const [focused, setFocused] = useState(false);
+  const length = String(value ?? "").length;
+  const counted = Boolean(maxLength) && (showCount ?? Boolean(multiline));
+  const atLimit = counted && length >= maxLength;
   return (
     <View className={`mb-4 ${className}`}>
       {label ? (
@@ -21,11 +28,26 @@ export default function TextField({ label, error, className = "", right = null, 
           } ${right ? "pr-12" : ""}`}
           onFocus={(event) => { setFocused(true); onFocus?.(event); }}
           onBlur={(event) => { setFocused(false); onBlur?.(event); }}
+          value={value}
+          multiline={multiline}
+          maxLength={maxLength}
           {...props}
         />
         {right ? <View className="absolute bottom-0 right-0 top-0 justify-center">{right}</View> : null}
       </View>
-      {error ? <Text className="mt-1 text-sm text-red-600">{error}</Text> : null}
+      {error || counted ? (
+        <View className="mt-1 flex-row items-start gap-3">
+          {error ? <Text className="flex-1 text-sm text-red-600">{error}</Text> : <View className="flex-1" />}
+          {counted ? (
+            <Text
+              accessibilityLabel={`${length} of ${maxLength} characters used`}
+              className={`text-xs ${atLimit ? "font-semibold text-red-600" : "text-gray-500"}`}
+            >
+              {length}/{maxLength}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }

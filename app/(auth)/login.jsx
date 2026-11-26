@@ -1,5 +1,6 @@
 // app/(auth)/login.jsx — ported from legacy-web/src/components/Login.jsx
 import { useEffect, useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { Link, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -124,7 +125,7 @@ export default function Login() {
             ) : null}
 
             <TextField
-              label="Email"
+              label="Email" maxLength={LIMITS.email}
               value={form.email}
               onChangeText={setField("email")}
               error={errors.email}
@@ -136,7 +137,7 @@ export default function Login() {
             />
 
             <PasswordField
-              label="Password"
+              label="Password" maxLength={LIMITS.password}
               value={form.password}
               onChangeText={setField("password")}
               error={errors.password}

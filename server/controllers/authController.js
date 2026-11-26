@@ -184,7 +184,7 @@ export const login = (req, res) => {
     "SELECT * FROM users WHERE email = ?",
     [email],
     async (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) { console.error("auth:", err.code); return res.status(500).json({ error: "Server error" }); }
 
       // One message for an unknown email and a wrong password, and a password
       // check either way, so neither the reply nor its timing reveals which
@@ -272,7 +272,7 @@ export const googleLogin = async (req, res) => {
 
     // Check if user already exists
     db.query("SELECT * FROM users WHERE email = ?", [email], async (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) { console.error("auth:", err.code); return res.status(500).json({ error: "Server error" }); }
 
       let user = result[0];
 

@@ -3,6 +3,7 @@
 // RepairAssessmentNoQuotation, RepairInProgress, RepairDone, RepairCompleted,
 // RepairRejected) into one screen that shows only the actions valid right now.
 import { useCallback, useEffect, useState } from "react";
+import { LIMITS } from "../../../lib/inputLimits";
 import {
   ActivityIndicator,
   Alert,
@@ -532,7 +533,7 @@ export default function BusinessRepairDetail() {
         }
       >
         <TextField
-          label="Reason"
+          label="Reason" maxLength={LIMITS.rejectionReason}
           value={rejectReason}
           onChangeText={setRejectReason}
           placeholder="Why are you rejecting this request?"
@@ -561,20 +562,20 @@ export default function BusinessRepairDetail() {
         }
       >
         <TextField
-          label="Device condition"
+          label="Device condition" maxLength={LIMITS.assessmentField}
           value={assessForm.deviceCondition}
           onChangeText={(v) => setAssessForm((f) => ({ ...f, deviceCondition: v }))}
           placeholder="e.g. Screen cracked, frame intact"
         />
         <TextField
-          label="Observed issues"
+          label="Observed issues" maxLength={LIMITS.assessmentField}
           value={assessForm.observedIssues}
           onChangeText={(v) => setAssessForm((f) => ({ ...f, observedIssues: v }))}
           placeholder="What did you find?"
           multiline
         />
         <TextField
-          label="Recommendation"
+          label="Recommendation" maxLength={LIMITS.assessmentField}
           value={assessForm.recommendation}
           onChangeText={(v) => setAssessForm((f) => ({ ...f, recommendation: v }))}
           placeholder="Recommended course of action"
@@ -651,7 +652,7 @@ export default function BusinessRepairDetail() {
         {quoteForm.warrantyCovered ? (
           <View>
             <TextField
-              label="Warranty duration"
+              label="Warranty duration" maxLength={4}
               value={quoteForm.warrantyValue}
               onChangeText={(value) => setQuoteForm((form) => ({ ...form, warrantyValue: value }))}
               placeholder="e.g. 30"
@@ -689,13 +690,13 @@ export default function BusinessRepairDetail() {
         {quoteForm.isPartsNeeded ? (
           <View>
             <TextField
-              label="Part name"
+              label="Part name" maxLength={LIMITS.partName}
               value={quoteForm.partName}
               onChangeText={(v) => setQuoteForm((f) => ({ ...f, partName: v }))}
               placeholder="e.g. OLED panel"
             />
             <TextField
-              label="Part price"
+              label="Part price" maxLength={10}
               value={quoteForm.partPrice}
               onChangeText={(v) => setQuoteForm((f) => ({ ...f, partPrice: v }))}
               placeholder="0"

@@ -5,6 +5,7 @@
 // Kept light to scroll: short copy, icon-led sections, alternating bands, and
 // on phones the service and shop lists swipe sideways instead of stacking.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -265,7 +266,7 @@ export default function Home() {
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                placeholder="What needs fixing?"
+                placeholder="What needs fixing?" maxLength={LIMITS.search}
                 placeholderTextColor="#8A9B98"
                 accessibilityLabel="Search repairs, devices and shops"
                 autoCapitalize="none"

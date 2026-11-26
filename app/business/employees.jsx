@@ -1,6 +1,7 @@
 // Shop employee directory: add, edit, deactivate and reactivate team members.
 // Assignment to repairs stays in the repair workspace and only offers active staff.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -198,7 +199,7 @@ export default function Employees() {
             </View>
 
             <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-              <TextField label="Search your team" placeholder="Name, role, phone, or email" value={query} onChangeText={setQuery} autoCapitalize="none" />
+              <TextField label="Search your team" maxLength={LIMITS.search} placeholder="Name, role, phone, or email" value={query} onChangeText={setQuery} autoCapitalize="none" />
               <Text className="mb-2 text-xs font-semibold uppercase text-gray-500">Status</Text>
               <View className="mb-4 flex-row flex-wrap gap-2">
                 {STATUSES.map(([key, label]) => (
@@ -270,12 +271,12 @@ export default function Employees() {
         {isNew ? <Text className="mb-4 text-sm leading-5 text-gray-500">Add a team member to your shop. Assign them to a repair from the repair workspace after the required approval and payment.</Text> : null}
         {formError ? <Text accessibilityRole="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{formError}</Text> : null}
         <View className={isMobile ? "" : "flex-row gap-3"}>
-          <View style={isMobile ? undefined : { flex: 1 }}><TextField label="First name *" value={form.firstName} onChangeText={setField("firstName")} placeholder="Juan" maxLength={100} editable={!busy} /></View>
-          <View style={isMobile ? undefined : { flex: 1 }}><TextField label="Last name *" value={form.lastName} onChangeText={setField("lastName")} placeholder="Dela Cruz" maxLength={100} editable={!busy} /></View>
+          <View style={isMobile ? undefined : { flex: 1 }}><TextField label="First name *" value={form.firstName} onChangeText={setField("firstName")} placeholder="Juan" maxLength={LIMITS.personName} editable={!busy} /></View>
+          <View style={isMobile ? undefined : { flex: 1 }}><TextField label="Last name *" value={form.lastName} onChangeText={setField("lastName")} placeholder="Dela Cruz" maxLength={LIMITS.personName} editable={!busy} /></View>
         </View>
-        <TextField label="Role *" value={form.role} onChangeText={setField("role")} placeholder="e.g. Technician" maxLength={100} editable={!busy} />
+        <TextField label="Role *" value={form.role} onChangeText={setField("role")} placeholder="e.g. Technician" maxLength={LIMITS.employeeRole} editable={!busy} />
         <TextField label="Phone (optional)" value={form.phone} onChangeText={(value) => setField("phone")(cleanPhoneInput(value))} error={phoneProblem(form.phone)} placeholder={PHONE_PLACEHOLDER} keyboardType="phone-pad" inputMode="tel" maxLength={PHONE_MAX_LENGTH} editable={!busy} />
-        <TextField label="Email (optional)" value={form.email} onChangeText={setField("email")} placeholder="tech@example.com" autoCapitalize="none" keyboardType="email-address" inputMode="email" maxLength={150} editable={!busy} />
+        <TextField label="Email (optional)" value={form.email} onChangeText={setField("email")} placeholder="tech@example.com" autoCapitalize="none" keyboardType="email-address" inputMode="email" maxLength={LIMITS.email} editable={!busy} />
         <Text className="text-xs text-gray-400">* Required fields. Contact details can be left empty.</Text>
       </Modal>
 

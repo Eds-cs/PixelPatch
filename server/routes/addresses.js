@@ -5,12 +5,21 @@ import { authRequired } from "../middleware/authMiddleware.js";
 import { withTransaction } from "../utils/transaction.js";
 import { SERVICE_AREA, SERVICE_AREA_MESSAGE, canonicalBarangay } from "../utils/serviceArea.js";
 
+import { LIMITS, limitText } from "../utils/inputLimits.js";
+
 const router = express.Router();
+
+const ADDRESS_TEXT = limitText({
+  street: ["Street", LIMITS.addressLine],
+  label: ["Label", LIMITS.addressLabel],
+  postal_code: ["Postal code", LIMITS.postalCode],
+  barangay: ["Barangay", LIMITS.addressLine],
+});
 
 /* -----------------------------------------------
    CREATE NEW ADDRESS
 ------------------------------------------------ */
-router.post("/", authRequired, async (req, res) => {
+router.post("/", authRequired, ADDRESS_TEXT, async (req, res) => {
   try {
     const { barangay, street, postal_code, label, latitude, longitude } = req.body;
 
@@ -128,7 +137,7 @@ const SHOP_ADDRESS_MESSAGE =
    is legitimate). A shop's address is locked here: changing it would move
    the shop's public location from a personal settings screen.
 ------------------------------------------------ */
-router.put("/:id", authRequired, async (req, res) => {
+router.put("/:id", authRequired, ADDRESS_TEXT, async (req, res) => {
   try {
     const text = (value) => String(value ?? "").trim();
     const validBarangay = canonicalBarangay(req.body.barangay);

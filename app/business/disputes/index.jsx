@@ -1,5 +1,6 @@
 // Shop dispute inbox. Proposals are business actions; decisions remain client actions.
 import { useState } from "react";
+import { LIMITS } from "../../../lib/inputLimits";
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -58,7 +59,7 @@ export default function BusinessDisputes() {
             ))}
           </View>
           <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-            <TextField label="Search disputes" value={query} onChangeText={setQuery} autoCapitalize="none" placeholder="Customer, device, complaint, or repair #" />
+            <TextField label="Search disputes" maxLength={LIMITS.search} value={query} onChangeText={setQuery} autoCapitalize="none" placeholder="Customer, device, complaint, or repair #" />
             <View className="flex-row flex-wrap gap-2">
               {[{ key: "", label: "All disputes" }, ...DISPUTE_STATUSES].map((item) => (
                 <Pressable key={item.key} onPress={() => setStatus(item.key)} accessibilityRole="button" accessibilityState={{ selected: status === item.key }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${status === item.key ? "bg-primary" : "bg-gray-50"}`}>

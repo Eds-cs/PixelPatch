@@ -11,6 +11,7 @@
 // GET  /api/admin/services?status=&shop_id=&q=&limit=&offset=
 // POST /api/admin/services/bulk  { ids, action: "approve" | "reject", note? }
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -91,7 +92,7 @@ function SearchBox({ value, onChange, placeholder }) {
         placeholderTextColor="#8A9B98"
         autoCapitalize="none"
         autoCorrect={false}
-        accessibilityLabel={placeholder}
+        accessibilityLabel={placeholder} maxLength={LIMITS.search}
         className="ml-2 h-11 flex-1 text-base text-gray-900"
       />
       {value ? (
@@ -498,7 +499,7 @@ export default function AdminServices() {
               onChangeText={setNote}
               placeholder="e.g. Unlocking carrier-locked phones isn't allowed on PixelPatch."
               multiline
-              maxLength={2000}
+              maxLength={LIMITS.adminNote}
               editable={!busy}
               style={{ minHeight: 110, paddingTop: 12, textAlignVertical: "top" }}
             />

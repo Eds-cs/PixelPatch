@@ -10,6 +10,7 @@
 // Every problem is shown on its own input (red outline and message). Server
 // errors carry `field`, mapped to the step and input by FIELD_STEP.
 import { useEffect, useRef, useState } from "react";
+import { LIMITS } from "../lib/inputLimits";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -567,7 +568,7 @@ export default function BecomePartner() {
               onChangeText={setBizField("business_name")}
               error={errors.business_name}
               placeholder="PixelFix Repairs"
-              maxLength={100}
+              maxLength={LIMITS.shopName}
             />
 
             <TextField
@@ -583,7 +584,7 @@ export default function BecomePartner() {
               autoCapitalize="none"
               keyboardType="email-address"
               inputMode="email"
-              maxLength={100}
+              maxLength={LIMITS.email}
               right={
                 emailVerified ? (
                   <View className="mr-3 flex-row items-center">
@@ -656,7 +657,7 @@ export default function BecomePartner() {
               placeholder="What you repair, your experience, brands you specialise in…"
               multiline
               numberOfLines={4}
-              maxLength={1000}
+              maxLength={LIMITS.shopDescription}
               style={{ minHeight: 96, textAlignVertical: "top" }}
             />
             <Text className="-mt-2 text-xs text-gray-500">
@@ -675,7 +676,7 @@ export default function BecomePartner() {
                 onChangeText={setLocField("street")}
                 error={errors.street}
                 placeholder="123 Rizal St."
-                maxLength={255}
+                maxLength={LIMITS.addressLine}
               />
               <BarangayPicker
                 label="Barangay (Zamboanga City)"
@@ -795,7 +796,7 @@ export default function BecomePartner() {
                     onChangeText={setServiceField(i, "repair_service")}
                     error={f("repair_service")}
                     placeholder="e.g. Screen replacement"
-                    maxLength={100}
+                    maxLength={LIMITS.serviceName}
                   />
                   <TextField
                     label="What's included"
@@ -805,11 +806,12 @@ export default function BecomePartner() {
                     placeholder="e.g. Original-quality screen, fitting and a 30-day check"
                     multiline
                     numberOfLines={3}
-                    maxLength={1000}
+                    maxLength={LIMITS.serviceDescription}
                     style={{ minHeight: 72, textAlignVertical: "top" }}
                   />
                   <TextField
                     label="Price (₱)"
+                    maxLength={12}
                     value={svc.price}
                     onChangeText={setServiceField(i, "price")}
                     error={f("price")}
@@ -922,7 +924,7 @@ export default function BecomePartner() {
                       onChangeText={setPayField("bank_other")}
                       error={errors.bank_name}
                       placeholder="Your bank"
-                      maxLength={100}
+                      maxLength={LIMITS.bankName}
                     />
                   ) : (
                     <FieldError message={errors.bank_name} />
@@ -936,7 +938,7 @@ export default function BecomePartner() {
                 onChangeText={setPayField("account_name")}
                 error={errors.account_name}
                 placeholder="Juan Dela Cruz"
-                maxLength={100}
+                maxLength={LIMITS.personName}
               />
               <TextField
                 label={isBank ? "Account number" : `${PAYOUT_LABELS[payment.payment_method]} number`}

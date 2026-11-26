@@ -1,5 +1,6 @@
 // Conversation UI: REST history + Socket.IO delivery, merged by persisted message ID.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -189,7 +190,7 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
             <View className="flex-row items-end gap-3">
               <TextInput
                 className="max-h-32 min-h-12 flex-1 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
-                placeholder="Write a message…"
+                placeholder="Write a message…" maxLength={LIMITS.chatMessage}
                 placeholderTextColor="#8A9B98"
                 value={draft} onChangeText={setDraft} multiline accessibilityLabel="Message"
               />

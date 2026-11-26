@@ -6,6 +6,8 @@ import { authRequired } from "../middleware/authMiddleware.js";
 import { resolveShopDeliveryTypes } from "../utils/shopDeliveryTypes.js";
 import { SERVICE_AREA_MESSAGE, isInServiceArea } from "../utils/serviceArea.js";
 
+import { LIMITS, limitText } from "../utils/inputLimits.js";
+
 const router = express.Router();
 
 /* -----------------------------------------------------------
@@ -15,6 +17,10 @@ router.post(
   "/",
   authRequired,
   upload.array("attachments", 10),
+  limitText({
+    issue_description: ["The problem description", LIMITS.issueDescription],
+    notes: ["Notes", LIMITS.requestNotes],
+  }),
   async (req, res) => {
     try {
       const {

@@ -3,6 +3,7 @@
 //   shop_id, delivery_method, device_id, issue_description,
 //   pickup_address_id, preferred_date, notes, services[], attachments[]
 import { useMemo, useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import {
   ActivityIndicator,
   Image,
@@ -362,7 +363,7 @@ export default function NewRequest() {
 
         <Card title="Details">
           <TextField
-            label="What's wrong?"
+            label="What's wrong?" maxLength={LIMITS.issueDescription}
             value={issue}
             onChangeText={setIssue}
             placeholder="Describe the problem in your own words"
@@ -376,7 +377,7 @@ export default function NewRequest() {
             placeholder="Choose a date"
           />
           <TextField
-            label="Notes (optional)"
+            label="Notes (optional)" maxLength={LIMITS.requestNotes}
             value={notes}
             onChangeText={setNotes}
             placeholder="Anything else the shop should know"

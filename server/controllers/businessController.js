@@ -11,6 +11,7 @@ import { ENABLED_PAYOUT_METHODS } from "../utils/payoutMethods.js";
 import { businessEmailProblem, normalizeEmail } from "../utils/emailChecks.js";
 import { codeKey, emailCodes, emailTokenValid, signEmailToken } from "../utils/businessEmailVerification.js";
 import { CODE_MESSAGES } from "../utils/verificationCodes.js";
+import { LIMITS } from "../utils/inputLimits.js";
 import { mailFrom, transporter } from "../config/mail.js";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
@@ -125,7 +126,7 @@ async function validateRegistration(body, documents, userId) {
   const bad = (field, error) => ({ field, error });
 
   const name = text(body.business_name);
-  if (name.length < 2 || name.length > 100) return bad("business_name", "Business name must be 2 to 100 characters.");
+  if (name.length < 2 || name.length > LIMITS.shopName) return bad("business_name", `Business name must be 2 to ${LIMITS.shopName} characters.`);
 
   const email = normalizeEmail(body.business_email);
   const emailProblem = await businessEmailProblem(email);
@@ -139,13 +140,13 @@ async function validateRegistration(body, documents, userId) {
   if (await businessPhoneTaken(db, phone, userId)) return bad("business_phone", PHONE_TAKEN_MESSAGE);
 
   const description = text(body.description);
-  if (description.length < 20 || description.length > 1000) {
-    return bad("description", "Describe your shop in 20 to 1000 characters.");
+  if (description.length < 20 || description.length > LIMITS.shopDescription) {
+    return bad("description", `Describe your shop in 20 to ${LIMITS.shopDescription} characters.`);
   }
 
   // Shops must be in Zamboanga City, the only area PixelPatch serves.
   const street = text(body.street);
-  if (!street || street.length > 255) return bad("street", "Enter the shop's street address (up to 255 characters).");
+  if (!street || street.length > LIMITS.addressLine) return bad("street", `Enter the shop's street address (up to ${LIMITS.addressLine} characters).`);
   const barangay = canonicalBarangay(body.barangay);
   if (!barangay) return bad("barangay", SERVICE_AREA_MESSAGE);
   const postalCode = text(body.postal_code);
@@ -178,10 +179,10 @@ async function validateRegistration(body, documents, userId) {
     const cat = validateCategory(svc?.category, svc?.custom_category);
     if (cat.error) return bad(text(svc?.category).toUpperCase() === "OTHER" ? f("custom_category") : f("category"), `${label}: ${cat.error}`);
     const serviceName = text(svc.repair_service);
-    if (!serviceName || serviceName.length > 100) return bad(f("repair_service"), `${label}: name the repair service (up to 100 characters).`);
+    if (!serviceName || serviceName.length > LIMITS.serviceName) return bad(f("repair_service"), `${label}: name the repair service (up to ${LIMITS.serviceName} characters).`);
     const serviceDescription = text(svc.description);
-    if (!serviceDescription || serviceDescription.length > 1000) {
-      return bad(f("description"), `${label}: describe what the service includes (up to 1000 characters).`);
+    if (!serviceDescription || serviceDescription.length > LIMITS.serviceDescription) {
+      return bad(f("description"), `${label}: describe what the service includes (up to ${LIMITS.serviceDescription} characters).`);
     }
     const price = Number(text(svc.price));
     if (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE) return bad(f("price"), `${label}: enter a price above 0.`);
@@ -208,7 +209,7 @@ async function validateRegistration(body, documents, userId) {
     if (bankName.length < 2 || bankName.length > 100) return bad("bank_name", "Choose or type your bank.");
   }
   const accountName = text(payment.account_name);
-  if (!accountName || accountName.length > 100) return bad("account_name", "Enter the account holder's name (up to 100 characters).");
+  if (!accountName || accountName.length > LIMITS.personName) return bad("account_name", `Enter the account holder's name (up to ${LIMITS.personName} characters).`);
   let accountNumber = text(payment.account_number);
   if (payment.payment_method === "BANK") {
     accountNumber = accountNumber.replace(/[\s-]/g, "");

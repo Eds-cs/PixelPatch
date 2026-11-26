@@ -22,6 +22,8 @@ import {
   markDeviceReceived
 } from "../controllers/repairController.js";
 console.log("🔥 repairRoutes loaded");
+import { LIMITS, limitText } from "../utils/inputLimits.js";
+
 const router = express.Router();
 router.use(authRequired, businessShopRequired);
 
@@ -31,22 +33,32 @@ router.get("/:id/services", getRepairServices);
 router.post("/:id/services", addRepairServices);
 
 // POST reject repair
-router.post("/reject/:id", rejectRepair);
+router.post("/reject/:id", limitText({ reason: ["Reason", LIMITS.rejectionReason] }), rejectRepair);
 
 // POST confirm repair
 router.post("/confirm/:id", confirmRepair);
 
 // POST create assessment for a repair request
-router.post("/:id/assessment", saveAssessment);
+router.post(
+  "/:id/assessment",
+  limitText({
+    deviceCondition: ["Device condition", LIMITS.assessmentField],
+    observedIssues: ["Observed issues", LIMITS.assessmentField],
+    recommendation: ["Recommendation", LIMITS.assessmentField],
+  }),
+  saveAssessment
+);
 
 // GET assessment by repair request ID
 router.get("/:id/assessment", getAssessmentByRequest);
 
+const QUOTATION_TEXT = limitText({ "parts[].name": ["Part name", LIMITS.partName] });
+
 // Create quotation
-router.post("/:id/quotation", createQuotation);
+router.post("/:id/quotation", QUOTATION_TEXT, createQuotation);
 
 // Update quotation
-router.put("/:id/quotation", updateQuotation);
+router.put("/:id/quotation", QUOTATION_TEXT, updateQuotation);
 router.put("/:id/quotation/completion", setQuotationCompletionDate);
 
 // Get quotation by request

@@ -169,7 +169,7 @@ export const listServicesForReview = async (req, res) => {
 function validateNote(body) {
   const note = String(body?.note ?? "").trim();
   if (!note) return { error: "Tell the shop why this service was rejected." };
-  if (note.length > 2000) return { error: "Keep the reason under 2000 characters." };
+  if (note.length > 1000) return { error: "Keep the reason under 1000 characters." };
   return { note };
 }
 

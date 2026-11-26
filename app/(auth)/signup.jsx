@@ -4,6 +4,7 @@
 //      once SMS is set up on the server).
 //   2. POST /api/auth/register with the form and the code(s) creates it.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { Link, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -297,7 +298,7 @@ export default function SignUp() {
                 <View className="flex-row gap-3">
                   <View className="flex-1">
                     <TextField
-                      label="First name"
+                      label="First name" maxLength={LIMITS.personName}
                       value={form.first_name}
                       onChangeText={setField("first_name")}
                       error={errors.first_name}
@@ -306,7 +307,7 @@ export default function SignUp() {
                   </View>
                   <View className="flex-1">
                     <TextField
-                      label="Last name"
+                      label="Last name" maxLength={LIMITS.personName}
                       value={form.last_name}
                       onChangeText={setField("last_name")}
                       error={errors.last_name}
@@ -316,7 +317,7 @@ export default function SignUp() {
                 </View>
 
                 <TextField
-                  label="Middle name (optional)"
+                  label="Middle name (optional)" maxLength={LIMITS.personName}
                   value={form.middle_name}
                   onChangeText={setField("middle_name")}
                   error={errors.middle_name}
@@ -364,7 +365,7 @@ export default function SignUp() {
                 ) : null}
 
                 <TextField
-                  label="Street, house no. (optional)"
+                  label="Street, house no. (optional)" maxLength={LIMITS.addressLine}
                   value={form.street}
                   onChangeText={setField("street")}
                   placeholder="123 Rizal St."
@@ -372,7 +373,7 @@ export default function SignUp() {
                 />
 
                 <TextField
-                  label="Email"
+                  label="Email" maxLength={LIMITS.email}
                   value={form.email}
                   onChangeText={setField("email")}
                   error={errors.email}

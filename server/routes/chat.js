@@ -8,6 +8,8 @@ import {
 import { startChat } from "../controllers/chatController.js";
 import { authRequired } from "../middleware/authMiddleware.js";
 
+import { LIMITS, limitText } from "../utils/inputLimits.js";
+
 const router = express.Router();
 
 // Get all conversations for logged-in user
@@ -17,7 +19,7 @@ router.get("/chat", authRequired, getUserConversations);
 router.get("/chat/:id/messages", authRequired, getMessages);
 
 // Send a new message
-router.post("/chat/send", authRequired, sendMessage);
+router.post("/chat/send", authRequired, limitText({ message_text: ["Message", LIMITS.chatMessage] }), sendMessage);
 
 // Start or get a chat
 router.post("/chat/start", authRequired, startChat);
