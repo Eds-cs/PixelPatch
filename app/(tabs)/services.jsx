@@ -1,5 +1,6 @@
 // Featured repair services from verified shops.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -71,7 +72,7 @@ export default function Services() {
           </View>
 
           <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-            <TextField label="Search featured services" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder="Try screen repair, battery, or laptop" />
+            <TextField label="Search featured services" maxLength={LIMITS.search} value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} placeholder="Try screen repair, battery, or laptop" />
             {categories.length ? (
               <>
                 <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">What device needs help?</Text>

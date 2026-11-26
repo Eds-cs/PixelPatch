@@ -9,6 +9,7 @@
 // didn't reply within 2 days. A decision records the outcome; it doesn't move
 // money (refunds through the payment provider aren't built yet).
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 
 import Button from "../../components/Button";
@@ -246,7 +247,7 @@ export default function AdminDisputes() {
         description="Step in when a client and shop can't settle a dispute: the client declined the shop's offer, or the shop didn't reply within 2 days."
       />
       <AdminTabs tabs={TABS} value={view} onChange={setView} counts={list.extra?.counts ?? {}} />
-      <TextField label="Search" value={query} onChangeText={setQuery} placeholder="Dispute #, repair #, shop or client" autoCapitalize="none" />
+      <TextField label="Search" maxLength={LIMITS.search} value={query} onChangeText={setQuery} placeholder="Dispute #, repair #, shop or client" autoCapitalize="none" />
       <AdminNotice message={message} onDismiss={() => setMessage(null)} />
       {list.error ? <Text className="mb-4 text-sm text-red-600">{list.error}</Text> : null}
     </View>

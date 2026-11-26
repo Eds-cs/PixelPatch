@@ -1,5 +1,6 @@
 // Business-only review analytics and linked repair context.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -155,7 +156,7 @@ export default function BusinessReviews() {
 
             <View className="flex-1 rounded-xl border border-gray-200 bg-white p-4">
               <Text className="mb-3 text-base font-semibold text-gray-900">Find feedback</Text>
-              <TextField label="Search reviews" placeholder="Customer, device, service, repair #, or feedback" value={query} onChangeText={setQuery} autoCapitalize="none" />
+              <TextField label="Search reviews" maxLength={LIMITS.search} placeholder="Customer, device, service, repair #, or feedback" value={query} onChangeText={setQuery} autoCapitalize="none" />
               <Options label="Rating" options={RATINGS} value={rating} onChange={setRating} />
               <Options label="Review date" options={PERIODS} value={days} onChange={setDays} />
               <Options label="Sort by" options={SORTS} value={sort} onChange={setSort} />

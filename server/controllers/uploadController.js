@@ -1,18 +1,11 @@
 // controllers/uploadController.js
-import multer from "multer";
-import path from "path";
+// POST /api/upload/photo: a signed-in user uploads one photo ("photo").
+// The Expo app doesn't use it (it sends photos with the request or device
+// form); it remains for the older web app. Same checks as every photo
+// upload (middleware/upload.js): signed in, real PNG/JPEG only.
+import { upload as imageUpload } from "../middleware/upload.js";
 
-// Storage config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // unique filename
-  },
-});
-
-export const upload = multer({ storage }).single("photo");
+export const upload = imageUpload.single("photo");
 
 export const uploadPhoto = (req, res) => {
   if (!req.file) {
@@ -20,9 +13,8 @@ export const uploadPhoto = (req, res) => {
   }
 
   // Relative path, like the other upload routes. The frontend resolves it
-  // against the API host with lib/api.js mediaUrl(). (This used to read
-  // import.meta.env.VITE_API_URL, which only exists in the old Vite app.)
-  const fileUrl = `/uploads/${req.file.filename}`;
+  // against the API host with lib/api.js mediaUrl().
+  const fileUrl = `/uploads/requests/${req.file.filename}`;
 
   return res.json({
     message: "Upload successful!",

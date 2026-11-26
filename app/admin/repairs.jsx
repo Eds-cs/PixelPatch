@@ -4,6 +4,7 @@
 // GET /api/admin/repairs?view=ALL|WAITING|OVERDUE|ACTIVE|COMPLETED|CLOSED&q=&limit=&offset=
 // GET /api/admin/repairs/:id
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, FlatList, Linking, Text, View } from "react-native";
 
 import Button from "../../components/Button";
@@ -215,7 +216,7 @@ export default function AdminRepairs() {
       <AdminTabs tabs={TABS} value={view} onChange={setView} counts={list.extra?.counts ?? {}} />
       <Text className="mb-3 text-xs text-gray-500">{HINTS[view]}</Text>
       <TextField
-        label="Search"
+        label="Search" maxLength={LIMITS.search}
         value={query}
         onChangeText={setQuery}
         placeholder="Repair #, client, shop or device"

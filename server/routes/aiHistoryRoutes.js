@@ -1,5 +1,6 @@
 import express from "express";
 import { authRequired } from "../middleware/authMiddleware.js";
+import { LIMITS, limitText } from "../utils/inputLimits.js";
 import {
   listConversations,
   getConversationMessages,
@@ -23,6 +24,6 @@ router.get(
 router.delete("/conversations/:id", authRequired, deleteConversation);
 
 // Rename conversation
-router.put("/conversations/:id/rename", authRequired, renameConversation);
+router.put("/conversations/:id/rename", authRequired, limitText({ newTitle: ["The name", LIMITS.aiTitle] }), renameConversation);
 
 export default router;

@@ -5,6 +5,8 @@
 // brand, model, serial_number and model_number have their own devices
 // columns; every other specification is stored in devices.specs (JSON).
 
+import { LIMITS, tooLongMessage } from "./inputLimits.js";
+
 const COLUMNS = ["brand", "model", "serial_number", "model_number"];
 
 export const DEVICE_TYPES = {
@@ -33,8 +35,11 @@ const LABELS = {
   processor: "Processor",
 };
 
-const MAX_SPEC = 100;
-const MAX_COLUMN = 255;
+// Every device detail (columns and specifications) shares one limit,
+// LIMITS.deviceField in utils/inputLimits.js (the app uses it as maxLength).
+const MAX_SPEC = LIMITS.deviceField;
+const MAX_COLUMN = LIMITS.deviceField;
+const COLUMN_LABELS = { brand: "Brand", model: "Model", serial_number: "Serial number", model_number: "Model number" };
 
 /**
  * Checks a device form for its type. Returns { error } or
@@ -60,15 +65,15 @@ export function validateDevice(body) {
 
   const text = (value) => String(value ?? "").trim();
   const columns = Object.fromEntries(COLUMNS.map((key) => [key, text(body?.[key])]));
-  if (COLUMNS.some((key) => columns[key].length > MAX_COLUMN)) {
-    return { error: "One of the device details is too long." };
-  }
+  const longColumn = COLUMNS.find((key) => columns[key].length > MAX_COLUMN);
+  if (longColumn) return { error: tooLongMessage(COLUMN_LABELS[longColumn], MAX_COLUMN) };
 
   // Only the specifications this type asks for are kept.
   const specs = {};
   for (const key of type.specs) {
+    if (rawSpecs[key] !== null && typeof rawSpecs[key] === "object") return { error: "Invalid device specifications." };
     const value = text(rawSpecs[key]);
-    if (value.length > MAX_SPEC) return { error: "One of the specifications is too long." };
+    if (value.length > MAX_SPEC) return { error: tooLongMessage(LABELS[key] ?? "A specification", MAX_SPEC) };
     if (value) specs[key] = value;
   }
 

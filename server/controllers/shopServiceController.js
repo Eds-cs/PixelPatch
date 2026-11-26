@@ -13,7 +13,7 @@ export const getServiceCategories = (req, res) => {
   `;
 
   db.query(sql, (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) { console.error("shopServices:", err.code); return res.status(500).json({ error: "Server error" }); }
 
     const raw = result[0].COLUMN_TYPE;        // enum('SMARTPHONE','DESKTOP',...)
     const categories = raw

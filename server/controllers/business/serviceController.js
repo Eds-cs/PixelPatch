@@ -3,6 +3,7 @@
 // Every query is scoped to req.shopId (set by businessShopRequired).
 import db from "../../config/db.js";
 import { OFFERED_CATEGORIES, validateCategory } from "../../utils/serviceCategories.js";
+import { LIMITS } from "../../utils/inputLimits.js";
 
 // Categories offered for new services (utils/serviceCategories.js).
 const CATEGORIES = OFFERED_CATEGORIES;
@@ -24,10 +25,11 @@ function validateService(body, currentCategory = null) {
     accepts_onsite: flag(body.accepts_onsite),
   };
 
-  if (!name || name.length > 100) return { error: "Enter a service name (up to 100 characters)." };
+  if (!name || name.length > LIMITS.serviceName) return { error: `Enter a service name (up to ${LIMITS.serviceName} characters).` };
+  if (description.length > LIMITS.serviceDescription) return { error: `Keep the description under ${LIMITS.serviceDescription} characters.` };
   if (cat.error) return { error: cat.error };
   if (!Number.isFinite(price) || price <= 0 || price > 99999999.99) return { error: "Enter a base price above 0." };
-  if (!timeframe || timeframe.length > 255) return { error: "Enter an estimated turnaround (for example, 1-2 days)." };
+  if (!timeframe || timeframe.length > LIMITS.turnaround) return { error: `Enter an estimated turnaround (for example, 1-2 days; up to ${LIMITS.turnaround} characters).` };
   if (!methods.accepts_pickup && !methods.accepts_dropoff && !methods.accepts_onsite) {
     return { error: "Choose at least one service method." };
   }

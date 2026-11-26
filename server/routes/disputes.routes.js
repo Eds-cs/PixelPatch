@@ -4,12 +4,14 @@ import { authRequired } from "../middleware/authMiddleware.js";
 import { canOpenDispute } from "../utils/canOpenDispute.js";
 import { businessShopRequired } from "../middleware/businessShopMiddleware.js";
 
+import { LIMITS, limitText } from "../utils/inputLimits.js";
+
 const router = express.Router();
 
 /* =======================================================
    CLIENT — OPEN DISPUTE
 ======================================================= */
-router.post("/", authRequired, async (req, res) => {
+router.post("/", authRequired, limitText({ explanation: ["Your explanation", LIMITS.disputeText] }), async (req, res) => {
   const clientId = req.user.id;
   const { request_id, explanation } = req.body;
 
@@ -104,7 +106,7 @@ router.get("/shop", authRequired, businessShopRequired, async (req, res) => {
 /* =======================================================
    SHOP — PROPOSE RESOLUTION
 ======================================================= */
-router.post("/:id/propose", authRequired, async (req, res) => {
+router.post("/:id/propose", authRequired, limitText({ response: ["Your message", LIMITS.disputeText] }), async (req, res) => {
   const disputeId = req.params.id;
   const { resolution, response } = req.body;
 

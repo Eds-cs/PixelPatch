@@ -1,6 +1,7 @@
 // Shop service catalog: browse, add, edit and delete the shop's services.
 // GET/POST /api/business/services, PUT/DELETE /api/business/services/:id
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { Pressable, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -226,7 +227,7 @@ export default function BusinessServices() {
               ))}
             </View>
             <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-              <TextField label="Search services" value={query} onChangeText={setQuery} placeholder="Service name, category, or description" autoCapitalize="none" />
+              <TextField label="Search services" maxLength={LIMITS.search} value={query} onChangeText={setQuery} placeholder="Service name, category, or description" autoCapitalize="none" />
               <Text className="mb-2 text-xs font-semibold uppercase text-gray-500">Device category</Text>
               <View className="flex-row flex-wrap gap-2">
                 {["", ...categories].map((value) => <Pressable key={value} onPress={() => setCategory(value)} accessibilityRole="button" accessibilityState={{ selected: category === value }} className={`min-h-11 justify-center rounded-lg px-3 py-2 ${category === value ? "bg-primary" : "bg-gray-50"}`}><Text className={`text-sm font-semibold ${category === value ? "text-white" : "text-gray-600"}`}>{value ? categoryLabel(value) : "All categories"}</Text></Pressable>)}
@@ -299,7 +300,7 @@ export default function BusinessServices() {
         </Text>
         {!isNew && usedCount ? <Text className="mb-4 rounded-lg bg-teal-50 p-3 text-xs leading-5 text-primary-soft-foreground">This service is part of {usedCount} repair request{usedCount === 1 ? "" : "s"}, so it can&apos;t be deleted. You can still edit it.</Text> : null}
 
-        <TextField label="Service name" value={form.name} onChangeText={setField("name")} placeholder="e.g. Screen replacement" maxLength={100} editable={!busy} />
+        <TextField label="Service name" value={form.name} onChangeText={setField("name")} placeholder="e.g. Screen replacement" maxLength={LIMITS.serviceName} editable={!busy} />
 
         <Text className="mb-2 text-sm font-medium text-gray-700">Device category</Text>
         <View className="mb-4 flex-row flex-wrap gap-2">
@@ -322,15 +323,15 @@ export default function BusinessServices() {
 
         <View className={isMobile ? "" : "flex-row gap-3"}>
           <View className={isMobile ? "" : "flex-1"}>
-            <TextField label="Base price (₱)" value={form.base_price} onChangeText={setField("base_price")} placeholder="1500" keyboardType="decimal-pad" inputMode="decimal" editable={!busy && !priceLocked} />
+            <TextField label="Base price (₱)" maxLength={12} value={form.base_price} onChangeText={setField("base_price")} placeholder="1500" keyboardType="decimal-pad" inputMode="decimal" editable={!busy && !priceLocked} />
           </View>
           <View className={isMobile ? "" : "flex-1"}>
-            <TextField label="Estimated turnaround" value={form.estimated_timeframe} onChangeText={setField("estimated_timeframe")} placeholder="1-2 days" maxLength={255} editable={!busy} />
+            <TextField label="Estimated turnaround" value={form.estimated_timeframe} onChangeText={setField("estimated_timeframe")} placeholder="1-2 days" maxLength={LIMITS.turnaround} editable={!busy} />
           </View>
         </View>
         {priceLocked ? <Text className="-mt-2 mb-4 text-xs leading-5 text-amber-700">The price is locked while a quotation that includes this service is waiting for payment.</Text> : null}
 
-        <TextField label="Description (optional)" value={form.description} onChangeText={setField("description")} placeholder="What does this service include?" multiline editable={!busy} style={{ minHeight: 96, paddingTop: 12, textAlignVertical: "top" }} />
+        <TextField label="Description (optional)" maxLength={LIMITS.serviceDescription} value={form.description} onChangeText={setField("description")} placeholder="What does this service include?" multiline editable={!busy} style={{ minHeight: 96, paddingTop: 12, textAlignVertical: "top" }} />
 
         <Text className="mb-2 text-sm font-medium text-gray-700">Service methods</Text>
         {METHODS.map((item) => (

@@ -9,11 +9,20 @@ import {
   deleteShopService,
 } from "../../controllers/business/serviceController.js";
 
+import { LIMITS, limitText } from "../../utils/inputLimits.js";
+
 const router = express.Router();
 
 router.get("/services", authRequired, businessShopRequired, listShopServices);
-router.post("/services", authRequired, businessShopRequired, createShopService);
-router.put("/services/:id", authRequired, businessShopRequired, updateShopService);
+const SERVICE_TEXT = limitText({
+  name: ["Service name", LIMITS.serviceName],
+  description: ["Description", LIMITS.serviceDescription],
+  estimated_timeframe: ["Estimated turnaround", LIMITS.turnaround],
+  custom_category: ["Device", LIMITS.customCategory],
+});
+
+router.post("/services", authRequired, businessShopRequired, SERVICE_TEXT, createShopService);
+router.put("/services/:id", authRequired, businessShopRequired, SERVICE_TEXT, updateShopService);
 router.delete("/services/:id", authRequired, businessShopRequired, deleteShopService);
 
 export default router;

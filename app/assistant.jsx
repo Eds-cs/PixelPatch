@@ -1,5 +1,6 @@
 // Troubleshooting UI. Starter prompts edit the draft; only Send calls the AI.
 import { useEffect, useRef, useState } from "react";
+import { LIMITS } from "../lib/inputLimits";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -203,7 +204,7 @@ function HistoryPanel({ conversations, loading, error, refreshing, onRefresh, ac
     <View>
       <View className="mb-4 h-10 flex-row items-center rounded-lg border border-gray-200 bg-white px-3">
         <Ionicons name="search-outline" size={16} color={COLORS.textMuted} />
-        <TextInput value={query} onChangeText={setQuery} placeholder="Search chats" placeholderTextColor="#8A9B98" accessibilityLabel="Search conversations" autoCapitalize="none" className="h-10 flex-1 px-2 text-sm text-gray-900" />
+        <TextInput value={query} onChangeText={setQuery} placeholder="Search chats" maxLength={LIMITS.search} placeholderTextColor="#8A9B98" accessibilityLabel="Search conversations" autoCapitalize="none" className="h-10 flex-1 px-2 text-sm text-gray-900" />
       </View>
       <View className="mb-1 flex-row items-center justify-between gap-2 px-1">
         <Text className="text-xs font-semibold uppercase tracking-wide text-gray-400">Recent</Text>

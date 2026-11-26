@@ -14,6 +14,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import { detectType } from "./fileSignatures.js";
 
 export const DOCUMENT_TYPES = {
   BUSINESS_PERMIT: { label: "Business permit (Mayor's permit)", required: true },
@@ -48,7 +49,16 @@ const documentUpload = multer({
 /** Multer for the registration form, answering upload problems with a 400 { message }. */
 export function uploadShopDocuments(req, res, next) {
   documentUpload(req, res, (err) => {
-    if (!err) return next();
+    if (!err) {
+      // The content must really be a PDF, JPEG or PNG, whatever type was claimed.
+      const fake = Object.entries(req.files ?? {}).find(([, files]) =>
+        files.some((file) => !detectType(file.path, ["application/pdf", "image/jpeg", "image/png"]))
+      );
+      if (!fake) return next();
+      removeUploadedFiles(req);
+      const message = "Documents must be a real PDF, JPG or PNG file.";
+      return res.status(400).json({ message, error: message, field: `documents.${fake[0]}` });
+    }
     removeUploadedFiles(req);
     const message =
       err.code === "LIMIT_FILE_SIZE"

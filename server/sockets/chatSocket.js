@@ -2,6 +2,7 @@
 import jwt from "jsonwebtoken";
 import { isSuspended } from "../utils/accountStatus.js";
 import db from "../config/db.js";
+import { LIMITS, textProblem } from "../utils/inputLimits.js";
 
 const isChatParticipant = (chatId, userId) =>
   new Promise((resolve, reject) => {
@@ -71,6 +72,12 @@ export default function setupChatSockets(io) {
 
         if (!chat_id || !message_text) {
           if (ack) ack({ success: false, error: "chat_id and message_text required" });
+          return;
+        }
+        // Same limit as POST /chat/send (utils/inputLimits.js).
+        const textIssue = textProblem({ message_text }, { message_text: ["Message", LIMITS.chatMessage] });
+        if (textIssue) {
+          if (ack) ack({ success: false, error: textIssue.message, code: "TEXT_TOO_LONG" });
           return;
         }
 

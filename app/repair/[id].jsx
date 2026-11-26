@@ -1,6 +1,7 @@
 // app/repair/[id].jsx — GET /api/client/repairs/:id
 // Also exposes PATCH .../approve and .../cancel.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import {
   ActivityIndicator,
   Alert,
@@ -386,7 +387,7 @@ export default function RepairDetail() {
         </View>
 
         <TextField
-          label="Feedback (optional)"
+          label="Feedback (optional)" maxLength={LIMITS.reviewComment}
           value={feedback}
           onChangeText={setFeedback}
           placeholder="How did the repair go?"

@@ -7,6 +7,7 @@ import cors from "cors";
 import http from "http";
 import path from "path";
 import fs from "fs";
+import { removeUploadedFiles } from "./utils/fileSignatures.js";
 
 import chatRoutes from "./routes/chat.js";
 import businessRoutes from "./routes/businessRoutes.js";
@@ -64,6 +65,7 @@ import disputesRoutes from "./routes/disputes.routes.js";
 
 // Initialize Express app
 const app = express();
+app.disable("x-powered-by");
 
 // Hosting settings (all optional; local development needs none of them).
 // TRUST_PROXY: set to 1 behind a reverse proxy (Caddy/nginx) so req.ip is the
@@ -87,7 +89,22 @@ app.use(express.json());
 // uploads/private/ holds shop permits and other documents: never served as
 // static files. Admins open them through a signed link (below).
 app.use("/uploads/private", (req, res) => res.sendStatus(404));
-app.use("/uploads", express.static("uploads"));
+// Uploaded photos are served as images only. Any other file (for example an
+// .html or .svg uploaded before uploads were checked) is a 404, and the
+// headers stop a browser from treating a file as a page or script.
+const UPLOAD_IMAGE = /\.(png|jpe?g)$/i;
+app.use(
+  "/uploads",
+  (req, res, next) => (UPLOAD_IMAGE.test(req.path) ? next() : res.sendStatus(404)),
+  express.static("uploads", {
+    dotfiles: "deny",
+    index: false,
+    setHeaders: (res) => {
+      res.set("X-Content-Type-Options", "nosniff");
+      res.set("Content-Security-Policy", "default-src 'none'; img-src 'self'; sandbox");
+    },
+  })
+);
 app.get("/api/shop-documents/:token", serveShopDocument);
 
 /* AUTH / USER */
@@ -149,6 +166,23 @@ app.use("/api/disputes", disputesRoutes);
 
 // PUBLIC SERVICES AND SHOPS
 app.use("/api/public", publicServicesRoutes);
+
+// Errors no route handled (bad JSON, refused uploads, anything thrown):
+// answer in JSON like the rest of the API, never with a stack trace.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  removeUploadedFiles(req);
+  const isUpload = err?.name === "MulterError" || err?.code === "INVALID_FILE";
+  const status = err?.status || err?.statusCode || (isUpload ? 400 : 500);
+  const message =
+    err?.code === "LIMIT_FILE_SIZE" ? "Each file must be 10 MB or smaller."
+    : err?.type === "entity.parse.failed" ? "The request body isn't valid JSON."
+    : err?.type === "entity.too.large" ? "The request is too large."
+    : status < 500 ? err?.message || "Bad request."
+    : "Server error";
+  if (status >= 500) console.error("Unhandled error:", req.method, req.originalUrl, err?.code || err?.message);
+  res.status(status).json({ error: message, message });
+});
 
 // SOCKET.IO SERVER
 const httpServer = http.createServer(app);

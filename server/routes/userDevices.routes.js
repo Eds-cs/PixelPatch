@@ -3,6 +3,7 @@ import db from "../config/db.js";
 import { authRequired } from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/upload.js";
 import { validateDevice, defaultDeviceName } from "../utils/deviceSpecs.js";
+import { LIMITS, tooLongMessage } from "../utils/inputLimits.js";
 
 
 const router = express.Router();
@@ -54,8 +55,8 @@ router.post(
     const device = validateDevice(req.body);
     if (device.error) return res.status(400).json({ message: device.error });
     const { columns } = device;
-    const name = String(req.body.name ?? "").trim() || defaultDeviceName(device.device_type, columns);
-    if (name.length > 255) return res.status(400).json({ message: "The device name is too long." });
+    const name = String(req.body.name ?? "").trim() || defaultDeviceName(device.device_type, columns).slice(0, LIMITS.deviceField);
+    if (name.length > LIMITS.deviceField) return res.status(400).json({ message: tooLongMessage("Nickname", LIMITS.deviceField), field: "name" });
 
     const photo_url = req.file
       ? `/uploads/requests/${req.file.filename}`
@@ -100,8 +101,8 @@ router.put(
     const device = validateDevice(req.body);
     if (device.error) return res.status(400).json({ message: device.error });
     const { columns } = device;
-    const name = String(req.body.name ?? "").trim() || defaultDeviceName(device.device_type, columns);
-    if (name.length > 255) return res.status(400).json({ message: "The device name is too long." });
+    const name = String(req.body.name ?? "").trim() || defaultDeviceName(device.device_type, columns).slice(0, LIMITS.deviceField);
+    if (name.length > LIMITS.deviceField) return res.status(400).json({ message: tooLongMessage("Nickname", LIMITS.deviceField), field: "name" });
 
     const photo_url = req.file
       ? `/uploads/requests/${req.file.filename}`

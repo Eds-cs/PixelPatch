@@ -1,5 +1,6 @@
 // Compare verified shops offering the selected service.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, RefreshControl } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -84,7 +85,7 @@ export default function ServiceDetail() {
         <Button title="Refresh" variant="outline" onPress={refresh} loading={refreshing} />
       </View>
       <View className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-        <TextField label="Search these shops" placeholder="Shop name or location" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
+        <TextField label="Search these shops" maxLength={LIMITS.search} placeholder="Shop name or location" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
         <View className="flex-row flex-wrap items-center gap-2">
           <Text className="text-xs font-medium text-gray-500">Sort by</Text>
           {[["rating", "Shop rating"], ["lowest", "Lowest base price"], ["highest", "Highest base price"]].map(([key, label]) => (

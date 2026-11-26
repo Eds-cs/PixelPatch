@@ -6,6 +6,7 @@
 // Device types and their specification fields: lib/deviceSpecs.js.
 // DELETE /api/user/devices/:id   (refused while a repair request uses the device)
 import { useState } from "react";
+import { LIMITS } from "../lib/inputLimits";
 import { Image, Pressable, Text, View } from "react-native";
 import { Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -312,7 +313,7 @@ export default function Devices() {
               onChangeText={setField("name")}
               placeholder={`e.g. ${type.example}`}
               editable={!busy}
-              maxLength={255}
+              maxLength={LIMITS.deviceField}
             />
             <Text className="mb-3 text-sm font-bold text-gray-900">{type.label} specifications</Text>
             <View className={isMobile ? "" : "flex-row flex-wrap"} style={isMobile ? undefined : { marginHorizontal: -6 }}>
@@ -341,7 +342,7 @@ export default function Devices() {
                         placeholder={field.placeholder}
                         autoCapitalize={field.caps ? "characters" : "sentences"}
                         editable={!busy}
-                        maxLength={field.column ? 255 : 100}
+                        maxLength={LIMITS.deviceField}
                       />
                     )}
                   </View>

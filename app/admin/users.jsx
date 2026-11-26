@@ -9,6 +9,7 @@
 // (server/utils/accountStatus.js). Roles aren't changed here: business
 // accounts come from approving a shop, and admins are made deliberately.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { ActivityIndicator, FlatList, Text, View } from "react-native";
 
 import Button from "../../components/Button";
@@ -230,7 +231,7 @@ export default function AdminUsers() {
       />
       <AdminTabs tabs={TABS} value={filter} onChange={setFilter} counts={list.extra?.counts ?? {}} />
       <TextField
-        label="Search"
+        label="Search" maxLength={LIMITS.search}
         value={query}
         onChangeText={setQuery}
         placeholder="Name, email, phone or shop"

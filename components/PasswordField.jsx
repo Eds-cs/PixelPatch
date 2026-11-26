@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LIMITS } from "../lib/inputLimits";
 import { Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -12,6 +13,7 @@ export default function PasswordField(props) {
     <TextField
       autoCapitalize="none"
       autoCorrect={false}
+      maxLength={LIMITS.password}
       {...props}
       secureTextEntry={!visible}
       right={

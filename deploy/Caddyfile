@@ -5,6 +5,19 @@
 {$SITE_ADDRESS} {
 	encode gzip
 
+	# Basic browser protections for the whole site:
+	#   nosniff: never run a file as something other than its declared type
+	#   SAMEORIGIN: other sites can't load PixelPatch in a frame (clickjacking)
+	#   Referrer-Policy: other sites only see our domain, not full page URLs
+	#   HSTS: browsers always use HTTPS for this site
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
 	# API, live chat (websockets) and uploaded photos go to the API container.
 	handle /api/* {
 		reverse_proxy api:5000

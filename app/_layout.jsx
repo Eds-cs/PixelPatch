@@ -33,8 +33,12 @@ function isBrowsable(segments) {
 }
 
 // Where to go after signing in: only a path inside this app, never another site.
+// Only a path inside the app: "/repairs" yes; "//evil.com", "/\evil.com",
+// "javascript:..." or anything with control characters no.
 function safeRedirect(value) {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : null;
+  if (typeof value !== "string" || value.length > 200) return null;
+  if (!value.startsWith("/") || value.startsWith("//") || /[\\\s\u0000-\u001f]/.test(value)) return null;
+  return value;
 }
 // Shared informational screens an admin may still open outside the portal.
 const ADMIN_SHARED = ["settings", "help", "about", "terms", "privacy"];

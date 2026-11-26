@@ -1,5 +1,6 @@
 // app/(auth)/forgot-password.jsx — request a reset code by email, then set a new password.
 import { useState } from "react";
+import { LIMITS } from "../../lib/inputLimits";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -112,7 +113,7 @@ export default function ForgotPassword() {
             {step === "email" ? (
               <>
                 <TextField
-                  label="Email"
+                  label="Email" maxLength={LIMITS.email}
                   value={form.email}
                   onChangeText={setField("email")}
                   error={errors.email}
