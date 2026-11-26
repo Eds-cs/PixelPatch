@@ -21,7 +21,7 @@ const SECTIONS = [
     heading: "Who we share it with",
     body: [
       "The repair shop handling your request sees the details it needs: your name, contact details, device, problem description and pickup address.",
-      "Service providers that help run PixelPatch: Xendit (payments), OpenAI (the AI assistant receives the messages you type to it), Google (if you sign in with Google) and our email provider.",
+      "Service providers that help run PixelPatch: Xendit (payments), OpenAI (the AI assistant receives the recent messages of your chat with it, with phone numbers, email addresses and card numbers removed; never your name, account details or address), Google (if you sign in with Google) and our email provider.",
       "We do not sell your personal information.",
     ],
   },
@@ -35,6 +35,7 @@ const SECTIONS = [
     heading: "Your choices",
     body: [
       "You can view and update your profile, addresses and devices in the app. To have your account and data deleted, contact PixelPatch through the Help centre.",
+      "Your chats with the AI assistant are saved to your account so you can come back to them. Deleting a chat from the assistant's history permanently deletes its messages. We keep only a count of how many assistant messages you sent and when (no message text), for the daily limit and to track costs.",
       "These rights follow the Philippine Data Privacy Act of 2012 (Republic Act No. 10173).",
     ],
   },
@@ -44,7 +45,7 @@ export default function Privacy() {
   return (
     <PolicyPage
       title="Privacy Policy"
-      updated="November 23, 2026"
+      updated="November 26, 2026"
       intro="This explains what personal information PixelPatch collects, why, and who it is shared with."
       sections={SECTIONS}
     />

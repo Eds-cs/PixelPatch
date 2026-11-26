@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../components/Button";
 import Modal from "../components/Modal";
-import { ServiceRating } from "../components/ServiceSummary";
+import { AssistantShopList, useShopHandoff } from "../components/AssistantShops";
 import api from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import { useResponsive } from "../lib/useResponsive";
@@ -19,11 +19,62 @@ const SUGGESTIONS = [
   { title: "Phone not charging", icon: "battery-charging-outline", text: "My phone will not charge. What should I check first?" },
   { title: "Laptop screen flickers", icon: "laptop-outline", text: "My laptop screen flickers. How can I narrow down the cause?" },
   { title: "Tablet got wet", icon: "water-outline", text: "My tablet got wet. What should I do next?" },
-  { title: "Controller stick drift", icon: "game-controller-outline", text: "My controller stick moves on its own. What could be causing this?" },
+  { title: "Phone won't turn on", icon: "power-outline", text: "My phone won't turn on. What can I try?" },
 ];
 
 // Readable line length for the conversation and the message box.
 const CHAT_WIDTH = 760;
+// Longest message; the server checks the same limit (utils/ai/assistant.js).
+const MESSAGE_MAX = 2000;
+// The counter appears once a message gets this long.
+const COUNTER_FROM = 1600;
+// A reply can take two OpenAI calls; the server gives up after 45 seconds.
+const REPLY_TIMEOUT = 60000;
+const UNAVAILABLE = "The assistant isn't available right now. You can still browse shops or message one directly.";
+
+// 👍 / 👎 under an assistant reply, saved with the message (PUT /ai/messages/:id/feedback).
+function FeedbackButtons({ message, onChange }) {
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const choose = async (value) => {
+    if (saving) return;
+    const next = message.feedback === value ? null : value;
+    setSaving(true);
+    setFailed(false);
+    try {
+      await api.put(`/ai/messages/${message.id}/feedback`, { feedback: next });
+      onChange(next);
+    } catch {
+      setFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const button = (value, icon, label) => {
+    const on = message.feedback === value;
+    return (
+      <Pressable
+        onPress={() => choose(value)}
+        disabled={saving}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: on, disabled: saving }}
+        hitSlop={4}
+        className="h-9 w-9 items-center justify-center rounded-full active:bg-gray-100"
+      >
+        <Ionicons name={on ? icon : `${icon}-outline`} size={16} color={on ? COLORS.primary : COLORS.textMuted} />
+      </Pressable>
+    );
+  };
+  return (
+    <View className="mt-1 flex-row items-center">
+      {button("UP", "thumbs-up", "Helpful reply")}
+      {button("DOWN", "thumbs-down", "Unhelpful reply")}
+      {message.feedback ? <Text className="ml-1 text-xs text-gray-400">Thanks for the feedback</Text> : null}
+      {failed ? <Text className="ml-1 text-xs text-red-600">Couldn&apos;t save</Text> : null}
+    </View>
+  );
+}
 
 function AssistantAvatar({ size = 32 }) {
   return (
@@ -258,12 +309,15 @@ export default function Assistant() {
   const request = useRef(null);
   const stickToBottom = useRef(true);
   const [messages, setMessages] = useState([]);
-  const [shops, setShops] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   // ?prompt=... (from the home page) starts the message box with that question;
   // the person still reviews it and presses Send.
   const { prompt } = useLocalSearchParams();
-  const [draft, setDraft] = useState(() => (typeof prompt === "string" ? prompt.slice(0, 500) : ""));
+  const [draft, setDraft] = useState(() => (typeof prompt === "string" ? prompt.slice(0, MESSAGE_MAX) : ""));
+  // Pop-ups: "Talk to a shop" and "today's free messages are used up".
+  // { kind: "talk" | "limit", loading, error, shops, handoff, limit }
+  const [shopSheet, setShopSheet] = useState(null);
+  const handoffApi = useShopHandoff();
   const [sending, setSending] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
   const [error, setError] = useState(null);
@@ -279,7 +333,7 @@ export default function Assistant() {
 
   const send = async () => {
     const body = draft.trim();
-    if (body.length < 2 || busy.current) return;
+    if (body.length < 2 || body.length > MESSAGE_MAX || busy.current) return;
     busy.current = true;
     stickToBottom.current = true;
     setNewReply(false);
@@ -290,26 +344,70 @@ export default function Assistant() {
     setMessages((current) => [...current, { sender: "user", text: body, _key: key, pending: true }]);
     const controller = new AbortController();
     request.current = controller;
+    const dropPending = () => setMessages((current) => current.filter((message) => message._key !== key));
     try {
-      const { data } = await api.post("/ai/analyze", { text: body, conversation_id: conversationId }, { signal: controller.signal });
+      const { data } = await api.post("/ai/analyze", { text: body, conversation_id: conversationId }, { signal: controller.signal, timeout: REPLY_TIMEOUT });
       if (!mounted.current) return;
       if (data?.conversation_id) setConversationId(data.conversation_id);
       if (!data?.reply || typeof data.reply !== "string") throw new Error("A response could not be confirmed. Check your conversation history before sending again.");
-      setMessages((current) => [...current.map((message) => message._key === key ? { ...message, pending: false } : message), { sender: "ai", text: data.reply, _key: `local-${++sequence.current}` }]);
-      setShops(Array.isArray(data.shops) ? data.shops : []);
+      const reply = {
+        sender: "ai",
+        id: data.message_id,
+        text: data.reply,
+        feedback: null,
+        // A recommendation always has an array (possibly empty: "no matching shop").
+        shops: data.handoff ? (Array.isArray(data.shops) ? data.shops : []) : undefined,
+        handoff: data.handoff ?? undefined,
+        _key: `local-${++sequence.current}`,
+      };
+      setMessages((current) => [...current.map((message) => message._key === key ? { ...message, id: data.user_message_id, pending: false } : message), reply]);
       if (!stickToBottom.current) setNewReply(true);
       history.refresh();
     } catch (e) {
       if (!mounted.current) return;
-      setMessages((current) => current.map((message) => message._key === key ? { ...message, pending: false, failed: true } : message));
+      const code = e.response?.data?.code;
+      // Limits: nothing was sent, so the message goes back into the box.
+      if (code === "AI_DAILY_LIMIT") {
+        dropPending();
+        setDraft((current) => current || body);
+        const data = e.response.data;
+        setShopSheet({ kind: "limit", limit: data.limit, shops: Array.isArray(data.shops) ? data.shops : [], handoff: data.handoff ?? null });
+        return;
+      }
+      if (code === "AI_RATE_LIMIT") {
+        dropPending();
+        setDraft((current) => current || body);
+        setError(e.message);
+        return;
+      }
+      // The server answered that it failed (nothing saved), or never answered.
+      const answered = Boolean(e.response);
+      setMessages((current) => current.map((message) => message._key === key ? { ...message, pending: false, failed: true, notSent: answered } : message));
       setDraft((current) => current || body);
-      setError(e.code === "ECONNABORTED" ? "The response timed out. Your draft has been restored; check your saved history before sending it again." : e.message || "The assistant is unavailable. Your draft has been restored.");
+      if (e.code === "ECONNABORTED") setError("The response timed out. Your draft has been restored; check your saved history before sending it again.");
+      else if (!answered || code === "AI_UNAVAILABLE" || (e.response?.status ?? 0) >= 500) setError(UNAVAILABLE);
+      else setError(e.message || UNAVAILABLE);
       history.refresh();
     } finally {
       busy.current = false;
       if (mounted.current) setSending(false);
     }
   };
+
+  // "Talk to a shop": shops for this chat, without calling the AI.
+  const openTalkToShop = async () => {
+    setShopSheet({ kind: "talk", loading: true });
+    try {
+      const { data } = await api.post("/ai/shops", conversationId ? { conversation_id: conversationId } : {});
+      if (!mounted.current) return;
+      setShopSheet((current) => current?.kind === "talk" ? { kind: "talk", shops: Array.isArray(data?.shops) ? data.shops : [], handoff: data?.handoff ?? null } : current);
+    } catch (e) {
+      if (!mounted.current) return;
+      setShopSheet((current) => current?.kind === "talk" ? { kind: "talk", error: e.message || "Couldn't load shops right now.", shops: [] } : current);
+    }
+  };
+  const closeShopSheet = () => setShopSheet(null);
+  const setFeedback = (id, feedback) => setMessages((current) => current.map((message) => message.id === id && message.sender === "ai" ? { ...message, feedback } : message));
 
   const loadConversation = async (id) => {
     if (busy.current) return;
@@ -322,9 +420,8 @@ export default function Assistant() {
       const { data } = await api.get(`/ai/conversations/${id}/messages`, { signal: controller.signal });
       if (!mounted.current) return;
       const rows = Array.isArray(data) ? data : [];
-      setMessages(rows.filter((message) => String(message.text || "").trim() !== "[SYSTEM] Recommended shops").map((message, index) => ({ ...message, _key: `saved-${id}-${index}` })));
+      setMessages(rows.filter((message) => String(message.text || "").trim() !== "[SYSTEM] Recommended shops").map((message, index) => ({ ...message, _key: `saved-${id}-${message.id ?? index}` })));
       setConversationId(id);
-      setShops([]);
       setDraft("");
       setHistoryOpen(false);
       setNewReply(false);
@@ -339,7 +436,7 @@ export default function Assistant() {
 
   const startNew = () => {
     if (busy.current) return;
-    setMessages([]); setShops([]); setConversationId(null); setDraft(""); setError(null); setNewReply(false);
+    setMessages([]); setConversationId(null); setDraft(""); setError(null); setNewReply(false);
     stickToBottom.current = true;
     inputRef.current?.focus();
   };
@@ -350,6 +447,8 @@ export default function Assistant() {
   };
   const openHistory = () => { if (!busy.current) { setHistoryOpen(true); history.refresh(); } };
   const fillPrompt = (text) => { if (!busy.current) { setDraft(text); inputRef.current?.focus(); } };
+  const tooLong = draft.trim().length > MESSAGE_MAX;
+  const canSend = draft.trim().length >= 2 && !tooLong && !disabled;
 
   // PUT /api/ai/conversations/:id/rename { newTitle } — owner-only on the server.
   // Throws so the history row can show the error next to the name.
@@ -370,7 +469,7 @@ export default function Assistant() {
           await api.delete(`/ai/conversations/${item.id}`);
           // Deleting the open conversation clears the chat back to a new one.
           if (String(item.id) === String(conversationId)) {
-            setMessages([]); setShops([]); setConversationId(null); setNewReply(false);
+            setMessages([]); setConversationId(null); setNewReply(false);
             stickToBottom.current = true;
           }
           await history.refresh();
@@ -470,7 +569,7 @@ export default function Assistant() {
               }
               renderItem={({ item }) => {
                 const mine = item.sender === "user";
-                const status = item.pending ? "Sending…" : item.failed ? "Response not confirmed" : null;
+                const status = item.pending ? "Sending…" : item.failed ? (item.notSent ? "Not sent" : "Response not confirmed") : null;
                 if (mine) {
                   return (
                     <View className="mb-6 self-end" style={{ maxWidth: isMobile ? "88%" : "75%" }}>
@@ -481,13 +580,20 @@ export default function Assistant() {
                     </View>
                   );
                 }
-                // Assistant replies read like a document: avatar, name, plain text.
+                // Assistant replies read like a document: avatar, name, plain text,
+                // then any recommended shops and the thumbs up/down.
                 return (
                   <View className="mb-7 flex-row items-start gap-3">
                     <AssistantAvatar size={30} />
                     <View className="flex-1" style={{ minWidth: 0 }}>
                       <Text className="mb-1 text-sm font-semibold text-gray-900">PixelPatch AI</Text>
                       <ReplyText text={item.text} />
+                      {Array.isArray(item.shops) ? (
+                        <View className="mt-4">
+                          <AssistantShopList shops={item.shops} handoff={item.handoff} handoffApi={handoffApi} />
+                        </View>
+                      ) : null}
+                      {item.id ? <FeedbackButtons message={item} onChange={(value) => setFeedback(item.id, value)} /> : null}
                     </View>
                   </View>
                 );
@@ -503,26 +609,6 @@ export default function Assistant() {
                       </View>
                     </View>
                   ) : null}
-                  {shops.length ? (
-                    <View className="mb-4" style={{ paddingLeft: isMobile ? 0 : 42 }}>
-                      <Text className="mb-3 text-sm font-semibold text-gray-900">Shops that can help</Text>
-                      <View className="gap-2">
-                        {shops.map((shop) => (
-                          <Pressable key={shop.id} onPress={() => router.push(`/shop/${shop.id}`)} accessibilityRole="button" accessibilityLabel={`View suggested shop ${shop.name}`} className="flex-row items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 active:bg-gray-50">
-                            <View className="h-10 w-10 items-center justify-center rounded-full bg-primary"><Text className="text-base font-bold text-white">{String(shop.name || "?").trim().charAt(0).toUpperCase()}</Text></View>
-                            <View className="flex-1" style={{ minWidth: 0 }}>
-                              <Text numberOfLines={1} className="text-sm font-bold text-gray-900">{shop.name}</Text>
-                              <View className="mt-0.5 flex-row flex-wrap items-center gap-x-2">
-                                <ServiceRating rating={shop.rating_average} />
-                                {shop.address ? <Text numberOfLines={1} className="flex-shrink text-xs text-gray-500">{shop.address}</Text> : null}
-                              </View>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
                 </View>
               }
             />
@@ -532,13 +618,33 @@ export default function Assistant() {
           {error ? <View className="w-full self-center pb-3" style={{ maxWidth: CHAT_WIDTH + horizontalPadding * 2, paddingHorizontal: horizontalPadding }}><Text accessibilityRole="alert" className="rounded-xl bg-red-50 p-3 text-sm leading-5 text-red-700">{error}</Text></View> : null}
           <View className="bg-white">
             <View className="w-full self-center pb-3 pt-2" style={{ maxWidth: CHAT_WIDTH + horizontalPadding * 2, paddingHorizontal: horizontalPadding }}>
-              <View className="flex-row items-end gap-2 rounded-3xl border border-gray-300 bg-white py-1.5 pl-4 pr-1.5" style={{ shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
-                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#8A9B98" className="max-h-32 min-h-11 flex-1 py-2.5 text-base text-gray-900" />
-                <Pressable onPress={send} disabled={draft.trim().length < 2 || disabled} accessibilityRole="button" accessibilityLabel="Send question" accessibilityState={{ disabled: draft.trim().length < 2 || disabled, busy: sending }} className={`h-10 w-10 items-center justify-center rounded-full ${draft.trim().length >= 2 && !disabled ? "bg-primary" : "bg-gray-200"}`}>
-                  {sending ? <ActivityIndicator size="small" color={COLORS.textMuted} /> : <Ionicons name="arrow-up" size={20} color={draft.trim().length >= 2 && !disabled ? "#fff" : COLORS.textMuted} />}
+              {/* The assistant is a first check; a real shop is always one tap away. */}
+              <View className="mb-2 flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <View className="flex-row items-center gap-1.5" style={{ flexShrink: 1 }}>
+                  <Ionicons name="information-circle-outline" size={14} color={COLORS.textMuted} />
+                  <Text className="text-xs leading-4 text-gray-500" style={{ flexShrink: 1 }}>{isMobile ? "Suggestions only, not a guarantee." : "Suggestions only, not a guarantee. A technician has the final say."}</Text>
+                </View>
+                <Pressable
+                  onPress={openTalkToShop}
+                  disabled={sending}
+                  accessibilityRole="button"
+                  accessibilityLabel="Talk to a shop instead"
+                  className="min-h-9 flex-row items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-3 active:bg-teal-100"
+                >
+                  <Ionicons name="storefront-outline" size={15} color={COLORS.primary} />
+                  <Text className="text-xs font-semibold text-teal-800">Talk to a shop instead</Text>
                 </Pressable>
               </View>
-              <Text className="mt-2 text-center text-xs leading-4 text-gray-400">PixelPatch AI can make mistakes. Leave anything risky, like opening batteries, to a technician.</Text>
+              <View className={`flex-row items-end gap-2 rounded-3xl border bg-white py-1.5 pl-4 pr-1.5 ${tooLong ? "border-red-400" : "border-gray-300"}`} style={{ shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline maxLength={MESSAGE_MAX} editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#8A9B98" className="max-h-32 min-h-11 flex-1 py-2.5 text-base text-gray-900" />
+                <Pressable onPress={send} disabled={!canSend} accessibilityRole="button" accessibilityLabel="Send question" accessibilityState={{ disabled: !canSend, busy: sending }} className={`h-10 w-10 items-center justify-center rounded-full ${canSend ? "bg-primary" : "bg-gray-200"}`}>
+                  {sending ? <ActivityIndicator size="small" color={COLORS.textMuted} /> : <Ionicons name="arrow-up" size={20} color={canSend ? "#fff" : COLORS.textMuted} />}
+                </Pressable>
+              </View>
+              <View className="mt-2 flex-row flex-wrap items-start justify-center gap-x-3">
+                <Text className="text-center text-xs leading-4 text-gray-400" style={{ flexShrink: 1 }}>{isMobile ? "Chats are saved. You can delete them any time." : "Chats are saved to your account. Delete one any time from your chat history."}</Text>
+                {draft.length >= COUNTER_FROM ? <Text accessibilityLiveRegion="polite" className={`text-xs ${tooLong ? "text-red-600" : "text-gray-500"}`}>{draft.trim().length}/{MESSAGE_MAX}</Text> : null}
+              </View>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -549,6 +655,40 @@ export default function Assistant() {
           <NewChatButton onPress={startNewFromSidebar} disabled={disabled} />
         </View>
         {historyPanel}
+      </Modal>
+
+      {/* "Talk to a shop" and "free messages used up": shops for this chat
+          (found by the server, no AI), with Message shop / Request repair. */}
+      <Modal
+        visible={Boolean(shopSheet)}
+        onClose={closeShopSheet}
+        title={shopSheet?.kind === "limit" ? "Today's free messages are used up" : "Talk to a shop"}
+        footer={shopSheet?.kind === "limit" ? (
+          <View className="flex-row flex-wrap gap-2">
+            <View className="flex-1" style={{ minWidth: 140 }}><Button title="Go to Home" onPress={() => { closeShopSheet(); router.replace("/"); }} /></View>
+            <View className="flex-1" style={{ minWidth: 140 }}><Button title="Browse services" variant="outline" onPress={() => { closeShopSheet(); router.push("/services"); }} /></View>
+          </View>
+        ) : null}
+      >
+        {shopSheet?.kind === "limit" ? (
+          <View className="mb-4 flex-row items-start gap-3 rounded-xl bg-amber-50 p-3">
+            <Ionicons name="time-outline" size={20} color="#b45309" />
+            <Text className="flex-1 text-sm leading-5 text-amber-900">
+              You&apos;ve used all {shopSheet.limit || 100} free assistant messages for today. You can chat with the assistant again tomorrow. Your message is still in the box.{"\n\n"}Meanwhile, a real technician can help:{shopSheet.shops?.length ? " these shops match your chat." : ""}
+            </Text>
+          </View>
+        ) : (
+          <Text className="mb-4 text-sm leading-5 text-gray-600">
+            Message a verified shop or send a repair request. A real technician will reply.{shopSheet?.handoff?.summary ? " We'll fill in what you told the assistant, and you can edit it before sending." : ""}
+          </Text>
+        )}
+        {shopSheet?.loading ? (
+          <View className="items-center py-6"><ActivityIndicator color={COLORS.primary} /></View>
+        ) : shopSheet?.error ? (
+          <Text accessibilityRole="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{shopSheet.error}</Text>
+        ) : shopSheet ? (
+          <AssistantShopList shops={shopSheet.shops} handoff={shopSheet.handoff} handoffApi={handoffApi} onLeave={closeShopSheet} title={null} />
+        ) : null}
       </Modal>
     </SafeAreaView>
   );
