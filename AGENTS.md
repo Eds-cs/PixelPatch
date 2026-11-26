@@ -1376,26 +1376,58 @@ Clean up socket listeners when React components unmount.
 
 # 26. AI troubleshooting
 
-The AI troubleshooting backend uses the OpenAI API.
+The AI troubleshooting assistant (`app/assistant.jsx`) uses the OpenAI API
+from the server only; the app never calls OpenAI and never sees the prompt.
+Rebuilt on 2026-11-26 from the "AI assistant improvement brief". Model:
+`gpt-4o-mini` (`OPENAI_MODEL` overrides it).
 
-Current implementation uses stored conversation history.
+Server code lives in `server/utils/ai/`:
 
-Known implementation uses approximately:
+* `prompt.js`: the system prompt (scope lock, DIY safety rules, diagnosis
+  flow, languages, privacy) and the `find_shops` tool. A reply that copies the
+  prompt is replaced (`leaksPrompt`).
+* `assistant.js`: one turn. Sends the last 16 messages (plus the first user
+  message when older ones are cut), with phone numbers, emails and card
+  numbers removed (`redact.js`), `max_completion_tokens` 450.
+* `findShops.js`: the only source of recommended shops: verified, owner not
+  suspended, in Zamboanga City (a blank city with a Zamboanga barangay
+  counts), an APPROVED service for the device, never the caller's own shop.
+  Shops with a service matching the problem first, by rating computed from
+  `reviews`. The subscription check (business rule 2) is NOT applied yet;
+  add it where `SHOP_FILTERS` is marked.
+* `guards.js`: checks that don't trust the model. Hazards (battery, water,
+  opening the device, parts, soldering) and requests for a person always end
+  with shop cards. The user's latest language is passed as a hint. A Spanish
+  reply (to Chavacano) is rewritten in Tagalog.
+* `limits.js`: 20 messages per 10 minutes and 100 a day per user, counted in
+  `ai_usage` (deleting chats doesn't reset it). Token use is logged there.
 
-```text
-gpt-4o
-```
+When the model calls `find_shops`, its reply comes in the tool's
+`message_to_user` and the server looks the shops up itself. The model never
+sees shop data, so it can't invent or misquote a shop. Cards show name,
+Verified, rating and review count, the matching service and starting price,
+"Warranty terms come with the quote", and Message shop / Request repair
+(`components/AssistantShops.jsx`). Message shop opens the shop chat with the
+assistant's summary as an editable draft (`/chat/[id]?draft=`); Request
+repair pre-fills `/request/[shopId]` (`issue`, `serviceId`, `deviceType`).
 
-The assistant can also perform shop recommendations using application logic and SQL.
+Endpoints (all `authRequired`, owner-only):
 
-Do not assume the existing implementation uses:
+* `POST /ai/analyze { text, conversation_id? }`: max 2000 characters.
+  `429 { code: "AI_RATE_LIMIT" }`, or `429 { code: "AI_DAILY_LIMIT", shops,
+  handoff }` (the app shows a pop-up with those shops and a Home button).
+  OpenAI failures: `503 { code: "AI_UNAVAILABLE" }` with a friendly message.
+* `POST /ai/shops { conversation_id? }`: shops for "Talk to a shop instead",
+  without calling OpenAI.
+* `PUT /ai/messages/:id/feedback { feedback: "UP" | "DOWN" | null }`.
+* `/ai/conversations` (list, messages, rename, delete). Delete removes the
+  messages from the database.
 
-* vector databases
-* embeddings
-* tool calling
-* RAG infrastructure
+After changing the prompt or guards, run `npm --prefix server run ai:test`
+(`server/scripts/aiPromptTest.js`; calls OpenAI, about a cent per run) and
+read the replies.
 
-unless actual current code shows otherwise.
+There are no embeddings, vector database or RAG; `find_shops` is the only tool.
 
 ---
 
@@ -1470,6 +1502,7 @@ GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_IDS
 
 OPENAI_API_KEY
+OPENAI_MODEL        (optional, default gpt-4o-mini)
 
 EMAIL_USER
 EMAIL_PASS
@@ -2465,8 +2498,30 @@ id
 conversation_id   FK -> ai_conversations.id
 message_text      text NOT NULL
 sender            enum('user','ai') NOT NULL DEFAULT 'user'
+feedback          enum('UP','DOWN') NULL      (thumbs on an assistant reply; added 2026-11-26)
+recommendation    longtext NULL               (JSON on a reply that showed shop cards:
+                  { shop_ids, shop_names, shop_notes, device_type, issue_category, summary };
+                  cards are rebuilt from the live DB when a chat is reopened; added 2026-11-26)
 timestamp         datetime NOT NULL
 ```
+
+The old `'[SYSTEM] Recommended shops'` marker rows were removed by
+`server/sql/2026-11-26_ai_assistant.sql`.
+
+### ai_usage
+
+```text
+id
+user_id             FK -> users.id
+conversation_id     int NULL   No FK (kept after the chat is deleted)
+model               varchar(50) NOT NULL
+prompt_tokens, completion_tokens   int NULL
+status              enum('PENDING','OK','FAILED') NOT NULL DEFAULT 'PENDING'
+created_at          datetime NOT NULL DEFAULT current_timestamp()
+```
+
+One row per assistant message sent to OpenAI (no message text). Used for the
+per-user limits and cost tracking. Added 2026-11-26.
 
 ---
 

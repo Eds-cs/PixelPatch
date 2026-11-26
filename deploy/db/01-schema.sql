@@ -688,3 +688,22 @@ ALTER TABLE users
 -- 2026-11-24: admin dispute decisions (server/sql/2026-11-24_dispute_admin_decisions.sql)
 ALTER TABLE dispute_edits
   MODIFY edited_by ENUM('CLIENT', 'BUSINESS', 'ADMIN') NOT NULL;
+
+-- 2026-11-26: AI assistant feedback, recommendations and usage (server/sql/2026-11-26_ai_assistant.sql)
+ALTER TABLE ai_messages
+  ADD COLUMN IF NOT EXISTS feedback ENUM('UP','DOWN') NULL DEFAULT NULL AFTER sender,
+  ADD COLUMN IF NOT EXISTS recommendation LONGTEXT NULL DEFAULT NULL AFTER feedback;
+
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id INT NOT NULL AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  conversation_id INT NULL DEFAULT NULL,
+  model VARCHAR(50) NOT NULL,
+  prompt_tokens INT NULL DEFAULT NULL,
+  completion_tokens INT NULL DEFAULT NULL,
+  status ENUM('PENDING','OK','FAILED') NOT NULL DEFAULT 'PENDING',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY ai_usage_user_time (user_id, created_at),
+  CONSTRAINT ai_usage_user_fk FOREIGN KEY (user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

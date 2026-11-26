@@ -45,6 +45,7 @@ const SECTIONS = [
     heading: "AI assistant",
     body: [
       "The AI assistant gives general troubleshooting suggestions. It can be wrong. Follow its advice at your own risk, and ask a repair shop when unsure.",
+      "It only helps with phone, tablet, laptop and desktop problems, and only recommends verified PixelPatch shops. Each account can send up to 20 messages every 10 minutes and 100 a day.",
     ],
   },
   {

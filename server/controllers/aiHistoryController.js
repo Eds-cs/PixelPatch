@@ -1,5 +1,6 @@
 import db from "../config/db.js";
 import { withTransaction } from "../utils/transaction.js";
+import { LEGACY_MARKER, parseRecommendation, savedRecommendationCards } from "./aiController.js";
 
 /* ============================================
    PROMISE WRAPPER (CRITICAL)
@@ -74,18 +75,28 @@ export const getConversationMessages = async (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const messages = await query(
+    const rows = await query(
       `
-      SELECT 
+      SELECT
+        id,
         sender,
         message_text AS text,
-        timestamp
+        timestamp,
+        feedback,
+        recommendation
       FROM ai_messages
-      WHERE conversation_id = ?
-      ORDER BY timestamp ASC
+      WHERE conversation_id = ? AND message_text <> ?
+      ORDER BY timestamp ASC, id ASC
       `,
-      [conversationId]
+      [conversationId, LEGACY_MARKER]
     );
+
+    // Shop cards are rebuilt from the live database, so a shop that is no
+    // longer verified (or a service no longer approved) drops out.
+    const messages = await Promise.all(rows.map(async ({ recommendation, ...message }) => {
+      const cards = await savedRecommendationCards(parseRecommendation(recommendation), userId);
+      return cards ? { ...message, shops: cards.shops, handoff: cards.handoff } : message;
+    }));
 
     res.json(messages);
   } catch (err) {

@@ -75,9 +75,15 @@ function SelectRow({ selected, title, subtitle, onPress }) {
   );
 }
 
+// From the AI assistant (components/AssistantShops.jsx): ?issue= the chat's
+// summary, ?serviceId= the matching service, ?deviceType= PHONE|LAPTOP|DESKTOP.
+const ISSUE_PARAM_MAX = 1000;
+const param = (value) => (typeof value === "string" ? value : "");
+
 export default function NewRequest() {
-  const { shopId } = useLocalSearchParams();
+  const { shopId, issue: issueParam, serviceId: serviceParam, deviceType: deviceTypeParam, from } = useLocalSearchParams();
   const router = useRouter();
+  const fromAssistant = param(from) === "assistant";
 
   const devices = useFetch("/user/devices", (d) => d.devices ?? []);
   const addresses = useFetch("/addresses", (d) => d.addresses ?? []);
@@ -86,11 +92,27 @@ export default function NewRequest() {
   const shopServices = useFetch(`/shops/${shopId}/services`, (d) => d.services ?? []);
   const types = useFetch(`/shop-services/types/${shopId}`, (d) => d.serviceTypes ?? {});
 
-  const [deviceId, setDeviceId] = useState(null);
-  const [serviceIds, setServiceIds] = useState([]);
+  const [pickedDeviceId, setDeviceId] = useState(null);
+  const [pickedServiceIds, setServiceIds] = useState(() => {
+    const id = Number(param(serviceParam));
+    return Number.isInteger(id) && id > 0 ? [id] : [];
+  });
   const [pickedDelivery, setDelivery] = useState(null);
   const [addressId, setAddressId] = useState(null);
-  const [issue, setIssue] = useState("");
+  const [issue, setIssue] = useState(() => param(issueParam).slice(0, ISSUE_PARAM_MAX));
+
+  // Only services this shop lists count (a pre-selected one may be gone).
+  const serviceIds = pickedServiceIds.filter((id) => (shopServices.data ?? []).some((s) => s.id === id));
+
+  // From the assistant: when exactly one registered device has that type,
+  // treat it as chosen until the person picks another.
+  const autoDeviceId = useMemo(() => {
+    const type = param(deviceTypeParam);
+    if (!type) return null;
+    const matches = (devices.data ?? []).filter((d) => d.device_type === type);
+    return matches.length === 1 ? matches[0].id : null;
+  }, [devices.data, deviceTypeParam]);
+  const deviceId = pickedDeviceId ?? autoDeviceId;
   const [notes, setNotes] = useState("");
   const [preferredDate, setPreferredDate] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -113,7 +135,7 @@ export default function NewRequest() {
   const needsAddress = delivery && delivery !== "DROPOFF";
 
   const toggleService = (id) =>
-    setServiceIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+    setServiceIds(serviceIds.includes(id) ? serviceIds.filter((s) => s !== id) : [...serviceIds, id]);
 
   const addAttachments = async () => {
     setFormError(null);
@@ -192,6 +214,15 @@ export default function NewRequest() {
         keyboardShouldPersistTaps="handled"
       >
         <Stack.Screen options={{ title: "Request a repair", headerShown: true }} />
+
+        {fromAssistant ? (
+          <View className="mb-4 flex-row items-start gap-2 rounded-xl bg-teal-50 p-3">
+            <Ionicons name="sparkles-outline" size={16} color={COLORS.primary} />
+            <Text className="flex-1 text-sm leading-5 text-teal-900">
+              Some details were filled in from your chat with the assistant. Check everything before you submit.
+            </Text>
+          </View>
+        ) : null}
 
         <Card
           title="Device"

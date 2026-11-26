@@ -14,7 +14,10 @@ import { chatDate, chatDay, chatTitle, mergeChatMessages } from "../../lib/chat"
 import { COLORS } from "../../constants/theme";
 
 import { SHOW_BACK_BUTTONS } from "../../lib/navigation";
-function Conversation({ chatId }) {
+// Longest draft taken from the link (the assistant's summary is up to 400).
+const DRAFT_PARAM_MAX = 1000;
+
+function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
   const router = useRouter();
   const { user } = useAuth();
   const socket = useSocket();
@@ -28,7 +31,10 @@ function Conversation({ chatId }) {
   const viewerIsShop = conversation && String(conversation.shop_owner_id) === String(user?.id);
   const [liveMessages, setLiveMessages] = useState([]);
   const messages = useMemo(() => mergeChatMessages(history.data || [], liveMessages), [history.data, liveMessages]);
-  const [draft, setDraft] = useState("");
+  // From the AI assistant: its summary of the problem, for the person to
+  // review and edit. Nothing is sent until they press Send.
+  const [draft, setDraft] = useState(initialDraft);
+  const [showDraftNote, setShowDraftNote] = useState(Boolean(fromAssistant && initialDraft));
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
   const [hasNewMessages, setHasNewMessages] = useState(false);
@@ -84,6 +90,7 @@ function Conversation({ chatId }) {
       if (!timeoutError && ack?.success) {
         stickToBottom.current = true;
         setHasNewMessages(false);
+        setShowDraftNote(false);
         if (ack.message) setLiveMessages((current) => mergeChatMessages(current, [ack.message]));
         setDraft((current) => current.trim() === text ? "" : current);
       } else {
@@ -173,6 +180,12 @@ function Conversation({ chatId }) {
 
         <View className="border-t border-gray-200 bg-white">
           <View className="w-full self-center py-3" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
+            {showDraftNote ? (
+              <View className="mb-2 flex-row items-start gap-2 rounded-xl bg-teal-50 px-3 py-2">
+                <Ionicons name="sparkles-outline" size={15} color={COLORS.primary} />
+                <Text className="flex-1 text-xs leading-5 text-teal-900">The assistant wrote this summary of your problem. Check and edit it, then press Send.</Text>
+              </View>
+            ) : null}
             <View className="flex-row items-end gap-3">
               <TextInput
                 className="max-h-32 min-h-12 flex-1 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
@@ -193,10 +206,11 @@ function Conversation({ chatId }) {
 }
 
 export default function ChatRoom() {
-  const { id } = useLocalSearchParams();
+  const { id, draft, from } = useLocalSearchParams();
   const chatId = Number(id);
   if (!Number.isInteger(chatId) || chatId <= 0) {
     return <View className="flex-1 items-center justify-center bg-gray-50 p-6"><Text className="text-sm text-gray-500">Invalid conversation.</Text></View>;
   }
-  return <Conversation key={chatId} chatId={chatId} />;
+  const initialDraft = typeof draft === "string" ? draft.slice(0, DRAFT_PARAM_MAX) : "";
+  return <Conversation key={chatId} chatId={chatId} initialDraft={initialDraft} fromAssistant={from === "assistant"} />;
 }
