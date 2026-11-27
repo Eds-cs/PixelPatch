@@ -13,9 +13,11 @@ export default function AsyncList({
   keyExtractor,
   emptyText = "Nothing here yet.",
   ListHeaderComponent,
+  // Optional narrower content width (e.g. 760 for a message list).
+  maxContentWidth,
 }) {
   const { horizontalPadding, isDesktop, isTablet } = useResponsive();
-  const maxWidth = isDesktop ? 1200 : isTablet ? 960 : 720;
+  const maxWidth = Math.min(maxContentWidth ?? Infinity, isDesktop ? 1200 : isTablet ? 960 : 720);
 
   if (loading) {
     return (
