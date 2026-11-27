@@ -1387,8 +1387,21 @@ Server code lives in `server/utils/ai/`:
   flow, languages, privacy) and the `find_shops` tool. A reply that copies the
   prompt is replaced (`leaksPrompt`).
 * `assistant.js`: one turn. Sends the last 16 messages (plus the first user
-  message when older ones are cut), with phone numbers, emails and card
-  numbers removed (`redact.js`), `max_completion_tokens` 450.
+  message when older ones are cut), `max_completion_tokens` 450, and
+  `store: false` (OpenAI doesn't keep the request for its dashboard or evals).
+* `redact.js`: every message sent to OpenAI (user AND assistant, history
+  included) and every shop summary is filtered first. It removes emails
+  (also "x at gmail dot com"), phone numbers, card and long ID numbers,
+  passwords, PINs and OTP codes, account names (Apple ID, username), IMEI,
+  serial and government ID numbers, links, @handles, IP addresses, street
+  addresses and house numbers, "my name is ..." / "ako si ...", and
+  birthdates. Kept on purpose: the barangay or city, and every device
+  detail the assistant needs (brand, model, model number such as SM-A546E or
+  A2643, specs, OS and build/firmware versions, error codes). Only the
+  device's IMEI, serial and MAC address are removed. No account data (profile
+  name, email, phone, saved addresses, devices) is ever sent to OpenAI; keep
+  it that way. After changing it, run `npm --prefix server run
+  ai:redact-test` (no external calls), and add a case for what you changed.
 * `findShops.js`: the only source of recommended shops: verified, owner not
   suspended, in Zamboanga City (a blank city with a Zamboanga barangay
   counts), an APPROVED service for the device, never the caller's own shop.

@@ -13,6 +13,7 @@ import { runAssistant, AI_MODEL, MAX_MESSAGE_LENGTH } from "../utils/ai/assistan
 import { findShops, guessFromText } from "../utils/ai/findShops.js";
 import { checkLimits, startUsage, finishUsage, DAILY_LIMIT, WINDOW_LIMIT, WINDOW_MINUTES } from "../utils/ai/limits.js";
 import { UNAVAILABLE_MESSAGE } from "../utils/ai/prompt.js";
+import { redactPersonalInfo } from "../utils/ai/redact.js";
 
 const query = (sql, params = []) => db.promise().query(sql, params).then(([rows]) => rows);
 
@@ -90,7 +91,7 @@ async function conversationShops(conversationId, userId, pendingText = "") {
   if (userText.length) {
     const { deviceType, issueCategory } = guessFromText(userText.join(" "));
     const shops = await findShops({ deviceType, issueCategory, userId });
-    return { shops, handoff: { summary: userText[0].slice(0, 400), device_type: deviceType, issue_category: issueCategory } };
+    return { shops, handoff: { summary: redactPersonalInfo(userText[0]).slice(0, 400), device_type: deviceType, issue_category: issueCategory } };
   }
   const shops = await findShops({ deviceType: null, issueCategory: "OTHER", userId });
   return { shops, handoff: { summary: "", device_type: null, issue_category: null } };

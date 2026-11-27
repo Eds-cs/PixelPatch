@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "ai:test": "node scripts/aiPromptTest.js"
+    "ai:test": "node scripts/aiPromptTest.js",
+    "ai:redact-test": "node scripts/redactTest.js"
   },
   "keywords": [],
   "author": "",
