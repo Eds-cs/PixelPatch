@@ -160,6 +160,25 @@ export default function BusinessRepairDetail() {
     load(false);
   }, [load]);
 
+  // "Message client": this repair's own chat (POST /business/repairs/:id/chat).
+  // From inside it the owner can hand it to the assigned employee.
+  const [openingChat, setOpeningChat] = useState(false);
+  const [chatError, setChatError] = useState(null);
+  const openChat = async () => {
+    if (openingChat) return;
+    setOpeningChat(true);
+    setChatError(null);
+    try {
+      const { data } = await api.post(`/business/repairs/${id}/chat`);
+      if (!data?.chat?.id) throw new Error("The chat could not be opened.");
+      router.push(`/chat/${data.chat.id}`);
+    } catch (e) {
+      setChatError(e.message || "The chat could not be opened.");
+    } finally {
+      setOpeningChat(false);
+    }
+  };
+
   const act = async (fn, successMessage) => {
     setBusy(true);
     try {
@@ -267,6 +286,12 @@ export default function BusinessRepairDetail() {
           </View>
           <RepairStatusBadge status={status} decision={decision} clientApproved={repair.clientApproved} />
         </View>
+        <View className="mt-4 flex-row flex-wrap gap-2">
+          <View style={{ minWidth: 180, flexGrow: isMobile ? 1 : 0 }}>
+            <Button title="Message client" variant="outline" loading={openingChat} onPress={openChat} />
+          </View>
+        </View>
+        {chatError ? <Text accessibilityRole="alert" className="mt-2 text-sm text-red-700">{chatError}</Text> : null}
         {!isRejected && !isCancelled ? (
           <View className="mt-4 rounded-xl bg-teal-50 p-3">
             <Text className="text-xs font-bold uppercase text-teal-800">Next step</Text>

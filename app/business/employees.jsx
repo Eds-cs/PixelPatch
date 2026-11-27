@@ -1,5 +1,11 @@
 // Shop employee directory: add, edit, deactivate and reactivate team members.
 // Assignment to repairs stays in the repair workspace and only offers active staff.
+//
+// Sign-in access (business rule 8): invite an employee by email; once they
+// accept with their own PixelPatch account they get the staff portal (their
+// assigned repairs and the repair chats you hand them). "Remove access" ends
+// that at once; their unfinished repairs stay under their name for you to
+// finish. Deactivating also ends their access.
 import { useState } from "react";
 import { LIMITS } from "../../lib/inputLimits";
 import { Pressable, Text, View } from "react-native";
@@ -29,6 +35,8 @@ const nameOf = (employee) => [employee.first_name, employee.last_name].filter(Bo
 const roleOf = (employee) => (employee.role || "").trim();
 const roleKey = (employee) => roleOf(employee).toLowerCase();
 const isActive = (employee) => Number(employee?.is_active) === 1;
+const hasAccount = (employee) => Number(employee?.has_account) === 1;
+const isInvited = (employee) => !hasAccount(employee) && Boolean(employee?.invite_email);
 function joinedDate(value) {
   if (!value) return "Date not recorded";
   const date = new Date(String(value).replace(" ", "T"));
@@ -41,9 +49,14 @@ function Avatar({ employee }) {
 }
 
 function StatusText({ employee }) {
-  return isActive(employee)
-    ? <Text className="mt-1 text-xs text-emerald-700">Active employee</Text>
-    : <Text className="mt-1 text-xs text-gray-500">Inactive · not assignable</Text>;
+  if (!isActive(employee)) return <Text className="mt-1 text-xs text-gray-500">Inactive · not assignable</Text>;
+  return (
+    <View className="mt-1 flex-row flex-wrap items-center gap-2">
+      <Text className="text-xs text-emerald-700">Active employee</Text>
+      {hasAccount(employee) ? <View className="rounded-full bg-teal-50 px-2 py-0.5"><Text className="text-xs font-semibold text-teal-800">Joined</Text></View> : null}
+      {isInvited(employee) ? <View className="rounded-full bg-amber-50 px-2 py-0.5"><Text className="text-xs font-semibold text-amber-800">Invited</Text></View> : null}
+    </View>
+  );
 }
 
 function Contact({ icon, value, fallback }) {
@@ -65,12 +78,15 @@ export default function Employees() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
   const [profileError, setProfileError] = useState(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [accessNote, setAccessNote] = useState(null);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("active");
   const [sort, setSort] = useState("name");
 
   const everyone = data ?? [];
+  const current = selected ? everyone.find((employee) => employee.id === selected.id) ?? selected : null;
   const active = everyone.filter(isActive);
   const byStatus = status === "active" ? active : everyone.filter((employee) => !isActive(employee));
   const roles = [...new Map(byStatus.filter((item) => roleOf(item)).map((item) => [roleKey(item), roleOf(item)])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
@@ -95,7 +111,54 @@ export default function Employees() {
     setEditing(employee);
   };
   const closeForm = () => { if (!busy) setEditing(null); };
-  const openProfile = (employee) => { setProfileError(null); setSelected(employee); };
+  const openProfile = (employee) => {
+    setProfileError(null);
+    setAccessNote(null);
+    setInviteEmail(employee.email ?? "");
+    setSelected(employee);
+  };
+
+  // Invite, cancel the invite, or remove sign-in access. Refreshes the list
+  // and keeps the profile open with the updated employee.
+  const changeAccess = (action) => {
+    const employee = selected;
+    const run = async () => {
+      setBusy(true);
+      setProfileError(null);
+      setAccessNote(null);
+      try {
+        let note = null;
+        if (action === "invite") {
+          const email = inviteEmail.trim();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter the email address the employee signs in with.");
+          const { data: result } = await api.post(`/business/employees/${employee.id}/invite`, { email });
+          note = result?.emailed
+            ? `Invite sent to ${email}. They accept it by signing in to PixelPatch with that email.`
+            : `Invite saved for ${email}. The email couldn't be sent, so tell them to sign in to PixelPatch with that email to accept it.`;
+        } else if (action === "cancel") {
+          await api.delete(`/business/employees/${employee.id}/invite`);
+        } else {
+          const { data: result } = await api.post(`/business/employees/${employee.id}/remove-access`);
+          note = result?.chats_returned
+            ? `Access removed. ${result.chats_returned} chat${result.chats_returned === 1 ? " is" : "s are"} back with you.`
+            : "Access removed.";
+        }
+        await refresh();
+        setAccessNote(note);
+      } catch (e) {
+        setProfileError(e.message || "Couldn't update sign-in access.");
+      } finally {
+        setBusy(false);
+      }
+    };
+    if (action !== "remove") { void run(); return; }
+    confirmAction(
+      "Remove sign-in access",
+      `${nameOf(employee)} won't be able to open the staff portal any more, and the chats you handed them come back to you. Their unfinished repairs stay under their name so you can finish them.`,
+      run,
+      { confirmLabel: "Remove access", destructive: true }
+    );
+  };
 
   const submit = async () => {
     if (busy) return;
@@ -155,7 +218,7 @@ export default function Employees() {
     if (!deactivating) { void run(); return; }
     confirmAction(
       "Deactivate employee",
-      `${nameOf(employee)} will no longer be offered for repair assignment. You can reactivate them later.`,
+      `${nameOf(employee)} will no longer be offered for repair assignment, and their sign-in access ends. You can reactivate them later.`,
       run,
       { confirmLabel: "Deactivate", destructive: true }
     );
@@ -281,32 +344,57 @@ export default function Employees() {
       </Modal>
 
       <Modal
-        visible={Boolean(selected)}
+        visible={Boolean(current)}
         onClose={() => { if (!busy) setSelected(null); }}
         title="Employee profile"
-        footer={selected ? (
+        footer={current ? (
           <View className={isMobile ? "gap-3" : "flex-row gap-3"}>
-            <View className={isMobile ? "" : "flex-1"}><Button title="Edit details" variant="outline" disabled={busy} onPress={() => openEdit(selected)} /></View>
+            <View className={isMobile ? "" : "flex-1"}><Button title="Edit details" variant="outline" disabled={busy} onPress={() => openEdit(current)} /></View>
             <View className={isMobile ? "" : "flex-1"}>
-              <Button title={isActive(selected) ? "Deactivate" : "Reactivate"} variant={isActive(selected) ? "outline" : "primary"} loading={busy} onPress={() => changeStatus(selected)} />
+              <Button title={isActive(current) ? "Deactivate" : "Reactivate"} variant={isActive(current) ? "outline" : "primary"} loading={busy} onPress={() => changeStatus(current)} />
             </View>
           </View>
         ) : null}
       >
-        {selected ? (
+        {current ? (
           <View>
             {profileError ? <Text accessibilityRole="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{profileError}</Text> : null}
             <View className="mb-4 flex-row items-center gap-3">
-              <Avatar employee={selected} />
-              <View className="flex-1"><Text className="text-lg font-bold text-gray-900">{nameOf(selected)}</Text><Text className="mt-1 text-sm text-gray-500">{roleOf(selected) || "Role not specified"}</Text></View>
+              <Avatar employee={current} />
+              <View className="flex-1"><Text className="text-lg font-bold text-gray-900">{nameOf(current)}</Text><Text className="mt-1 text-sm text-gray-500">{roleOf(current) || "Role not specified"}</Text></View>
             </View>
-            <Text className={`mb-4 text-xs font-semibold ${isActive(selected) ? "text-emerald-700" : "text-gray-500"}`}>{isActive(selected) ? "Active employee" : "Inactive employee"} · #{selected.id}</Text>
-            {Number(selected.open_assignment_count) ? <Text className="mb-4 rounded-lg bg-teal-50 p-3 text-xs leading-5 text-primary-soft-foreground">Assigned to {selected.open_assignment_count} unfinished repair{Number(selected.open_assignment_count) === 1 ? "" : "s"}. Reassign {Number(selected.open_assignment_count) === 1 ? "it" : "them"} before deactivating this employee.</Text> : null}
+            <Text className={`mb-4 text-xs font-semibold ${isActive(current) ? "text-emerald-700" : "text-gray-500"}`}>{isActive(current) ? "Active employee" : "Inactive employee"} · #{current.id}</Text>
+            {Number(current.open_assignment_count) ? <Text className="mb-4 rounded-lg bg-teal-50 p-3 text-xs leading-5 text-primary-soft-foreground">Assigned to {current.open_assignment_count} unfinished repair{Number(current.open_assignment_count) === 1 ? "" : "s"}. Reassign {Number(current.open_assignment_count) === 1 ? "it" : "them"} before deactivating this employee.</Text> : null}
+
+            {isActive(current) ? (
+              <View className="mb-5 rounded-xl border border-gray-200 p-3">
+                <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Sign-in access</Text>
+                {accessNote ? <Text className="mb-3 rounded-lg bg-teal-50 p-3 text-xs leading-5 text-teal-900">{accessNote}</Text> : null}
+                {hasAccount(current) ? (
+                  <View>
+                    <Text className="text-sm leading-5 text-gray-700">Joined PixelPatch {joinedDate(current.joined_at)}. They see the repairs assigned to them and the repair chats you hand them.</Text>
+                    <View className="mt-3"><Button title="Remove access" variant="outline" loading={busy} onPress={() => changeAccess("remove")} /></View>
+                  </View>
+                ) : isInvited(current) ? (
+                  <View>
+                    <Text className="text-sm leading-5 text-gray-700">Invited {current.invite_email} on {joinedDate(current.invited_at)}. They accept it by signing in to PixelPatch with that email.</Text>
+                    <View className="mt-3"><Button title="Cancel invite" variant="outline" loading={busy} onPress={() => changeAccess("cancel")} /></View>
+                  </View>
+                ) : (
+                  <View>
+                    <Text className="mb-3 text-sm leading-5 text-gray-700">{`Invite ${current.first_name} to sign in. They'll see only the repairs you assign them and the repair chats you hand them.`}</Text>
+                    <TextField label="Their email" value={inviteEmail} onChangeText={setInviteEmail} placeholder="tech@example.com" autoCapitalize="none" keyboardType="email-address" inputMode="email" maxLength={LIMITS.email} editable={!busy} />
+                    <Button title="Send invite" loading={busy} onPress={() => changeAccess("invite")} />
+                  </View>
+                )}
+              </View>
+            ) : null}
+
             <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Contact details</Text>
-            <Contact icon="call-outline" value={selected.phone} fallback="No phone recorded" />
-            <Contact icon="mail-outline" value={selected.email} fallback="No email recorded" />
+            <Contact icon="call-outline" value={current.phone} fallback="No phone recorded" />
+            <Contact icon="mail-outline" value={current.email} fallback="No email recorded" />
             <Text className="mt-5 text-xs font-semibold uppercase text-gray-400">Added to your shop</Text>
-            <Text className="mb-4 mt-2 text-sm text-gray-700">{joinedDate(selected.created_at)}</Text>
+            <Text className="mb-4 mt-2 text-sm text-gray-700">{joinedDate(current.created_at)}</Text>
           </View>
         ) : null}
       </Modal>
