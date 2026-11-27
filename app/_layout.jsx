@@ -13,6 +13,8 @@ import { SocketProvider } from "../lib/socket";
 import { ServiceAreaProvider, useServiceArea } from "../lib/serviceArea";
 import { COLORS } from "../constants/theme";
 import WebHeader from "../components/WebHeader";
+import StaffInviteBanner from "../components/StaffInviteBanner";
+import { StaffProvider, useStaff } from "../lib/staff";
 
 import { SHOW_BACK_BUTTONS } from "../lib/navigation";
 // The app opens on the home page. Without this, the phone apps open the first
@@ -22,6 +24,8 @@ export const unstable_settings = { initialRouteName: "(tabs)" };
 // Sign-in, sign-up and password reset.
 const AUTH_GROUP = "(auth)";
 const ADMIN_GROUP = "admin";
+// The staff portal for shop employees with their own account (lib/staff.jsx).
+const STAFF_GROUP = "staff";
 // Pages anyone can browse without an account. Everything else (requesting a
 // repair, chats, the AI assistant, profile...) asks visitors to sign in first.
 const BROWSABLE_SCREENS = ["shop", "service", "about", "help", "terms", "privacy"];
@@ -57,6 +61,7 @@ function homeFor({ isAdmin, isBusiness }) {
 
 function RootNavigator() {
   const { isLoggedIn, loading, isBusiness, isAdmin } = useAuth();
+  const { isStaff, loading: staffLoading } = useStaff();
   const { needsAddress } = useServiceArea();
   const segments = useSegments();
   const pathname = usePathname();
@@ -88,17 +93,20 @@ function RootNavigator() {
       // The business portal opens once an admin approves the registration;
       // until then /become-partner shows the application's status.
       router.replace("/become-partner");
+    } else if (isLoggedIn && segments[0] === STAFF_GROUP && !staffLoading && !isStaff) {
+      // Only shop members (joined, at a shop that's available) have a staff portal.
+      router.replace("/");
     } else if (isLoggedIn && needsAddress && !NO_ADDRESS_ALLOWED.includes(segments[0])) {
       // PixelPatch only serves Zamboanga City: clients add an address there first.
       router.replace("/addresses");
     }
-  }, [isLoggedIn, loading, isBusiness, isAdmin, needsAddress, segments, pathname, redirect, router]);
+  }, [isLoggedIn, loading, isBusiness, isAdmin, isStaff, staffLoading, needsAddress, segments, pathname, redirect, router]);
 
   const inAuthGroup = segments[0] === AUTH_GROUP;
-  // Native business and admin routes use their drawer header; every other
-  // screen shares the responsive navigation, including native client screens.
+  // Native business, staff and admin routes use their drawer header; every
+  // other screen shares the responsive navigation, including native client screens.
   const nativeBusinessDrawer =
-    Platform.OS !== "web" && (segments[0] === "business" || segments[0] === ADMIN_GROUP);
+    Platform.OS !== "web" && (segments[0] === "business" || segments[0] === ADMIN_GROUP || segments[0] === STAFF_GROUP);
   // Visitors get the header too, with sign-in buttons, while browsing.
   const showWebHeader =
     !inAuthGroup && !nativeBusinessDrawer && (isLoggedIn || isBrowsable(segments));
@@ -106,6 +114,8 @@ function RootNavigator() {
   return (
     <View style={{ flex: 1 }}>
       {showWebHeader ? <WebHeader /> : null}
+      {/* An open shop invite: accept or decline (components/StaffInviteBanner.jsx). */}
+      {isLoggedIn && !inAuthGroup ? <StaffInviteBanner /> : null}
       {/* Rendered unconditionally — the root layout must present a navigator on
           its first render, so the loading state is an overlay, never a swap. */}
       <Stack screenOptions={{ headerShown: false, ...WEB_HEADER_OPTIONS }}>
@@ -113,6 +123,7 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="business" />
         <Stack.Screen name="admin" />
+        <Stack.Screen name="staff" />
       </Stack>
 
       {loading ? (
@@ -132,12 +143,14 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
+          <StaffProvider>
           <ServiceAreaProvider>
             <SocketProvider>
               <StatusBar style="dark" />
               <RootNavigator />
             </SocketProvider>
           </ServiceAreaProvider>
+          </StaffProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -8,6 +8,7 @@ import { useAuth } from "../lib/auth";
 import { COLORS } from "../constants/theme";
 import { useResponsive } from "../lib/useResponsive";
 import { adminBadge, useAdminSummary } from "../lib/adminSummary";
+import { useStaff } from "../lib/staff";
 
 const CLIENT_NAV = [
   { label: "Home", href: "/", exact: true },
@@ -38,6 +39,14 @@ const BUSINESS_NAV = [
 const BROWSE_LINK = { label: "Browse PixelPatch", href: "/", exact: true, switcher: true };
 const MY_SHOP_LINK = { label: "My shop", href: "/business/dashboard", switcher: true };
 
+// Shop employees with their own account (lib/staff.jsx): their repairs and
+// the chats handed to them, plus the customer side like any client.
+const STAFF_NAV = [
+  { label: "My repairs", href: "/staff/repairs" },
+  { label: "Messages", href: "/staff/messages" },
+];
+const STAFF_LINK = { label: "Staff portal", href: "/staff/repairs", switcher: true };
+
 const ADMIN_NAV = [
   // Work queues first (they show waiting counts), then oversight sections.
   { label: "Dashboard", href: "/admin/dashboard", exact: true },
@@ -58,6 +67,7 @@ export default function WebHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isLoggedIn, isBusiness, isAdmin, logout } = useAuth();
+  const { isStaff } = useStaff();
   const { layout, isMobile, isDesktop, horizontalPadding } = useResponsive();
   // Admins: how many items wait in each section (badges on the links).
   const { summary: adminSummary } = useAdminSummary(Boolean(isAdmin));
@@ -85,13 +95,16 @@ export default function WebHeader() {
   // and the customer side (browsing, booking at other shops). The header
   // follows whichever side they are on and links to the other.
   const inShopPortal = isBusiness && (pathname === "/business" || pathname.startsWith("/business/"));
+  const inStaffPortal = isStaff && (pathname === "/staff" || pathname.startsWith("/staff/"));
   const navigation = !isLoggedIn
     ? GUEST_NAV
     : isAdmin
       ? ADMIN_NAV
       : isBusiness
         ? inShopPortal ? [...BUSINESS_NAV, BROWSE_LINK] : [...CLIENT_NAV, MY_SHOP_LINK]
-        : CLIENT_NAV;
+        : isStaff
+          ? inStaffPortal ? [...STAFF_NAV, BROWSE_LINK] : [...CLIENT_NAV, STAFF_LINK]
+          : CLIENT_NAV;
   const profileHref = isAdmin ? "/admin/account" : inShopPortal ? "/business/profile" : "/profile";
   // Visible label: the signed-in person's first name, else one word for the role.
   const firstName = String(user?.first_name ?? "").trim();
@@ -99,7 +112,7 @@ export default function WebHeader() {
   // Screen readers still hear where the link goes.
   const profileDestination = isAdmin ? "admin account" : inShopPortal ? "shop profile" : "profile";
   const profileA11yLabel = firstName ? `${firstName}, open ${profileDestination}` : `Open ${profileDestination}`;
-  const homeHref = isAdmin ? "/admin/dashboard" : inShopPortal ? "/business/dashboard" : "/";
+  const homeHref = isAdmin ? "/admin/dashboard" : inShopPortal ? "/business/dashboard" : inStaffPortal ? "/staff/repairs" : "/";
 
   const navigate = (href) => {
     setMenuPath(null);

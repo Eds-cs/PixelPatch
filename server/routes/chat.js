@@ -3,7 +3,8 @@ import express from "express";
 import {
   sendMessage,
   getMessages,
-  getUserConversations
+  getUserConversations,
+  getChatState
 } from "../controllers/messageController.js";
 import { startChat } from "../controllers/chatController.js";
 import { authRequired } from "../middleware/authMiddleware.js";
@@ -17,6 +18,9 @@ router.get("/chat", authRequired, getUserConversations);
 
 // Get messages for one conversation
 router.get("/chat/:id/messages", authRequired, getMessages);
+
+// One conversation's state: your role in it, whether you can send, who has it
+router.get("/chat/:id", authRequired, getChatState);
 
 // Send a new message
 router.post("/chat/send", authRequired, limitText({ message_text: ["Message", LIMITS.chatMessage] }), sendMessage);

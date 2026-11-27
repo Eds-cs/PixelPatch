@@ -2,6 +2,10 @@
 import db from "../../config/db.js";
 import { resolveShopIdForUser } from "../../utils/resolveShopIdForUser.js";
 import { normalizePhone, PHONE_MESSAGE } from "../../utils/phone.js";
+import { withTransaction } from "../../utils/transaction.js";
+import { returnChatsToOwner } from "../../utils/staff.js";
+import { unlinkEmployeeAccount } from "./staffAccessController.js";
+import { broadcastMessage, broadcastChatUpdate } from "../../sockets/chatSocket.js";
 
 
 /* ======================================================
@@ -75,6 +79,7 @@ export const getEmployees = (req, res) => {
               role,
               phone,
               email,
+              (user_id IS NOT NULL) AS has_account,
               DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
        FROM shop_employees
        WHERE shop_id = ?
@@ -162,29 +167,41 @@ export const assignEmployeeToRequest = (req, res) => {
               return res.status(400).json({ message: "Invalid employee" });
             }
 
-            // 3️⃣ Insert or update assignment
-            db.query(
-              `INSERT INTO request_assignments
-               (request_id, employee_id, assigned_by, assigned_at)
-               VALUES (?, ?, ?, NOW())
-               ON DUPLICATE KEY UPDATE
-                 employee_id = VALUES(employee_id),
-                 updated_at = NOW()`,
-              [id, employeeId, assignedBy],
-              (err) => {
-                if (err) {
-                  console.error("❌ assignEmployee DB error:", err);
-                  return res.status(500).json({
-                    message: "Failed to assign employee"
-                  });
-                }
-
+            // 3️⃣ Insert or update assignment. If the repair's chat was
+            // handed to the previous employee, it goes back to the owner
+            // (only the assigned employee may have a repair's chat).
+            withTransaction(async (conn) => {
+              const [[previous]] = await conn.query(
+                "SELECT employee_id FROM request_assignments WHERE request_id = ? FOR UPDATE",
+                [id]
+              );
+              await conn.query(
+                `INSERT INTO request_assignments
+                 (request_id, employee_id, assigned_by, assigned_at)
+                 VALUES (?, ?, ?, NOW())
+                 ON DUPLICATE KEY UPDATE
+                   employee_id = VALUES(employee_id),
+                   updated_at = NOW()`,
+                [id, employeeId, assignedBy]
+              );
+              if (previous && Number(previous.employee_id) !== Number(employeeId)) {
+                return returnChatsToOwner({ employeeId: previous.employee_id, requestId: id, actorUserId: assignedBy, shopId }, conn);
+              }
+              return [];
+            })
+              .then((messages) => {
+                messages.forEach((message) => { broadcastMessage(message); broadcastChatUpdate(message.chat_id); });
                 res.json({
                   success: true,
                   message: "Employee assigned successfully"
                 });
-              }
-            );
+              })
+              .catch((err) => {
+                console.error("❌ assignEmployee DB error:", err.code || err.message);
+                return res.status(500).json({
+                  message: "Failed to assign employee"
+                });
+              });
           }
         );
       }
@@ -270,6 +287,9 @@ export const getAllEmployees = async (req, res) => {
     const [rows] = await db.promise().query(
       `SELECT se.id, se.first_name, se.last_name, se.role, se.phone, se.email, se.is_active,
               DATE_FORMAT(se.created_at, '%Y-%m-%dT%H:%i:%s') AS created_at,
+              (se.user_id IS NOT NULL) AS has_account, se.invite_email,
+              DATE_FORMAT(se.invited_at, '%Y-%m-%dT%H:%i:%s') AS invited_at,
+              DATE_FORMAT(se.joined_at, '%Y-%m-%dT%H:%i:%s') AS joined_at,
               (SELECT COUNT(*)
                FROM request_assignments ra
                JOIN service_requests sr ON sr.id = ra.request_id
@@ -329,10 +349,16 @@ export const deactivateEmployee = async (req, res) => {
       });
     }
 
-    await db.promise().query(
-      "UPDATE shop_employees SET is_active = 0, updated_at = NOW() WHERE id = ? AND shop_id = ?",
-      [req.params.id, req.shopId]
-    );
+    // Deactivating also ends their sign-in access and returns their chats.
+    const messages = await withTransaction(async (conn) => {
+      const returned = await unlinkEmployeeAccount({ employeeId: employee.id, shopId: req.shopId, actorUserId: req.user.id }, conn);
+      await conn.query(
+        "UPDATE shop_employees SET is_active = 0, updated_at = NOW() WHERE id = ? AND shop_id = ?",
+        [req.params.id, req.shopId]
+      );
+      return returned;
+    });
+    messages.forEach((message) => { broadcastMessage(message); broadcastChatUpdate(message.chat_id); });
     res.json({ success: true });
   } catch (err) {
     console.error("deactivateEmployee:", { code: err.code });

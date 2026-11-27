@@ -13,6 +13,7 @@ import { codeKey, emailCodes, emailTokenValid, signEmailToken } from "../utils/b
 import { CODE_MESSAGES } from "../utils/verificationCodes.js";
 import { LIMITS } from "../utils/inputLimits.js";
 import { mailFrom, transporter } from "../config/mail.js";
+import { membershipFor } from "../utils/staff.js";
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -260,6 +261,12 @@ export const registerBusiness = async (req, res) => {
   };
 
   try {
+    // One shop per account: someone who works at a shop can't also own one.
+    const membership = await membershipFor(userId);
+    if (membership) {
+      return fail(409, `You work at ${membership.shopName} on PixelPatch. Ask the owner to remove your access before registering your own shop.`);
+    }
+
     const { error, field, data } = await validateRegistration(req.body ?? {}, documents, userId);
     if (error) return fail(400, error, field);
 

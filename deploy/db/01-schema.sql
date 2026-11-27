@@ -102,6 +102,8 @@ CREATE TABLE `chat_messages` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `chat_id` int(11) NOT NULL,
   `sender_id` int(11) NOT NULL,
+  `sender_kind` enum('CLIENT','OWNER','STAFF','SYSTEM') DEFAULT NULL,
+  `sender_label` varchar(150) DEFAULT NULL,
   `message_text` text NOT NULL,
   `attachment_url` text DEFAULT NULL,
   `is_read` tinyint(1) NOT NULL,
@@ -118,6 +120,8 @@ CREATE TABLE `chats` (
   `request_id` int(11) DEFAULT NULL,
   `client_id` int(11) NOT NULL,
   `shop_id` int(11) NOT NULL,
+  `handler_employee_id` int(11) DEFAULT NULL,
+  `transferred_at` datetime DEFAULT NULL,
   `started_at` datetime NOT NULL,
   `last_message_at` datetime NOT NULL,
   `is_active` tinyint(1) NOT NULL,
@@ -125,6 +129,9 @@ CREATE TABLE `chats` (
   KEY `request_id` (`request_id`),
   KEY `client_id` (`client_id`),
   KEY `shop_id` (`shop_id`),
+  KEY `chats_client_shop_request` (`client_id`,`shop_id`,`request_id`),
+  KEY `chats_handler_fk` (`handler_employee_id`),
+  CONSTRAINT `chats_handler_fk` FOREIGN KEY (`handler_employee_id`) REFERENCES `shop_employees` (`id`),
   CONSTRAINT `chats_ibfk_1` FOREIGN KEY (`request_id`) REFERENCES `service_requests` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `chats_ibfk_2` FOREIGN KEY (`client_id`) REFERENCES `users` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `chats_ibfk_3` FOREIGN KEY (`shop_id`) REFERENCES `shops` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
@@ -471,17 +478,24 @@ CREATE TABLE `shop_documents_attachments` (
 CREATE TABLE `shop_employees` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `shop_id` int(11) NOT NULL,
+  `user_id` int(11) DEFAULT NULL,
   `first_name` varchar(100) NOT NULL,
   `last_name` varchar(100) NOT NULL,
   `role` varchar(100) NOT NULL,
   `phone` varchar(20) DEFAULT NULL,
   `email` varchar(150) DEFAULT NULL,
+  `invite_email` varchar(100) DEFAULT NULL,
+  `invited_at` datetime DEFAULT NULL,
+  `joined_at` datetime DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `shop_employees_user_unique` (`user_id`),
   KEY `shop_id` (`shop_id`),
-  CONSTRAINT `shop_employees_ibfk_1` FOREIGN KEY (`shop_id`) REFERENCES `shops` (`id`)
+  KEY `shop_employees_invite_email` (`invite_email`),
+  CONSTRAINT `shop_employees_ibfk_1` FOREIGN KEY (`shop_id`) REFERENCES `shops` (`id`),
+  CONSTRAINT `shop_employees_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
