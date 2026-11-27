@@ -1,4 +1,5 @@
 import db from "../config/db.js";
+import { maskContactInfo, hideContactInfo, CONTACT_HIDDEN_NOTICE } from "../utils/contactFilter.js";
 
 const chatParticipantSql = `
   SELECT c.id
@@ -69,9 +70,9 @@ const chatParticipantSql = `
 */
 export const sendMessage = (req, res) => {
   const sender_id = req.user.id;
-  const { chat_id, message_text } = req.body;
+  const { chat_id, message_text: typed } = req.body;
 
-  if (!chat_id || !message_text) {
+  if (!chat_id || !typed) {
     return res.status(400).json({ error: "chat_id and message_text required" });
   }
 
@@ -81,6 +82,8 @@ export const sendMessage = (req, res) => {
       return res.status(403).json({ error: "You are not a participant in this chat" });
     }
 
+    // Contact details are hidden before saving (utils/contactFilter.js).
+    const { text: message_text, masked } = maskContactInfo(typed);
     const sql = `
       INSERT INTO chat_messages
         (chat_id, sender_id, message_text, is_read, timestamp)
@@ -97,7 +100,9 @@ export const sendMessage = (req, res) => {
 
       return res.json({
         success: true,
-        message_id: result.insertId
+        message_id: result.insertId,
+        message_text,
+        ...(masked ? { masked: true, notice: CONTACT_HIDDEN_NOTICE } : {}),
       });
     });
   });
@@ -130,8 +135,12 @@ export const getMessages = (req, res) => {
   `;
 
   db.query(sql, [id, userId, userId], (err, rows) => {
-    if (err) return res.status(500).json({ error: err });
-    res.json(rows);
+    if (err) {
+      console.error("getMessages:", err.code);
+      return res.status(500).json({ error: "Couldn't load the messages." });
+    }
+    // Also hides contact details in messages saved before the filter existed.
+    res.json(rows.map((row) => ({ ...row, message_text: hideContactInfo(row.message_text) })));
   });
 };
 
@@ -179,7 +188,7 @@ export const getUserConversations = (req, res) => {
       console.error("getUserConversations:", err.code);
       return res.status(500).json({ error: "Couldn't load your conversations." });
     }
-    res.json(rows);
+    res.json(rows.map((row) => (row.last_message_text ? { ...row, last_message_text: hideContactInfo(row.last_message_text) } : row)));
   });
 };
 

@@ -1372,6 +1372,42 @@ When debugging chat, inspect both.
 
 Clean up socket listeners when React components unmount.
 
+## Keeping clients and shops on PixelPatch (since 2026-11-27)
+
+Clients and shops talk only through PixelPatch chat, so the job, payment
+and any dispute stay protected (and shops keep a reason to subscribe).
+
+* **Chat filter** (`server/utils/contactFilter.js`, `maskContactInfo`):
+  phone numbers (also spaced out, written as words in English, Tagalog or
+  Chavacano, or with look-alike letters such as "O9I7"), emails (also "at
+  gmail dot com"), links, @handles and "add me on FB" / "my Viber is ..."
+  invitations become `[contact info hidden]`. Kept: names, prices, dates,
+  times, addresses/landmarks, model numbers, IMEI, serial numbers, error
+  codes. It runs on BOTH send paths (socket `send_message`, `POST
+  /chat/send`) before the message is saved (only the hidden version is
+  stored), and again on read (`GET /chat/:id/messages`, the `/chat` preview)
+  for older messages. The sender gets `masked: true` and a `notice`, shown
+  once in `app/chat/[id].jsx`. No strikes or blocking. Any new way to send a
+  message between a client and a shop must use it. After changing it, run
+  `npm --prefix server run chat:filter-test` (no external calls) and add a
+  case.
+* **Shop page:** `GET /shops/:id` returns `phone_number` and `email` only to
+  the shop's owner (checked from the token), and hides contact details in
+  the description for everyone else. Clients see "Message the shop" instead
+  of Call/Email. Never add a shop's phone or email to a client-facing
+  response.
+* **Client phone, like a delivery app:** the business repair detail
+  (`GET /business/repairs/details/:id`) includes `clientPhone` only for an
+  ACCEPTED PICKUP or ONSITE repair that the client hasn't cancelled, until 3
+  days after `completed_at` (`clientPhoneFor` in
+  `controllers/repairController.js`). Never for drop-off. Shops never get the
+  client's email. Clients never get the shop's phone; they use chat.
+* The Business Terms ("Talking to clients"), client Terms and Privacy Policy
+  say all of this; update them when it changes.
+* It's a deterrent, not a wall: photos (e.g. a business card) and numbers
+  split across many messages get through. Service descriptions and reviews
+  are not filtered (services are reviewed by an admin).
+
 ---
 
 # 26. AI troubleshooting

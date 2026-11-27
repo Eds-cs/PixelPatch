@@ -38,6 +38,9 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
   const [showDraftNote, setShowDraftNote] = useState(Boolean(fromAssistant && initialDraft));
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
+  // Set when the server hid contact details in the message just sent
+  // (server/utils/contactFilter.js). Cleared on the next send.
+  const [hiddenNotice, setHiddenNotice] = useState(null);
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const listRef = useRef(null);
   const stickToBottom = useRef(true);
@@ -84,6 +87,7 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
     sendPending.current = true;
     setSending(true);
     setSendError(null);
+    setHiddenNotice(null);
     socket.timeout(10000).emit("send_message", { chat_id: chatId, message_text: text }, (timeoutError, ack) => {
       sendPending.current = false;
       if (!mounted.current) return;
@@ -92,6 +96,7 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
         stickToBottom.current = true;
         setHasNewMessages(false);
         setShowDraftNote(false);
+        if (ack.masked) setHiddenNotice(ack.notice || "We hid contact details in your message.");
         if (ack.message) setLiveMessages((current) => mergeChatMessages(current, [ack.message]));
         setDraft((current) => current.trim() === text ? "" : current);
       } else {
@@ -191,6 +196,15 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
 
         <View className="border-t border-gray-200 bg-white">
           <View className="w-full self-center py-3" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
+            {hiddenNotice ? (
+              <View accessibilityRole="alert" className="mb-2 flex-row items-start gap-2 rounded-xl bg-amber-50 px-3 py-2">
+                <Ionicons name="shield-checkmark-outline" size={15} color="#92400E" />
+                <Text className="flex-1 text-xs leading-5 text-amber-900">{hiddenNotice}</Text>
+                <Pressable onPress={() => setHiddenNotice(null)} accessibilityRole="button" accessibilityLabel="Dismiss" hitSlop={10}>
+                  <Ionicons name="close" size={16} color="#92400E" />
+                </Pressable>
+              </View>
+            ) : null}
             {showDraftNote ? (
               <View className="mb-2 flex-row items-start gap-2 rounded-xl bg-teal-50 px-3 py-2">
                 <Ionicons name="sparkles-outline" size={15} color={COLORS.primary} />
@@ -208,7 +222,7 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
                 {sending ? <ActivityIndicator color={COLORS.primary} /> : <Ionicons name="send" size={20} color={canSend ? "#fff" : COLORS.textMuted} />}
               </Pressable>
             </View>
-            <Text className="mt-2 text-xs text-gray-400">Discuss your repair here. Approve quotations and check payments from repair details.</Text>
+            <Text className="mt-2 text-xs leading-5 text-gray-400">Discuss your repair here. For your protection, phone numbers, emails and social media links are hidden in chat.</Text>
           </View>
         </View>
       </KeyboardAvoidingView>

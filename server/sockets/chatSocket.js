@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { isSuspended } from "../utils/accountStatus.js";
 import db from "../config/db.js";
 import { LIMITS, textProblem } from "../utils/inputLimits.js";
+import { maskContactInfo, CONTACT_HIDDEN_NOTICE } from "../utils/contactFilter.js";
 
 const isChatParticipant = (chatId, userId) =>
   new Promise((resolve, reject) => {
@@ -68,14 +69,14 @@ export default function setupChatSockets(io) {
     socket.on("send_message", async (payload, ack) => {
       try {
         const sender_id = socket.user.id;
-        const { chat_id, message_text } = payload || {};
+        const { chat_id, message_text: typed } = payload || {};
 
-        if (!chat_id || !message_text) {
+        if (!chat_id || !typed) {
           if (ack) ack({ success: false, error: "chat_id and message_text required" });
           return;
         }
         // Same limit as POST /chat/send (utils/inputLimits.js).
-        const textIssue = textProblem({ message_text }, { message_text: ["Message", LIMITS.chatMessage] });
+        const textIssue = textProblem({ message_text: typed }, { message_text: ["Message", LIMITS.chatMessage] });
         if (textIssue) {
           if (ack) ack({ success: false, error: textIssue.message, code: "TEXT_TOO_LONG" });
           return;
@@ -85,6 +86,10 @@ export default function setupChatSockets(io) {
           if (ack) ack({ success: false, error: "You are not a participant in this chat" });
           return;
         }
+
+        // Contact details are hidden before the message is saved, so the
+        // other side never receives them (utils/contactFilter.js).
+        const { text: message_text, masked } = maskContactInfo(typed);
 
         // Insert into DB
         const insertSql = `
@@ -126,7 +131,7 @@ export default function setupChatSockets(io) {
             const room = `chat_${chat_id}`;
             io.to(room).emit("new_message", messageRow);
 
-            if (ack) ack({ success: true, message: messageRow });
+            if (ack) ack({ success: true, message: messageRow, ...(masked ? { masked: true, notice: CONTACT_HIDDEN_NOTICE } : {}) });
           });
         });
       } catch (err) {
