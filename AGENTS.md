@@ -560,6 +560,13 @@ AI troubleshooting conversations.
 Dispute handling.
 
 ```text
+/staff
+```
+
+The staff portal for shop members with their own account (section 20,
+"Shop members").
+
+```text
 /upload/photo
 ```
 
@@ -1206,9 +1213,38 @@ status here.
    reassignment, and their past repairs stay on the shop's record. The
    platform does not vet individual members, and the shop is responsible for
    their actions.
-   *Status: NOT built. `shop_employees` are records without sign-in accounts;
-   repairs are assigned to them (`request_assignments`), but members cannot
-   log in or see anything.*
+   Agreed 2026-11-27: members may also **start and complete** their own
+   repairs. Removing is two steps, because a started repair can't be
+   reassigned: **Remove access** works at once (the member can't sign in to
+   the shop, their chats return to the owner, their unfinished repairs stay
+   under their name for the owner to finish); **Deactivate** still needs
+   their repairs finished first, and also removes access.
+   *Status: built 2026-11-28 (see "Shop members" below), except confirming
+   cash payments (rule 5 isn't built).*
+
+## Shop members (since 2026-11-28)
+
+* **Invite:** on Employees, the owner invites an employee record by email
+  (`POST /business/employees/:id/invite`; `DELETE` cancels). The employee
+  signs in or signs up with that email (signup verifies emails) and accepts
+  from the banner (`components/StaffInviteBanner.jsx`,
+  `POST /staff/invites/:id/accept|decline`). The invite email is best effort.
+  Older accounts made before email verification are the one weak spot.
+* **Who can join:** a role 1 account that owns no shop and works at no shop.
+  ONE shop per account (`shop_employees.user_id` is unique). role_id never
+  changes: access comes only from the membership (`server/utils/staff.js`
+  `membershipFor`, usable when the shop is verified and its owner isn't
+  suspended). Members can't register their own shop, book repairs at, chat
+  with, or be recommended (AI) their own shop (`ownOrStaffShopIds`).
+* **Staff portal** (`app/staff/`, API `/api/staff`, `staffRequired`): only
+  the repairs assigned to them (`request_assignments.employee_id`), start and
+  complete (rules shared with the owner in `server/utils/repairLifecycle.js`),
+  the client's phone under the same rule as the owner (`clientPhoneFor`),
+  and only the repair chats handed to them. No quotations, assignment,
+  payment links, services, payouts, disputes or reviews. `lib/staff.jsx`
+  holds the membership; the root layout keeps non-members out of `/staff`.
+* **Remove access** (`POST /business/employees/:id/remove-access`) and
+  deactivate both unlink the account and return their chats.
 
 ## Payment terms (agreed 2026-11-24, authoritative)
 
@@ -1371,6 +1407,35 @@ REST message history and Socket.IO live delivery are separate mechanisms.
 When debugging chat, inspect both.
 
 Clean up socket listeners when React components unmount.
+
+## Chats per repair, handover and badges (since 2026-11-28)
+
+* A client has ONE General chat per shop (`chats.request_id IS NULL`,
+  questions before booking, always the owner's) and ONE chat per repair
+  (`request_id` set, created the first time it's opened: `findOrCreateChat`
+  in `controllers/chatController.js`). "Message shop" on the shop page or
+  from the AI assistant opens General; on a repair page it opens that
+  repair's chat (`POST /chat/start { shop_id, request_id }`; the owner uses
+  `POST /business/repairs/:id/chat`). Existing chats became General chats.
+* **Access** (`server/utils/chatAccess.js`, used by the socket and every
+  REST chat endpoint): CLIENT (the chat's client), OWNER (reads every chat of
+  the shop; can't send while the chat is handed over: 409 / ack
+  `CHAT_HANDED_OVER`), STAFF (only the member the chat is handed to).
+* **Handover:** the owner hands a REPAIR chat to the employee assigned to
+  that repair, once they've joined (`POST /business/chats/:id/transfer`),
+  and takes it back (`/take-back`). Reassigning the repair, removing access
+  or deactivating returns it to the owner (`returnChatsToOwner`). Each
+  change adds a SYSTEM message ("TechFix Pro handed this chat to Juan
+  (Technician).") and emits `chat_updated` to the room.
+* **Badges:** messages are saved with `sender_kind` (CLIENT, OWNER, STAFF,
+  SYSTEM) and `sender_label` ("Juan · Technician", "Maria · Owner"), kept
+  as written so history stays right after people leave. Clients see shop
+  staff by first name and role only (last names are not returned).
+* `GET /chat` returns each chat's `viewer_role`; the one inbox screen
+  (`app/(tabs)/chat.jsx`) shows CLIENT chats on `/chat`, OWNER on
+  `/business/messages`, STAFF on `/staff/messages`, grouped by shop or
+  client. `GET /chat/:id` gives the chat screen its state (role, can send,
+  handler, transfer target).
 
 ## Keeping clients and shops on PixelPatch (since 2026-11-27)
 
@@ -2533,17 +2598,21 @@ pays out to these accounts yet.
 ```text
 id
 shop_id      FK -> shops.id
+user_id      NULL  FK -> users.id  UNIQUE   (the member's own account once they accept; added 2026-11-28)
 first_name   varchar(100) NOT NULL
 last_name    varchar(100) NOT NULL
 role         varchar(100) NOT NULL
 phone        varchar(20) NULL
 email        varchar(150) NULL
+invite_email varchar(100) NULL   (open invite, lowercase; added 2026-11-28)
+invited_at, joined_at   datetime NULL   (added 2026-11-28)
 is_active    tinyint(1) NOT NULL DEFAULT 1
 created_at   datetime NOT NULL DEFAULT current_timestamp()
 updated_at   datetime NULL
 ```
 
-There is no `employees` table. Use `shop_employees`.
+There is no `employees` table. Use `shop_employees`. Applied by
+`server/sql/2026-11-27_shop_members.sql` (see section 20 "Shop members").
 
 ---
 
@@ -2553,9 +2622,11 @@ There is no `employees` table. Use `shop_employees`.
 
 ```text
 id
-request_id        NULL   FK -> service_requests.id   (currently always NULL)
+request_id        NULL   FK -> service_requests.id   (NULL = the General chat; set = that repair's chat)
 client_id         FK -> users.id
 shop_id           FK -> shops.id
+handler_employee_id   NULL FK -> shop_employees.id   (who the owner handed it to; NULL = the owner; added 2026-11-28)
+transferred_at    datetime NULL   (added 2026-11-28)
 started_at        datetime NOT NULL
 last_message_at   datetime NOT NULL
 is_active         tinyint(1) NOT NULL
@@ -2567,6 +2638,8 @@ is_active         tinyint(1) NOT NULL
 id
 chat_id          FK -> chats.id
 sender_id        int NOT NULL   No FK
+sender_kind      enum('CLIENT','OWNER','STAFF','SYSTEM') NULL   (NULL on older messages; added 2026-11-28)
+sender_label     varchar(150) NULL   ("Juan · Technician"; added 2026-11-28)
 message_text     text NOT NULL
 attachment_url   text NULL
 is_read          tinyint(1) NOT NULL

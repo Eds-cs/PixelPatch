@@ -40,6 +40,7 @@ const SECTIONS = [
     body: [
       "Keep messages and reviews honest and respectful. If a completed repair goes wrong, open a dispute so the shop can propose a refund or re-service.",
       "To protect you, phone numbers, email addresses, links and social media accounts are hidden in chats with shops, and shops' own phone numbers and emails aren't shown. Keep the conversation and the payment on PixelPatch: payments made outside it aren't covered by disputes or refunds.",
+      "Each repair has its own chat. A shop may hand a repair's chat to the staff member working on it; messages from a shop always show who wrote them, by first name and role.",
     ],
   },
   {
@@ -61,7 +62,7 @@ export default function Terms() {
   return (
     <PolicyPage
       title="Terms of Service"
-      updated="November 27, 2026"
+      updated="November 28, 2026"
       intro="These terms apply to everyone who uses PixelPatch, as a client or as a repair shop. By creating an account or registering a business you agree to them."
       sections={SECTIONS}
     />
