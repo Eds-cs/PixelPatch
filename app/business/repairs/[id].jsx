@@ -492,7 +492,7 @@ export default function BusinessRepairDetail() {
       ) : null}
 
       {!isRejected && quotation ? (
-        <QuotationSection quotation={quotation} />
+        <QuotationSection quotation={quotation} clientApproved={repair.clientApproved} viewer="shop" />
       ) : null}
 
       {!isRejected && !isCancelled ? <Section title="Assigned technician">
