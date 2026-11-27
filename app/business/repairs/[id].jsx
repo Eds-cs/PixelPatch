@@ -7,6 +7,7 @@ import { LIMITS } from "../../../lib/inputLimits";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -46,6 +47,7 @@ import { useResponsive } from "../../../lib/useResponsive";
 
 import { SHOW_BACK_BUTTONS } from "../../../lib/navigation";
 import { specRows, typeLabel } from "../../../lib/deviceSpecs";
+import { formatPhone } from "../../../lib/phone";
 const PESO = "₱";
 const TODAY_DATE = toDateString(new Date());
 const WARRANTY_UNITS = ["DAY", "WEEK", "MONTH", "YEAR"];
@@ -355,6 +357,27 @@ export default function BusinessRepairDetail() {
 
       <Section title="Request">
         <Row label="Client" value={repair.client} />
+        {/* The server sends the client's phone only for an accepted pickup or
+            on-site repair, until 3 days after completion (clientPhoneFor in
+            controllers/repairController.js), like a delivery app. */}
+        {repair.clientPhone ? (
+          <View className="my-2 rounded-xl border border-teal-100 bg-teal-50 p-3">
+            <View className="flex-row flex-wrap items-center justify-between gap-2">
+              <View className="flex-1" style={{ minWidth: 160 }}>
+                <Text className="text-xs font-semibold text-teal-900">Client phone</Text>
+                <Text selectable className="mt-0.5 text-base font-semibold text-gray-900">{formatPhone(repair.clientPhone)}</Text>
+              </View>
+              <Button
+                title="Call client"
+                variant="ghost"
+                onPress={() => Linking.openURL(`tel:${String(repair.clientPhone).replace(/[^d+]/g, "")}`)}
+              />
+            </View>
+            <Text className="mt-2 text-xs leading-5 text-teal-900">
+              {`For coordinating this ${deliveryMethod === "ONSITE" ? "on-site visit" : "pickup and return"} only. It's hidden 3 days after the repair is completed.`}
+            </Text>
+          </View>
+        ) : null}
         <Row label="Device" value={repair.deviceType} />
         {repair.device?.device_type ? <Row label="Device type" value={typeLabel(repair.device.device_type)} /> : null}
         {specRows(repair.device).map((spec) => (

@@ -20,8 +20,9 @@ const SECTIONS = [
   {
     heading: "Who we share it with",
     body: [
-      "The repair shop handling your request sees the details it needs: your name, contact details, device, problem description and pickup address.",
-      "Service providers that help run PixelPatch: Xendit (payments), OpenAI (the AI assistant receives the recent messages of your chat with it, with phone numbers, email addresses and card numbers removed; never your name, account details or address), Google (if you sign in with Google) and our email provider.",
+      "The repair shop handling your request sees the details it needs: your name, device and problem description and, for pickup and on-site repairs, your address. For pickup and on-site repairs it also sees your phone number, from when it accepts the request until 3 days after the repair is completed, so it can call you to arrange the visit. Shops never see your email address.",
+      "Chat messages between you and a shop are checked automatically, and phone numbers, email addresses, links and social media accounts are hidden before they are saved.",
+      "Service providers that help run PixelPatch: Xendit (payments), OpenAI (the AI assistant receives the recent messages of your chat with it, with personal details such as phone numbers, email addresses, passwords and PINs, account and ID numbers, street addresses and names removed, and OpenAI is asked not to store them; it never receives your account details), Google (if you sign in with Google) and our email provider.",
       "We do not sell your personal information.",
     ],
   },
@@ -45,7 +46,7 @@ export default function Privacy() {
   return (
     <PolicyPage
       title="Privacy Policy"
-      updated="November 26, 2026"
+      updated="November 27, 2026"
       intro="This explains what personal information PixelPatch collects, why, and who it is shared with."
       sections={SECTIONS}
     />

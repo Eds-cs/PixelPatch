@@ -120,6 +120,27 @@ export const getRepairsForShop = async (req, res) => {
 /* ============================================================
    2. GET REPAIR BY ID
 ============================================================ */
+// Like a delivery app: the shop sees the client's phone only while it has to
+// reach them, so it can call about a pickup or an on-site visit. That is from
+// when the shop accepts a PICKUP or ONSITE repair until 3 days after it is
+// completed (bringing the device back). Never for drop-off, a rejected or
+// cancelled request, or after that. Clients never see a shop's phone; they
+// use chat (controllers/shopController.js).
+const CLIENT_PHONE_DAYS_AFTER_COMPLETION = 3;
+export function clientPhoneFor(row) {
+  if (!row.client_phone) return null;
+  if (row.delivery_method !== "PICKUP" && row.delivery_method !== "ONSITE") return null;
+  if (row.decisionStatus !== "ACCEPTED") return null;
+  // client_approved: NULL = undecided, 0 = cancelled (check null before Number).
+  if (row.client_approved !== null && row.client_approved !== undefined && Number(row.client_approved) === 0) return null;
+  if (row.status === "COMPLETED") {
+    const completed = row.completed_at ? new Date(row.completed_at).getTime() : NaN;
+    if (!Number.isFinite(completed)) return null;
+    if (Date.now() - completed > CLIENT_PHONE_DAYS_AFTER_COMPLETION * 24 * 60 * 60 * 1000) return null;
+  }
+  return row.client_phone;
+}
+
 export const getRepairById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -155,6 +176,8 @@ export const getRepairById = async (req, res) => {
           p.payment_link,
 
           CONCAT(u.first_name, ' ', u.last_name) AS client,
+          u.phone AS client_phone,
+          sr.completed_at,
           d.name AS deviceType,
           d.device_type,
           d.brand AS device_brand,
@@ -239,6 +262,8 @@ export const getRepairById = async (req, res) => {
       paymentLink: row.payment_link || null,
       // NULL = undecided, 1 = approved, 0 = cancelled by the client.
       clientApproved: row.client_approved,
+      // Only while the shop has to reach the client (see clientPhoneFor).
+      clientPhone: clientPhoneFor(row),
     };
 
     return res.json({

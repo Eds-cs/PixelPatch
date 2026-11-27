@@ -5,7 +5,7 @@
 // on the left; booking, location, hours and contact beside them). Phones: one
 // column, with booking and location first.
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -282,16 +282,21 @@ export default function ShopDetail() {
         <Text className="text-sm text-gray-800">{shopTermsLabel(s)}</Text>
         <Text className="text-xs text-gray-500">The exact terms are on each quotation.</Text>
       </InfoRow>
-      {s.phone_number ? (
-        <InfoRow icon="call-outline" label={`Call ${s.name}`} onPress={() => Linking.openURL(`tel:${String(s.phone_number).replace(/\s/g, "")}`)}>
-          <Text selectable className="text-sm text-gray-800">{s.phone_number}</Text>
-        </InfoRow>
-      ) : null}
-      {s.email ? (
-        <InfoRow icon="mail-outline" label={`Email ${s.name}`} onPress={() => Linking.openURL(`mailto:${s.email}`)}>
-          <Text selectable className="text-sm text-gray-800">{s.email}</Text>
-        </InfoRow>
-      ) : null}
+      {/* The shop's phone and email are not shown (the API leaves them out):
+          clients reach shops through PixelPatch chat, which keeps the job,
+          payment and any dispute protected. */}
+      <InfoRow
+        icon="chatbubbles-outline"
+        label={canMessage ? `Message ${s.name}` : undefined}
+        onPress={canMessage ? messageShop : undefined}
+      >
+        <Text className={`text-sm ${canMessage ? "font-semibold text-teal-800" : "text-gray-800"}`}>
+          {canMessage ? "Message the shop on PixelPatch" : "Contact through PixelPatch chat"}
+        </Text>
+        <Text className="text-xs text-gray-500">
+          {"Keep chats and payments here so you're covered by disputes and refunds."}
+        </Text>
+      </InfoRow>
     </Card>
   );
 

@@ -9,6 +9,7 @@ import Button from "../../components/Button";
 import TextField from "../../components/TextField";
 import { SERVICE_ICONS, ServiceRating, compareServicePrices, serviceCategory, servicePrice, servicePriceRange } from "../../components/ServiceSummary";
 import { useFetch } from "../../lib/useFetch";
+import { useMessageShop } from "../../lib/useMessageShop";
 import { useResponsive } from "../../lib/useResponsive";
 import { formatAddress } from "../../lib/format";
 import { COLORS } from "../../constants/theme";
@@ -20,6 +21,7 @@ export default function ServiceDetail() {
   const { isMobile, isDesktop, horizontalPadding } = useResponsive();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("rating");
+  const { messageShop, busyShopId, error: messageError } = useMessageShop();
   const { data, error, loading, refreshing, refresh } = useFetch(`/public/services/${encodeURIComponent(serviceKey)}`);
 
   if (loading) return <View className="flex-1 items-center justify-center bg-gray-50"><ActivityIndicator size="large" color={COLORS.primary} /></View>;
@@ -115,7 +117,16 @@ export default function ServiceDetail() {
               <Text className="mt-1 text-xl font-bold text-price">{servicePrice(shop.base_price)}</Text>
               <View className="mt-3 flex-row items-start gap-2"><Ionicons name="time-outline" size={16} color={COLORS.textMuted} /><Text className="flex-1 text-xs leading-5 text-gray-500">Estimated turnaround: {shop.estimated_timeframe || "Ask the shop"}</Text></View>
             </View>
-            <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${shop.shop_id}`)} />
+            {/* Clients can talk to a shop before sending a request (update brief B3). */}
+            <View className="flex-row flex-wrap gap-2">
+              <View className="flex-1" style={{ minWidth: 130 }}>
+                <Button title="Message shop" onPress={() => messageShop(shop.shop_id)} loading={busyShopId === shop.shop_id} disabled={Boolean(busyShopId)} />
+              </View>
+              <View className="flex-1" style={{ minWidth: 130 }}>
+                <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${shop.shop_id}`)} />
+              </View>
+            </View>
+            {messageError?.shopId === shop.shop_id ? <Text accessibilityRole="alert" className="mt-2 text-sm text-red-600">{messageError.text}</Text> : null}
           </View>
         ))}
         {!filtered.length ? <View className="w-full rounded-xl border border-gray-200 bg-white p-6"><Text className="text-center text-sm leading-5 text-gray-500">{shops.length ? "No shops match your search. Try another shop name or location." : "No verified shops currently offer this service."}</Text></View> : null}

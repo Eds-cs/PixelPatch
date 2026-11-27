@@ -60,7 +60,9 @@ export function buildMessages(history, userText) {
       messages.push({ role: "user", content: redactPersonalInfo(message.text) });
       return;
     }
-    messages.push({ role: "assistant", content: String(message.text ?? "") });
+    // Filtered too: an older reply may quote something the user typed before
+    // the filter caught it.
+    messages.push({ role: "assistant", content: redactPersonalInfo(message.text) });
     if (message.shownShops) {
       messages.push({
         role: "system",
@@ -120,6 +122,8 @@ export async function runAssistant({ history = [], userText, userId = null }) {
   const completion = await openai().chat.completions.create(
     {
       model: AI_MODEL,
+      // Not kept by OpenAI for its dashboard, evals or distillation.
+      store: false,
       temperature: 0.2,
       max_completion_tokens: MAX_REPLY_TOKENS,
       messages,
@@ -164,6 +168,7 @@ export async function runAssistant({ history = [], userText, userId = null }) {
     const rewrite = await openai().chat.completions.create(
       {
         model: AI_MODEL,
+        store: false,
         temperature: 0,
         max_completion_tokens: MAX_REPLY_TOKENS,
         messages: [

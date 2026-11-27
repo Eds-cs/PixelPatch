@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "ai:test": "node scripts/aiPromptTest.js"
+    "ai:test": "node scripts/aiPromptTest.js",
+    "ai:redact-test": "node scripts/redactTest.js",
+    "chat:filter-test": "node scripts/contactFilterTest.js"
   },
   "keywords": [],
   "author": "",
