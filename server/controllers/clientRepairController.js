@@ -62,6 +62,7 @@ export const getClientRepairById = async (req, res) => {
         d.name   AS device_name,
         d.brand  AS device_brand,
         d.model  AS device_model,
+        d.device_type,
         d.serial_number,
         d.model_number,
 

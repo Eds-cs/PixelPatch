@@ -20,20 +20,30 @@ import { useSocket, useSocketConnected } from "../../lib/socket";
 import { useFetch } from "../../lib/useFetch";
 import { useResponsive } from "../../lib/useResponsive";
 import { chatDate, chatDay, mergeChatMessages } from "../../lib/chat";
+import { SEND_KEY_PROPS, sendOnEnterKey, sendOnSubmit } from "../../lib/enterToSend";
 import { COLORS } from "../../constants/theme";
 
 import { SHOW_BACK_BUTTONS } from "../../lib/navigation";
 // Longest draft taken from the link (the assistant's summary is up to 400).
 const DRAFT_PARAM_MAX = 1000;
 
+// Web textareas default to two rows; the chat box starts at one.
+const WEB_ONE_ROW = Platform.OS === "web" ? { rows: 1 } : {};
+
 const INBOX = { CLIENT: "/chat", OWNER: "/business/messages", STAFF: "/staff/messages" };
 
-function Badge({ label, tone = "teal" }) {
-  if (!label) return null;
+// Small round icon button in the chat's top bar; shows its label on wider screens.
+function HeaderAction({ icon, label, onPress, compact }) {
   return (
-    <View className={`self-start rounded-full px-2 py-0.5 ${tone === "teal" ? "bg-teal-50" : "bg-gray-100"}`}>
-      <Text className={`text-xs font-semibold ${tone === "teal" ? "text-teal-800" : "text-gray-600"}`}>{label}</Text>
-    </View>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className={`h-10 flex-row items-center gap-1.5 rounded-full border border-gray-200 bg-white active:bg-gray-50 ${compact ? "w-10 justify-center" : "px-3"}`}
+    >
+      <Ionicons name={icon} size={18} color={COLORS.primary} />
+      {compact ? null : <Text className="text-sm font-semibold text-gray-700">{label}</Text>}
+    </Pressable>
   );
 }
 
@@ -158,61 +168,89 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
   };
 
   const canSend = Boolean(draft.trim() && connected && chat?.can_send && !sending);
+  // Enter / the keyboard's Send key: same checks as the send button.
+  const sendIfReady = () => { if (canSend) send(); };
   const unavailable = !chatState.loading && Boolean(chatState.error);
   const readOnly = Boolean(chat) && !chat.can_send;
   const repairHref = chat?.repair
     ? as === "OWNER" ? `/business/repairs/${chat.repair.id}` : as === "STAFF" ? `/staff/repairs/${chat.repair.id}` : `/repair/${chat.repair.id}`
     : null;
 
-  // Who the person is talking with, in one line under the title.
-  const talkingWith = !chat
+  // One line under the name: which chat, and who's answering it.
+  const answeredBy = !chat
     ? null
     : as === "CLIENT"
-      ? `You're talking with ${chat.handler?.label || chat.owner_label} at ${chat.shop_name}`
+      ? chat.handler?.label || chat.owner_label
       : as === "STAFF"
-        ? `You're answering for ${chat.shop_name}. The customer sees your first name and role.`
+        ? `You're answering as ${chat.handler?.label || "staff"}`
         : chat.handler
-          ? `Handed to ${chat.handler.label}. You can read this chat.`
-          : `You're answering as ${chat.owner_label}.`;
+          ? `Handed to ${chat.handler.label}`
+          : `You're answering as ${chat.owner_label}`;
+  const subtitle = [thread, answeredBy].filter(Boolean).join(" · ");
+  const bubbleMax = isMobile ? "86%" : isDesktop ? "64%" : "76%";
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["bottom", "left", "right"]}>
       <Stack.Screen options={{ title, headerShown: false }} />
+
+      {/* Top bar */}
       <View className="border-b border-gray-200 bg-white">
-        <View className="w-full self-center py-3" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
-          <View className="flex-row items-center gap-3">
-            {SHOW_BACK_BUTTONS ? (
-              <Pressable onPress={() => router.push(INBOX[as] || "/chat")} accessibilityRole="button" accessibilityLabel="Back to messages" className="h-11 w-11 items-center justify-center rounded-xl bg-gray-50"><Ionicons name="arrow-back-outline" size={21} color={COLORS.primary} /></Pressable>
-            ) : null}
-            <View className="h-11 w-11 items-center justify-center rounded-xl bg-teal-50"><Text className="text-lg font-bold text-teal-800">{title.charAt(0).toUpperCase()}</Text></View>
-            <View className="flex-1">
-              <Text accessibilityRole="header" className="text-base font-bold text-gray-900">{title}</Text>
-              {thread ? <Text className="mt-0.5 text-xs font-semibold text-gray-500">{thread}</Text> : null}
-              <Text className={`mt-1 text-xs ${connected ? "text-emerald-700" : "text-gray-500"}`}>{connected ? "Live connection available" : "Live connection unavailable"}</Text>
-            </View>
-          </View>
-          {talkingWith ? (
-            <View className="mt-3 flex-row items-start gap-2 rounded-xl bg-gray-50 px-3 py-2">
-              <Ionicons name={chat.handler ? "people-outline" : "person-circle-outline"} size={16} color={COLORS.primary} style={{ marginTop: 1 }} />
-              <Text className="flex-1 text-xs leading-5 text-gray-700">{talkingWith}</Text>
-            </View>
+        <View className="w-full flex-row items-center gap-3 self-center py-2.5" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
+          {SHOW_BACK_BUTTONS ? (
+            <Pressable onPress={() => router.push(INBOX[as] || "/chat")} accessibilityRole="button" accessibilityLabel="Back to messages" className="-ml-2 h-10 w-10 items-center justify-center rounded-full active:bg-gray-100">
+              <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+            </Pressable>
           ) : null}
-          {handoverError ? <Text accessibilityRole="alert" className="mt-2 text-xs text-red-700">{handoverError}</Text> : null}
-          <View className="mt-3 flex-row flex-wrap gap-2">
-            {as === "CLIENT" && chat?.shop_id ? <Button title="View shop" variant="ghost" onPress={() => router.push(`/shop/${chat.shop_id}`)} /> : null}
+          <View>
+            <View className="h-10 w-10 items-center justify-center rounded-full bg-teal-100">
+              <Text className="text-base font-bold text-teal-800">{title.charAt(0).toUpperCase()}</Text>
+            </View>
+            {/* Live connection: a small green dot on the avatar. */}
+            {connected ? <View className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" /> : null}
+          </View>
+          <View className="flex-1" style={{ minWidth: 0 }}>
+            <Text accessibilityRole="header" numberOfLines={1} className="text-base font-bold text-gray-900">{title}</Text>
+            {subtitle ? <Text numberOfLines={1} className="text-xs text-gray-500">{subtitle}</Text> : null}
+          </View>
+          <View className="flex-row items-center gap-2">
+            {as === "CLIENT" && chat?.shop_id ? <HeaderAction compact={isMobile} icon="storefront-outline" label="View shop" onPress={() => router.push(`/shop/${chat.shop_id}`)} /> : null}
             {repairHref ? (
-              <Button title={`Repair #${chat.repair.id}`} variant="ghost" onPress={() => router.push(repairHref)} />
-            ) : as === "STAFF" ? null : (
-              <Button title={as === "OWNER" ? "Repair workspace" : "My repairs"} variant="ghost" onPress={() => router.push(as === "OWNER" ? "/business/repairs" : "/repairs")} />
-            )}
-            {as === "OWNER" && chat?.transfer && !chat.handler ? (
-              <Button title={`Hand to ${chat.transfer.label}`} variant="outline" loading={handover === "transfer"} disabled={Boolean(handover)} onPress={() => changeHandler("transfer")} />
-            ) : null}
-            {as === "OWNER" && chat?.handler ? (
-              <Button title="Take back" variant="outline" loading={handover === "take-back"} disabled={Boolean(handover)} onPress={() => changeHandler("take-back")} />
+              <HeaderAction compact={isMobile} icon="construct-outline" label={`Repair #${chat.repair.id}`} onPress={() => router.push(repairHref)} />
+            ) : chat && as !== "STAFF" ? (
+              <HeaderAction compact={isMobile} icon="construct-outline" label={as === "OWNER" ? "Repairs" : "My repairs"} onPress={() => router.push(as === "OWNER" ? "/business/repairs" : "/repairs")} />
             ) : null}
           </View>
         </View>
+
+        {/* Owner: hand the repair's chat to the assigned employee, or take it back. */}
+        {as === "OWNER" && (chat?.handler || chat?.transfer) ? (
+          <View className="border-t border-gray-100 bg-teal-50">
+            <View className="w-full flex-row flex-wrap items-center gap-x-3 gap-y-2 self-center py-2" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
+              <Ionicons name="people-outline" size={16} color={COLORS.primary} />
+              <Text className="flex-1 text-xs leading-5 text-teal-900" style={{ minWidth: 160 }}>
+                {chat.handler
+                  ? `${chat.handler.label} is answering this chat. You can read it.`
+                  : `${chat.transfer.label} is assigned to this repair. Hand them the chat so they can answer the customer.`}
+              </Text>
+              <Pressable
+                onPress={() => changeHandler(chat.handler ? "take-back" : "transfer")}
+                disabled={Boolean(handover)}
+                accessibilityRole="button"
+                accessibilityState={{ busy: Boolean(handover), disabled: Boolean(handover) }}
+                className="h-9 flex-row items-center justify-center rounded-full bg-primary px-4 active:bg-teal-800"
+              >
+                {handover ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-sm font-semibold text-white">{chat.handler ? "Take back" : `Hand to ${chat.transfer.label.split(" · ")[0]}`}</Text>}
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+        {handoverError ? <Text accessibilityRole="alert" className="w-full self-center pb-2 text-xs text-red-700" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>{handoverError}</Text> : null}
+        {!connected ? (
+          <View className="flex-row items-center justify-center gap-2 bg-amber-50 py-1.5">
+            <Ionicons name="cloud-offline-outline" size={14} color="#92400E" />
+            <Text className="text-xs text-amber-900">Reconnecting… your draft stays here.</Text>
+          </View>
+        ) : null}
       </View>
 
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
@@ -224,7 +262,7 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
             keyExtractor={(message) => String(message.id)}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            contentContainerStyle={{ paddingVertical: 20, paddingHorizontal: horizontalPadding, maxWidth: 960, width: "100%", alignSelf: "center", flexGrow: 1 }}
+            contentContainerStyle={{ paddingTop: 16, paddingBottom: 12, paddingHorizontal: horizontalPadding, maxWidth: 960, width: "100%", alignSelf: "center", flexGrow: 1 }}
             onScroll={({ nativeEvent }) => {
               const remaining = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height - nativeEvent.contentOffset.y;
               stickToBottom.current = remaining < 80;
@@ -232,47 +270,63 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
             }}
             scrollEventThrottle={100}
             onContentSizeChange={() => { if (stickToBottom.current) listRef.current?.scrollToEnd({ animated: false }); }}
+            ListHeaderComponent={
+              // Said once, at the top of every conversation.
+              <View className="mb-4 flex-row items-center gap-2 self-center rounded-full bg-white px-3 py-1.5" style={{ maxWidth: "100%" }}>
+                <Ionicons name="shield-checkmark-outline" size={14} color={COLORS.primary} />
+                <Text className="text-xs text-gray-500" style={{ flexShrink: 1 }}>Phone numbers, emails and links are hidden to keep you protected.</Text>
+              </View>
+            }
             ListEmptyComponent={
               <View className="flex-1 items-center justify-center px-5 py-10">
-                <View className="h-16 w-16 items-center justify-center rounded-2xl bg-teal-50"><Ionicons name="chatbubbles-outline" size={30} color={COLORS.primary} /></View>
+                <View className="h-16 w-16 items-center justify-center rounded-full bg-teal-50"><Ionicons name="chatbubbles-outline" size={30} color={COLORS.primary} /></View>
                 <Text className="mt-4 text-lg font-bold text-gray-900">{unavailable ? "Conversation unavailable" : history.error ? "Messages could not load" : "Start the conversation"}</Text>
                 <Text className="mt-2 text-center text-sm leading-6 text-gray-500">{unavailable ? "Return to your inbox and select one of your conversations." : history.error ? "Use refresh below to try loading the history again." : chat?.repair ? "Ask about this repair, its progress or its quotation." : "Say hello, ask about your device, or discuss a repair."}</Text>
               </View>
             }
             renderItem={({ item, index }) => {
               const previous = messages[index - 1];
+              const next = messages[index + 1];
               const newDay = !previous || chatDay(previous.timestamp) !== chatDay(item.timestamp);
-              const dayLine = newDay ? <View className="mb-5 mt-2 items-center"><Text className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500">{chatDate(item.timestamp)}</Text></View> : null;
+              const dayLine = newDay ? (
+                <View className="mb-4 mt-2 items-center">
+                  <Text className="rounded-full bg-gray-200/70 px-3 py-1 text-xs font-medium text-gray-600">{chatDate(item.timestamp)}</Text>
+                </View>
+              ) : null;
               // "TechFix Pro handed this chat to Juan (Technician)."
               if (item.sender_kind === "SYSTEM") {
                 return (
                   <View>
                     {dayLine}
-                    <View className="mb-3 flex-row items-center justify-center gap-2 px-4">
-                      <Ionicons name="swap-horizontal-outline" size={14} color={COLORS.textMuted} />
-                      <Text className="text-center text-xs leading-5 text-gray-500" style={{ flexShrink: 1 }}>{item.message_text} · {chatDate(item.timestamp, true)}</Text>
+                    <View className="my-3 flex-row items-center justify-center gap-1.5 px-6">
+                      <Ionicons name="swap-horizontal" size={13} color={COLORS.textMuted} />
+                      <Text className="text-center text-xs leading-5 text-gray-500" style={{ flexShrink: 1 }}>{item.message_text}</Text>
                     </View>
                   </View>
                 );
               }
               const mine = String(item.sender_id) === String(user?.id);
+              const sameAs = (other) => other && other.sender_kind !== "SYSTEM" && String(other.sender_id) === String(item.sender_id) && chatDay(other.timestamp) === chatDay(item.timestamp);
+              const firstOfGroup = newDay || !sameAs(previous);
+              const lastOfGroup = !sameAs(next);
               const shopSide = item.sender_kind === "OWNER" || item.sender_kind === "STAFF";
-              const previousSameSender = previous && previous.sender_kind !== "SYSTEM" && String(previous.sender_id) === String(item.sender_id);
-              const showName = !mine && (newDay || !previousSameSender);
-              const clientName = [item.first_name, item.last_name].filter(Boolean).join(" ") || "Client";
+              const name = shopSide ? item.sender_label || chat?.shop_name : [item.first_name, item.last_name].filter(Boolean).join(" ") || "Client";
+              // The corner nearest the sender is squarer on the last bubble of a group.
+              const corner = mine ? (lastOfGroup ? "rounded-br-md" : "") : (lastOfGroup ? "rounded-bl-md" : "");
               return (
                 <View>
                   {dayLine}
-                  <View className={`mb-3 ${mine ? "self-end" : "self-start"}`} style={{ maxWidth: isMobile ? "88%" : isDesktop ? "68%" : "78%" }}>
-                    {showName ? (
-                      <View className="mb-1 ml-1">
-                        {shopSide ? <Badge label={item.sender_label || chat?.shop_name} /> : <Text className="text-xs font-semibold text-gray-500">{clientName}</Text>}
+                  <View className={`${lastOfGroup ? "mb-3" : "mb-1"} ${mine ? "self-end items-end" : "self-start items-start"}`} style={{ maxWidth: bubbleMax }}>
+                    {!mine && firstOfGroup ? (
+                      <View className="mb-1 ml-1 flex-row items-center gap-1.5">
+                        <Text className="text-xs font-semibold text-gray-600">{name}</Text>
+                        {shopSide ? <Ionicons name="checkmark-circle" size={12} color={COLORS.primary} /> : null}
                       </View>
                     ) : null}
-                    <View className={`rounded-2xl px-4 py-3 ${mine ? "bg-primary" : "border border-gray-200 bg-white"}`}>
-                      <Text selectable className={`text-base leading-6 ${mine ? "text-white" : "text-gray-900"}`}>{item.message_text}</Text>
-                      <Text className={`mt-2 text-right text-xs ${mine ? "text-primary-soft" : "text-gray-400"}`}>{chatDate(item.timestamp, true)}</Text>
+                    <View className={`rounded-2xl px-3.5 py-2.5 ${corner} ${mine ? "bg-primary" : "bg-white"}`} style={mine ? undefined : { shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 }}>
+                      <Text selectable className={`text-[15px] leading-6 ${mine ? "text-white" : "text-gray-900"}`}>{item.message_text}</Text>
                     </View>
+                    {lastOfGroup ? <Text className={`mt-1 text-[11px] text-gray-400 ${mine ? "mr-1" : "ml-1"}`}>{chatDate(item.timestamp, true)}</Text> : null}
                   </View>
                 </View>
               );
@@ -280,27 +334,25 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
           />
         )}
 
-        {hasNewMessages ? <Pressable onPress={jumpToLatest} accessibilityRole="button" className="mb-3 min-h-11 flex-row items-center gap-2 self-center rounded-full border border-teal-200 bg-teal-50 px-4 py-2"><Text className="text-sm font-semibold text-teal-800">New messages</Text><Ionicons name="arrow-down-outline" size={16} color={COLORS.primary} /></Pressable> : null}
+        {hasNewMessages ? <Pressable onPress={jumpToLatest} accessibilityRole="button" className="mb-2 min-h-10 flex-row items-center gap-2 self-center rounded-full bg-primary px-4 py-2"><Text className="text-sm font-semibold text-white">New messages</Text><Ionicons name="arrow-down" size={16} color="#fff" /></Pressable> : null}
 
-        {history.error || chatState.error || sendError || !connected ? (
-          <View className="w-full self-center px-4 pb-3" style={{ maxWidth: 960 }}>
-            <Text accessibilityRole="alert" className="text-center text-xs leading-5 text-gray-600">{sendError || history.error || (unavailable ? "This conversation is not available to you." : chatState.error) || "Your connection is unavailable. Your draft stays here while you reconnect."}</Text>
+        {history.error || chatState.error || sendError ? (
+          <View className="w-full self-center px-4 pb-2" style={{ maxWidth: 960 }}>
+            <Text accessibilityRole="alert" className="text-center text-xs leading-5 text-red-700">{sendError || history.error || (unavailable ? "This conversation is not available to you." : chatState.error)}</Text>
             {(history.error || chatState.error) ? <Button title="Refresh conversation" variant="ghost" onPress={refreshConversation} loading={history.refreshing || chatState.refreshing} /> : null}
           </View>
         ) : null}
 
+        {/* Composer */}
         <View className="border-t border-gray-200 bg-white">
-          <View className="w-full self-center py-3" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
+          <View className="w-full self-center py-2.5" style={{ maxWidth: 960, paddingHorizontal: horizontalPadding }}>
             {readOnly ? (
               // The owner, while an employee has this chat.
-              <View className="flex-row flex-wrap items-center gap-3 rounded-xl bg-gray-50 px-3 py-3">
+              <View className="flex-row items-center gap-2 py-1.5">
                 <Ionicons name="eye-outline" size={18} color={COLORS.textMuted} />
-                <Text className="flex-1 text-sm leading-5 text-gray-700" style={{ minWidth: 180 }}>
-                  {chat.handler ? `${chat.handler.label} is handling this chat. Take it back to reply.` : "You can't reply in this chat."}
+                <Text className="flex-1 text-sm leading-5 text-gray-600">
+                  {chat.handler ? `${chat.handler.label} is answering. Take the chat back to reply.` : "You can't reply in this chat."}
                 </Text>
-                {chat.handler && as === "OWNER" ? (
-                  <View style={{ minWidth: 140 }}><Button title="Take back" loading={handover === "take-back"} disabled={Boolean(handover)} onPress={() => changeHandler("take-back")} /></View>
-                ) : null}
               </View>
             ) : (
               <>
@@ -316,21 +368,24 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
                 {showDraftNote ? (
                   <View className="mb-2 flex-row items-start gap-2 rounded-xl bg-teal-50 px-3 py-2">
                     <Ionicons name="sparkles-outline" size={15} color={COLORS.primary} />
-                    <Text className="flex-1 text-xs leading-5 text-teal-900">The assistant wrote this summary of your problem. Check and edit it, then press Send.</Text>
+                    <Text className="flex-1 text-xs leading-5 text-teal-900">The assistant wrote this summary of your problem. Check and edit it, then send.</Text>
                   </View>
                 ) : null}
-                <View className="flex-row items-end gap-3">
+                <View className="flex-row items-end gap-2 rounded-3xl border border-gray-200 bg-gray-50 py-1 pl-4 pr-1">
                   <TextInput
-                    className="max-h-32 min-h-12 flex-1 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                    className="max-h-32 min-h-10 flex-1 py-2 text-base text-gray-900"
                     placeholder="Write a message…" maxLength={LIMITS.chatMessage}
                     placeholderTextColor="#8A9B98"
                     value={draft} onChangeText={setDraft} multiline accessibilityLabel="Message"
+                    // Web: start one line tall (a textarea defaults to two).
+                    {...WEB_ONE_ROW}
+                    {...SEND_KEY_PROPS} onKeyPress={(event) => sendOnEnterKey(event, sendIfReady)} onSubmitEditing={() => sendOnSubmit(sendIfReady)}
                   />
-                  <Pressable onPress={send} disabled={!canSend} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !canSend, busy: sending }} className={`h-12 w-12 items-center justify-center rounded-xl ${canSend ? "bg-primary" : "bg-gray-200"}`}>
-                    {sending ? <ActivityIndicator color={COLORS.primary} /> : <Ionicons name="send" size={20} color={canSend ? "#fff" : COLORS.textMuted} />}
+                  <Pressable onPress={send} disabled={!canSend} accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !canSend, busy: sending }} className={`mb-0.5 h-10 w-10 items-center justify-center rounded-full ${canSend ? "bg-primary" : "bg-gray-200"}`}>
+                    {sending ? <ActivityIndicator size="small" color={canSend ? "#fff" : COLORS.primary} /> : <Ionicons name="arrow-up" size={20} color={canSend ? "#fff" : COLORS.textMuted} />}
                   </Pressable>
                 </View>
-                <Text className="mt-2 text-xs leading-5 text-gray-400">Discuss your repair here. For your protection, phone numbers, emails and social media links are hidden in chat.</Text>
+                {isDesktop ? <Text className="mt-1.5 text-right text-[11px] text-gray-400">Enter to send · Shift + Enter for a new line</Text> : null}
               </>
             )}
           </View>

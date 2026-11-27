@@ -15,6 +15,7 @@ import { useResponsive } from "../lib/useResponsive";
 import { chatDate } from "../lib/chat";
 import { confirmAction } from "../lib/confirm";
 import { COLORS } from "../constants/theme";
+import { SEND_KEY_PROPS, sendOnEnterKey, sendOnSubmit } from "../lib/enterToSend";
 
 const SUGGESTIONS = [
   { title: "Phone not charging", icon: "battery-charging-outline", text: "My phone will not charge. What should I check first?" },
@@ -450,6 +451,8 @@ export default function Assistant() {
   const fillPrompt = (text) => { if (!busy.current) { setDraft(text); inputRef.current?.focus(); } };
   const tooLong = draft.trim().length > MESSAGE_MAX;
   const canSend = draft.trim().length >= 2 && !tooLong && !disabled;
+  // Enter / the keyboard's Send key: same checks as the send button.
+  const sendIfReady = () => { if (canSend) send(); };
 
   // PUT /api/ai/conversations/:id/rename { newTitle } — owner-only on the server.
   // Throws so the history row can show the error next to the name.
@@ -637,7 +640,7 @@ export default function Assistant() {
                 </Pressable>
               </View>
               <View className={`flex-row items-end gap-2 rounded-3xl border bg-white py-1.5 pl-4 pr-1.5 ${tooLong ? "border-red-400" : "border-gray-300"}`} style={{ shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
-                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline maxLength={MESSAGE_MAX} editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#8A9B98" className="max-h-32 min-h-11 flex-1 py-2.5 text-base text-gray-900" />
+                <TextInput ref={inputRef} value={draft} onChangeText={setDraft} multiline {...SEND_KEY_PROPS} onKeyPress={(event) => sendOnEnterKey(event, sendIfReady)} onSubmitEditing={() => sendOnSubmit(sendIfReady)} maxLength={MESSAGE_MAX} editable={!disabled} accessibilityLabel="Message the assistant" placeholder={empty ? "Describe your device problem…" : "Ask a follow-up…"} placeholderTextColor="#8A9B98" className="max-h-32 min-h-11 flex-1 py-2.5 text-base text-gray-900" />
                 <Pressable onPress={send} disabled={!canSend} accessibilityRole="button" accessibilityLabel="Send question" accessibilityState={{ disabled: !canSend, busy: sending }} className={`h-10 w-10 items-center justify-center rounded-full ${canSend ? "bg-primary" : "bg-gray-200"}`}>
                   {sending ? <ActivityIndicator size="small" color={COLORS.textMuted} /> : <Ionicons name="arrow-up" size={20} color={canSend ? "#fff" : COLORS.textMuted} />}
                 </Pressable>
