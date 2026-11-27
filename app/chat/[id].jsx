@@ -120,7 +120,17 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
           </View>
           <View className="mt-3 flex-row flex-wrap gap-2">
             {!viewerIsShop && conversation?.shop_id ? <Button title="View shop" variant="ghost" onPress={() => router.push(`/shop/${conversation.shop_id}`)} /> : null}
-            <Button title={viewerIsShop ? "Repair workspace" : "My repairs"} variant="ghost" onPress={() => router.push(viewerIsShop ? "/business/repairs" : "/repairs")} />
+            {/* A conversation is tied to the client's latest request at this shop
+                (update brief B3); without one it links to the repair lists. */}
+            {conversation?.request_id ? (
+              <Button
+                title={`Repair #${conversation.request_id}`}
+                variant="ghost"
+                onPress={() => router.push(viewerIsShop ? `/business/repairs/${conversation.request_id}` : `/repair/${conversation.request_id}`)}
+              />
+            ) : (
+              <Button title={viewerIsShop ? "Repair workspace" : "My repairs"} variant="ghost" onPress={() => router.push(viewerIsShop ? "/business/repairs" : "/repairs")} />
+            )}
           </View>
         </View>
       </View>

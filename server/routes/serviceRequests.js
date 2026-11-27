@@ -209,6 +209,21 @@ router.post(
       );
 
       /* -----------------------------------------------------------
+         LINK THE CONVERSATION (update brief B3)
+         A client who chatted with this shop first now has that chat tied
+         to this request (chats.request_id = their latest request there).
+         Best effort: the request stands even if this fails.
+      ------------------------------------------------------------ */
+      try {
+        await db.promise().query(
+          "UPDATE chats SET request_id = ? WHERE client_id = ? AND shop_id = ? AND is_active = 1",
+          [request_id, client_id, shop_id]
+        );
+      } catch (linkErr) {
+        console.error("Link chat to request:", linkErr.code);
+      }
+
+      /* -----------------------------------------------------------
          SUCCESS RESPONSE
       ------------------------------------------------------------ */
       res.json({

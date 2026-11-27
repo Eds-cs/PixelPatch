@@ -148,6 +148,7 @@ export const getUserConversations = (req, res) => {
       c.id,
       c.client_id,
       c.shop_id,
+      c.request_id,
       c.last_message_at,
       latest.id AS last_message_id,
       latest.message_text AS last_message_text,
@@ -174,7 +175,10 @@ export const getUserConversations = (req, res) => {
   `;
 
   db.query(sql, [userId, userId], (err, rows) => {
-    if (err) return res.status(500).json({ error: err });
+    if (err) {
+      console.error("getUserConversations:", err.code);
+      return res.status(500).json({ error: "Couldn't load your conversations." });
+    }
     res.json(rows);
   });
 };

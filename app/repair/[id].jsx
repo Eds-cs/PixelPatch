@@ -33,6 +33,7 @@ import {
 } from "../../components/RepairSummary";
 import api from "../../lib/api";
 import { useFetch } from "../../lib/useFetch";
+import { useMessageShop } from "../../lib/useMessageShop";
 import { openCheckout, pollPaymentStatus, isTerminal } from "../../lib/payments";
 import { COLORS } from "../../constants/theme";
 import { useResponsive } from "../../lib/useResponsive";
@@ -52,6 +53,7 @@ const confirm = (title, message, onConfirm) => {
 export default function RepairDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { messageShop, busyShopId, error: messageError } = useMessageShop();
   const { isDesktop, horizontalPadding } = useResponsive();
   const { data, error, loading, refreshing, refresh } = useFetch(`/client/repairs/${id}`);
   const [busy, setBusy] = useState(false);
@@ -214,8 +216,14 @@ export default function RepairDetail() {
         {!isRejected && !isCancelled ? <View className="mt-4 rounded-xl bg-teal-50 p-4"><Text className="text-xs font-bold uppercase text-teal-800">Your repair update</Text><Text className="mt-1 text-sm leading-6 text-primary-soft-foreground">{nextUpdate}</Text></View> : null}
         <View className="mt-4 flex-row flex-wrap gap-3">
           {repair.shop_id ? <Button title="View shop" variant="outline" onPress={() => router.push(`/shop/${repair.shop_id}`)} /> : null}
-          <Button title="My messages" variant="outline" onPress={() => router.push("/chat")} />
+          {/* Opens the conversation with this shop, tied to this repair. */}
+          {repair.shop_id ? (
+            <Button title="Message shop" variant="outline" loading={busyShopId === repair.shop_id} onPress={() => messageShop(repair.shop_id, { requestId: id })} />
+          ) : (
+            <Button title="My messages" variant="outline" onPress={() => router.push("/chat")} />
+          )}
         </View>
+        {messageError ? <Text accessibilityRole="alert" className="mt-3 text-sm text-red-600">{messageError.text}</Text> : null}
       </View>
 
       {isRejected ? <RepairRejectionNotice reason={repair.rejection_reason} /> : null}
