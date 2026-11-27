@@ -11,6 +11,14 @@ import {
   reactivateEmployee
 } from "../../controllers/business/employeeController.js";
 
+import {
+  inviteEmployee,
+  cancelInvite,
+  removeEmployeeAccess,
+  openRepairChat,
+  transferChat,
+  takeBackChat,
+} from "../../controllers/business/staffAccessController.js";
 import { authRequired } from "../../middleware/authMiddleware.js";
 import { businessShopRequired } from "../../middleware/businessShopMiddleware.js";
 
@@ -36,6 +44,16 @@ router.get("/employees/all", getAllEmployees);
 router.put("/employees/:id", EMPLOYEE_TEXT, updateEmployee);
 router.post("/employees/:id/deactivate", deactivateEmployee);
 router.post("/employees/:id/reactivate", reactivateEmployee);
+
+// Sign-in access for employees (controllers/business/staffAccessController.js)
+router.post("/employees/:id/invite", limitText({ email: ["Email", LIMITS.email] }), inviteEmployee);
+router.delete("/employees/:id/invite", cancelInvite);
+router.post("/employees/:id/remove-access", removeEmployeeAccess);
+
+// Repair chats: open, hand to the assigned employee, take back
+router.post("/repairs/:id/chat", openRepairChat);
+router.post("/chats/:id/transfer", transferChat);
+router.post("/chats/:id/take-back", takeBackChat);
 
 /* ==============================
    REQUEST ASSIGNMENT

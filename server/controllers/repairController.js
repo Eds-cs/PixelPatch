@@ -2,6 +2,7 @@
 import db from "../config/db.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
 import { quotationTerms } from "../utils/paymentTerms.js";
+import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
 
 // service_requests.client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
 const CANCELLED_MESSAGE = "The client cancelled this repair request";
@@ -1156,105 +1157,18 @@ export const setQuotationCompletionDate = async (req, res) => {
 };
 
 
-export const  startRepair = (req, res) => {
-  const user = req.user;
-  const requestId = req.params.id;
-
-  // Business only
-  if (!user || user.role_id !== 3) {
+// Step 8 (shared with the staff portal: utils/repairLifecycle.js).
+export const startRepair = async (req, res) => {
+  if (!req.user || Number(req.user.role_id) !== 3) {
     return res.status(403).json({ message: "Business access only" });
   }
-
-  if (!requestId) {
-    return res.status(400).json({ message: "Request ID is required" });
+  try {
+    const { status, body } = await startRepairFor({ requestId: req.params.id, shopId: req.shopId });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("startRepair:", err.code || err.message);
+    return res.status(500).json({ message: "DB error" });
   }
-
-  console.log("▶️ Start repair:", requestId);
-
-  /* ----------------------------------
-     1. Load service request
-  ---------------------------------- */
-  const requestSql = `
-    SELECT
-      id,
-      status,
-      decision,
-      payment_status
-    FROM service_requests
-    WHERE id = ? AND shop_id = ?
-    LIMIT 1
-  `;
-
-  db.query(requestSql, [requestId, req.shopId], (err, rows) => {
-    if (err) {
-      console.error("❌ Request lookup error:", err);
-      return res.status(500).json({ message: "DB error" });
-    }
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "Request not found" });
-    }
-
-    const request = rows[0];
-
-    if (request.status === "COMPLETED") {
-      return res.status(400).json({ message: "Repair already completed" });
-    }
-
-    if (request.decision !== "ACCEPTED") {
-      return res.status(400).json({ message: "Request not accepted" });
-    }
-
-    if (request.payment_status !== "PAID") {
-      return res.status(400).json({ message: "Payment required" });
-    }
-
-    /* ----------------------------------
-       2. Check employee assignment
-    ---------------------------------- */
-    const assignmentSql = `
-      SELECT id
-      FROM request_assignments
-      WHERE request_id = ?
-      LIMIT 1
-    `;
-
-    db.query(assignmentSql, [requestId], (err2, assignRows) => {
-      if (err2) {
-        console.error("❌ Assignment lookup error:", err2);
-        return res.status(500).json({ message: "DB error" });
-      }
-
-      if (assignRows.length === 0) {
-        return res.status(400).json({
-          message: "Employee must be assigned before starting repair"
-        });
-      }
-
-      /* ----------------------------------
-         3. Start repair
-      ---------------------------------- */
-      const startSql = `
-        UPDATE service_requests
-        SET status = 'IN_PROGRESS', updated_at = NOW()
-        WHERE id = ? AND shop_id = ?
-      `;
-
-      db.query(startSql, [requestId, req.shopId], (err3) => {
-        if (err3) {
-          console.error("❌ Failed to start repair:", err3);
-          return res.status(500).json({ message: "DB error" });
-        }
-
-        console.log("✅ Repair started:", requestId);
-
-        return res.json({
-          message: "Repair started successfully",
-          status: "IN_PROGRESS"
-        });
-      });
-    });
-  });
 };
 
 // GET repair in progress or completed (business view)
@@ -1451,67 +1365,18 @@ export const getRepairInProgress = (req, res) => {
 
 
 // POST mark repair as COMPLETED
-export const markRepairCompleted = (req, res) => {
-  const user = req.user;
-  const requestId = req.params.id;
-
-  if (!user || user.role_id !== 3) {
+// Step 9 (shared with the staff portal: utils/repairLifecycle.js).
+export const markRepairCompleted = async (req, res) => {
+  if (!req.user || Number(req.user.role_id) !== 3) {
     return res.status(403).json({ message: "Business access only" });
   }
-
-  console.log("✅ Mark repair COMPLETED:", requestId);
-
-  const sql = `
-    SELECT status, payment_status
-    FROM service_requests
-    WHERE id = ? AND shop_id = ?
-    LIMIT 1
-  `;
-
-  db.query(sql, [requestId, req.shopId], (err, rows) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ message: "DB error" });
-    }
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "Request not found" });
-    }
-
-    const reqRow = rows[0];
-
-    if (reqRow.status !== "IN_PROGRESS") {
-      return res.status(400).json({
-        message: "Repair must be in progress to complete"
-      });
-    }
-
-    if (reqRow.payment_status !== "PAID") {
-      return res.status(400).json({
-        message: "Payment not completed"
-      });
-    }
-
-    const updateSql = `
-      UPDATE service_requests
-      SET status = 'COMPLETED', updated_at = NOW(), completed_at = NOW()
-      WHERE id = ? AND shop_id = ?
-    `;
-
-    db.query(updateSql, [requestId, req.shopId], (err2) => {
-      if (err2) {
-        console.error(err2);
-        return res.status(500).json({ message: "Update failed" });
-      }
-
-      console.log("🎉 Repair COMPLETED:", requestId);
-
-      res.json({
-        message: "Repair marked as completed",
-        status: "COMPLETED" 
-      });
-    });
-  });
+  try {
+    const { status, body } = await completeRepairFor({ requestId: req.params.id, shopId: req.shopId });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("markRepairCompleted:", err.code || err.message);
+    return res.status(500).json({ message: "Update failed" });
+  }
 };
 
 // GET completed repair (invoice-style, read-only)

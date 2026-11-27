@@ -10,6 +10,7 @@ import fs from "fs";
 import { removeUploadedFiles } from "./utils/fileSignatures.js";
 
 import chatRoutes from "./routes/chat.js";
+import staffRoutes from "./routes/staff.js";
 import businessRoutes from "./routes/businessRoutes.js";
 import businessDashboardRoutes from "./routes/businessDashboardRoutes.js";
 import userRoutes from "./routes/users.js";
@@ -151,6 +152,9 @@ app.use("/api/admin", adminRoutes);
 
 /* CHAT */
 app.use("/api", chatRoutes);
+
+/* STAFF PORTAL (shop employees with their own account) */
+app.use("/api/staff", staffRoutes);
 
 /* XENDIT WEBHOOKS */
 app.use("/api/webhooks", xenditWebhookRoutes);

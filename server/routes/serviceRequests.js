@@ -7,6 +7,7 @@ import { resolveShopDeliveryTypes } from "../utils/shopDeliveryTypes.js";
 import { SERVICE_AREA_MESSAGE, isInServiceArea } from "../utils/serviceArea.js";
 
 import { LIMITS, limitText } from "../utils/inputLimits.js";
+import { ownOrStaffShopIds } from "../utils/staff.js";
 
 const router = express.Router();
 
@@ -87,8 +88,8 @@ router.post(
       if (shop.owner_suspended_at) {
         return res.status(400).json({ message: "This shop isn't accepting repair requests right now." });
       }
-      // Shop owners may book repairs at other shops, never their own.
-      if (Number(shop.user_id) === Number(req.user.id)) {
+      // Shop owners and staff may book repairs at other shops, never their own.
+      if ((await ownOrStaffShopIds(req.user.id)).includes(Number(shop_id))) {
         return res.status(400).json({ message: "You can't request a repair from your own shop." });
       }
 
@@ -208,20 +209,9 @@ router.post(
         ]
       );
 
-      /* -----------------------------------------------------------
-         LINK THE CONVERSATION (update brief B3)
-         A client who chatted with this shop first now has that chat tied
-         to this request (chats.request_id = their latest request there).
-         Best effort: the request stands even if this fails.
-      ------------------------------------------------------------ */
-      try {
-        await db.promise().query(
-          "UPDATE chats SET request_id = ? WHERE client_id = ? AND shop_id = ? AND is_active = 1",
-          [request_id, client_id, shop_id]
-        );
-      } catch (linkErr) {
-        console.error("Link chat to request:", linkErr.code);
-      }
+      // The repair gets its own chat the first time someone opens it
+      // (controllers/chatController.js findOrCreateChat); the client's General
+      // chat with the shop stays as it is.
 
       /* -----------------------------------------------------------
          SUCCESS RESPONSE

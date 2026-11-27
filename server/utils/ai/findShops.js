@@ -86,7 +86,11 @@ export async function findShops({ deviceType, issueCategory, userId = null, shop
   const params = [];
   // SHOP_FILTERS: add the active-subscription check here once subscriptions exist.
   if (categories) { where.push("ss.category IN (?)"); params.push(categories); }
-  if (userId) { where.push("s.user_id <> ?"); params.push(userId); }
+  // Never the caller's own shop, or the shop they work at.
+  if (userId) {
+    where.push("s.user_id <> ?", "s.id NOT IN (SELECT se.shop_id FROM shop_employees se WHERE se.user_id = ? AND se.is_active = 1)");
+    params.push(userId, userId);
+  }
   if (shopIds) {
     if (!shopIds.length) return [];
     where.push("s.id IN (?)");
