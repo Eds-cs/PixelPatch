@@ -26,13 +26,24 @@ const XENDIT_EXPIRE_URL = "https://api.xendit.co/invoices";
 const cents = (value) => Math.round(Number(value || 0) * 100);
 const pesos = (value) => value / 100;
 
-/** { totalC, depositPercent, depositC, balanceC, allowCash } in centavos. */
+/**
+ * Smallest amount charged online: Xendit's card minimum is ₱20 (GCash ₱1),
+ * so a smaller online part couldn't be paid by card. Quotations can't be made
+ * with an online part under this (utils/paymentTerms.js onlineAmountProblem).
+ */
+export const MIN_ONLINE_PESOS = 20;
+
+/**
+ * { totalC, depositPercent, depositC, balanceC, allowCash } in centavos. The
+ * deposit is rounded to whole pesos (some channels don't take centavos); the
+ * balance is the rest, so the two always add up to the total.
+ */
 export function quotationAmountsCents(quotation) {
   const totalC = cents(quotation?.estimated_cost);
   const depositPercent = quotation?.deposit_percent === null || quotation?.deposit_percent === undefined
     ? 100
     : Number(quotation.deposit_percent);
-  const depositC = Math.round((totalC * depositPercent) / 100);
+  const depositC = depositPercent >= 100 ? totalC : Math.round((totalC * depositPercent) / 10000) * 100;
   const balanceC = totalC - depositC;
   const allowCash = Number(quotation?.allow_cash) === 1 && balanceC > 0;
   return { totalC, depositPercent, depositC, balanceC, allowCash };
@@ -178,7 +189,24 @@ async function invoiceStatus(invoiceId) {
  * waiting for the shop. A saved link is checked with Xendit first: an
  * expired one is replaced. Returns { status, body }.
  */
-export async function createPaymentLinkFor({ requestId, shopId = null, clientId = null }) {
+// One link creation at a time per repair, so two taps (or the client and the
+// shop at once) can't create two invoices for the same part. In-process:
+// PixelPatch runs one server process (deploy/); several would need a DB lock.
+const linkQueues = new Map();
+function oneAtATime(key, task) {
+  const previous = linkQueues.get(key) ?? Promise.resolve();
+  const run = previous.then(task, task);
+  const tail = run.then(() => undefined, () => undefined);
+  linkQueues.set(key, tail);
+  tail.then(() => { if (linkQueues.get(key) === tail) linkQueues.delete(key); });
+  return run;
+}
+
+export function createPaymentLinkFor(args) {
+  return oneAtATime(`link:${Number(args.requestId)}`, () => createPaymentLinkNow(args));
+}
+
+async function createPaymentLinkNow({ requestId, shopId = null, clientId = null }) {
   const { request, quotation, payments, plan } = await loadPaymentState(requestId);
   const owns = request && (
     (shopId !== null && Number(request.shop_id) === Number(shopId)) ||
@@ -223,6 +251,16 @@ export async function createPaymentLinkFor({ requestId, shopId = null, clientId 
     open.status = "FAILED";
   }
   if (!(due.amount > 0)) return { status: 400, body: { message: "Computed payment amount is invalid" } };
+  if (due.amount < MIN_ONLINE_PESOS) {
+    return {
+      status: 409,
+      body: {
+        message: due.cash_allowed
+          ? `Online payments start at ₱${MIN_ONLINE_PESOS}. Pay this ₱${due.amount} in cash to the shop.`
+          : `Online payments start at ₱${MIN_ONLINE_PESOS}, and this is ₱${due.amount}. Message the shop to settle it.`,
+      },
+    };
+  }
 
   // Reuse an unpaid row of this kind (a failed or link-less attempt), else add one.
   const reusable = payments.filter((p) => p.kind === due.kind && p.gateway !== "CASH" && p.status !== "PAID").sort((a, b) => b.id - a.id)[0];

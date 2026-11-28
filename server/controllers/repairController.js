@@ -1,7 +1,7 @@
 // server/controllers/repairController.js
 import db from "../config/db.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
-import { quotationTerms } from "../utils/paymentTerms.js";
+import { onlineAmountProblem, quotationTerms } from "../utils/paymentTerms.js";
 import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
 import { loadPaymentState, confirmCashBalanceFor, requestPaymentFor, cancelUnpaidRepair } from "../utils/paymentPlan.js";
 import { validateWarranty } from "../utils/warranty.js";
@@ -835,6 +835,12 @@ export const createQuotation = async (req, res) => {
     -------------------------------------------------- */
     const estimatedCost = serviceTotal + partsTotal;
 
+    // Every online part must be payable by card (₱20 minimum).
+    const tooSmall = onlineAmountProblem(estimatedCost, payment.terms.depositPercent, payment.terms.allowCash);
+    if (tooSmall) {
+      return res.status(400).json({ success: false, message: tooSmall, field: "depositPercent" });
+    }
+
     /* -------------------------------------------------
        6️⃣ Insert quotation (labor_fee = 0)
     -------------------------------------------------- */
@@ -1046,6 +1052,22 @@ export const updateQuotation = async (req, res) => {
     const checkedWarranty = validateWarranty(warranty);
     if (checkedWarranty.error) {
       return res.status(400).json({ success: false, message: checkedWarranty.error, field: checkedWarranty.field });
+    }
+
+    // Every online part must be payable by card (₱20 minimum), checked
+    // before anything is written.
+    {
+      const [{ service_total: plannedServices }] = await query(
+        `SELECT COALESCE(SUM(ss.base_price), 0) AS service_total
+           FROM service_request_items sri JOIN shop_services ss ON ss.id = sri.service_id
+          WHERE sri.request_id = ?`,
+        [id]
+      );
+      const plannedParts = isPartsNeeded ? parts.reduce((sum, p) => sum + Number(p.cost || 0), 0) : 0;
+      const tooSmall = onlineAmountProblem(Number(plannedServices || 0) + plannedParts, payment.terms.depositPercent, payment.terms.allowCash);
+      if (tooSmall) {
+        return res.status(400).json({ success: false, message: tooSmall, field: "depositPercent" });
+      }
     }
 
     // 2️⃣ Update quotation (non-price fields)
@@ -1276,9 +1298,10 @@ export const getRepairInProgress = (req, res) => {
     LEFT JOIN request_quotations rq
       ON rq.request_id = sr.id
 
-    LEFT JOIN payments p
+    /* A repair can have several payments (deposit, balance): their total. */
+    LEFT JOIN (SELECT request_id, SUM(amount) AS amount, MAX(paid_at) AS paid_at, MAX(payment_link) AS payment_link
+         FROM payments WHERE status = 'PAID' GROUP BY request_id) p
       ON p.request_id = sr.id
-      AND p.status = 'PAID'
 
     LEFT JOIN service_request_items sri
       ON sri.request_id = sr.id
@@ -1492,7 +1515,10 @@ export const getCompletedRepair = (req, res) => {
     FROM service_requests sr
     JOIN devices d ON d.id = sr.device_id
     JOIN request_quotations rq ON rq.request_id = sr.id
-    JOIN payments p ON p.request_id = sr.id
+    -- Deposit and balance are separate rows: their total. LEFT JOIN, so a
+    -- free (₱0) or unpaid-online repair still shows.
+    LEFT JOIN (SELECT request_id, SUM(amount) AS amount, MAX(paid_at) AS paid_at, MAX(payment_link) AS payment_link
+         FROM payments WHERE status = 'PAID' GROUP BY request_id) p ON p.request_id = sr.id
 
     WHERE sr.id = ? AND sr.shop_id = ?
       AND sr.status = 'COMPLETED'

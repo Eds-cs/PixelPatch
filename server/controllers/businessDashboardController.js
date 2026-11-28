@@ -154,8 +154,9 @@ export const getBusinessDashboard = async (req, res) => {
     // --------------------------------------------------
     // Warranty claims waiting for an answer (business rule 9: 2 days).
     const warrantyClaims = await query(
-      `SELECT id, request_id, created_at, created_at + INTERVAL 2 DAY AS reply_due,
-              (created_at < NOW() - INTERVAL 2 DAY) AS overdue
+      `SELECT id, request_id, created_at,
+              COALESCE(reply_due, created_at + INTERVAL 2 DAY) AS reply_due,
+              (COALESCE(reply_due, created_at + INTERVAL 2 DAY) < NOW()) AS overdue
          FROM warranty_claims
         WHERE shop_id = ? AND status = 'OPEN'
         ORDER BY created_at ASC`,

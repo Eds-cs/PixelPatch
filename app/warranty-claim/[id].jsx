@@ -179,7 +179,7 @@ export default function WarrantyClaim() {
             <Text className="mt-1 text-xs leading-5 text-teal-900">{`Not covered: ${warranty.exclusions}`}</Text>
           ) : null}
           <Text className="mt-2 text-xs leading-5 text-teal-900">
-            {"The shop has 2 days to accept or decline. If it accepts, it fixes the problem for free (anything the warranty doesn't cover is quoted first). If it declines or doesn't answer, you can ask PixelPatch to review."}
+            {"The shop has 2 open days to accept or decline. If it accepts, it fixes the problem for free (anything the warranty doesn't cover is quoted first). If it declines, you have 7 days to ask PixelPatch to review; if it doesn't answer in time, you can ask any time."}
           </Text>
         </View>
 

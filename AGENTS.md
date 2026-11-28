@@ -1316,9 +1316,16 @@ status here.
      `photos`; form: `app/warranty-claim/[id].jsx`),
      `POST /client/warranty-claims/:id/escalate`,
      `POST /business/warranty-claims/:id/accept` and `/decline { reason }`.
-     One claim at a time per repair, and none while its warranty repair is
-     still open. The shop may still accept a claim it declined, until it's
-     escalated. The problem and the shop's reason go through
+     One claim at a time per repair, none while its warranty repair is
+     still open, and at most 3 claims per repair. The shop has **2 open
+     days** to answer: `warranty_claims.reply_due` is set when the claim is
+     made, counting only the shop's open days (`replyDueFor`, from
+     `shops.days_from`/`days_to`; unreadable days = 2 calendar days). The
+     client can ask PixelPatch to review **within 7 days** of a decline, or
+     any time once an unanswered claim is past `reply_due`. A claim against
+     a shop whose owner is suspended goes straight to PixelPatch
+     (`ESCALATED`, no email). The shop may still accept a claim it
+     declined, until it's escalated. The problem and the shop's reason go through
      `maskContactInfo`, like chat. Each step adds a SYSTEM line to the
      original repair's chat. Statuses: OPEN, ACCEPTED (`linked_request_id`
      = the warranty repair), DECLINED, ESCALATED, CLOSED (an admin declined).
@@ -1425,6 +1432,15 @@ client view is `QuotationSection` in `components/RepairSummary.jsx`.
    Payment due card in the repair chat, at most once every 6 hours.
 4. When the balance is paid, `payment_status = 'PAID'` and the quotation is
    `PAID`; only then can the repair be completed.
+
+**Amounts.** The deposit is rounded to whole pesos and the balance is the
+rest (`quotationAmountsCents` / `quotationAmounts`, keep in sync). Any
+online part must be at least **₱20** (Xendit's card minimum; GCash takes
+₱1): a quotation whose deposit, or online-only balance, would be under ₱20
+is refused (`onlineAmountProblem` in `server/utils/paymentTerms.js`), and
+the link refuses a smaller amount. A ₱0 total is fine. Link creation runs
+one at a time per repair (in-process queue in `paymentPlan.js`), so two taps
+can't make two invoices; this assumes one server process.
 
 The total charged is the quotation's `estimated_cost` (what the client
 approved), not a recount of current service prices. Every repair response
@@ -1620,6 +1636,11 @@ client, owner or staff).
   `postRepairUpdate(requestId, actorUserId, stage, extra)`. A ₱0 repair
   paid in full on approval gets no payment card.
 * Cards are snapshots of that moment: they don't change when the repair does.
+* For pickup and on-site the confirmation card shows only the client's
+  barangay and city, never the street (a chat outlives the job and can be
+  handed to staff); the full address stays on the repair page.
+* Saving a card is retried once; a card that still fails is logged and
+  skipped (the action behind it has already succeeded).
 * Never put phone numbers or emails in a card (see below).
 
 ## Keeping clients and shops on PixelPatch (since 2026-11-27)
@@ -1990,7 +2011,8 @@ text, warranty claim 1000, warranty exclusions 300, AI message 2000, search 100.
   any upload middleware). It answers `400 { error, message, field,
   code: "TEXT_TOO_LONG" }`, and also refuses objects or arrays in text fields.
   `"parts[].name"` checks every item of an array. The chat socket uses
-  `textProblem` directly.
+  `textProblem` directly. On an upload route it deletes the request's
+  uploaded files when it refuses (since 2026-11-28).
 * A new text column must be able to hold its limit; add a migration if not.
 
 ---
@@ -2542,6 +2564,7 @@ problem             text NOT NULL   (contact details hidden)
 delivery_method     enum('PICKUP','DROPOFF','ONSITE') NOT NULL
 pickup_address_id   NULL FK -> addresses.id
 preferred_date      date NOT NULL
+reply_due           datetime NULL   (end of the shop's 2 open days; added 2026-11-28)
 status              enum('OPEN','ACCEPTED','DECLINED','ESCALATED','CLOSED') NOT NULL DEFAULT 'OPEN'
 shop_response       text NULL   (the shop's reason for declining)
 admin_note          text NULL   (the admin's explanation)

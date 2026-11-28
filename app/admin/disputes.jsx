@@ -94,7 +94,11 @@ function DisputeDetail({ disputeId, onDecided, onClose }) {
 
   const d = data?.dispute;
   const canDecide = Boolean(d?.needs_admin_reason);
-  const paidOnline = (data?.payments ?? []).filter((p) => p.status === "PAID").reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  // Online money is held by PixelPatch and can be refunded through it; cash
+  // went straight to the shop (AGENTS.md "Payment terms").
+  const paid = (data?.payments ?? []).filter((p) => p.status === "PAID");
+  const paidOnline = paid.filter((p) => p.gateway !== "CASH").reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const paidCash = paid.filter((p) => p.gateway === "CASH").reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   const decide = async () => {
     const e = {};
@@ -157,6 +161,7 @@ function DisputeDetail({ disputeId, onDecided, onClose }) {
           <AdminDetail icon="card-outline" label="Money">
             {d.estimated_cost !== null && d.estimated_cost !== undefined ? `Quoted ${adminMoney(d.estimated_cost)}. ` : ""}
             {paidOnline > 0 ? `Paid online ${adminMoney(paidOnline)}.` : "Nothing paid online."}
+            {paidCash > 0 ? ` Paid in cash to the shop ${adminMoney(paidCash)}.` : ""}
             {d.estimated_cost !== null && d.estimated_cost !== undefined ? `\n${quotationTermsText(d)}` : ""}
           </AdminDetail>
 
@@ -207,6 +212,7 @@ function DisputeDetail({ disputeId, onDecided, onClose }) {
                 <Text className="mb-3 rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-600">
                   This records the decision only. PixelPatch can&apos;t send refunds through the payment provider yet, so
                   arrange the refund separately{paidOnline > 0 ? "" : " (nothing was paid online, so the shop refunds the client directly)"}.
+                  {paidCash > 0 ? ` The ${adminMoney(paidCash)} paid in cash can only be refunded by the shop.` : ""}
                 </Text>
               ) : null}
               <TextField

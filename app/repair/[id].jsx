@@ -527,8 +527,8 @@ export default function RepairDetail() {
                     <View className="mt-3">
                       <Text className="mb-2 text-xs leading-5 text-gray-500">
                         {claim.status === "DECLINED"
-                          ? "Don't agree with the shop? PixelPatch can review the claim and decide."
-                          : "The shop didn't answer within 2 days. PixelPatch can review the claim and decide."}
+                          ? "Don't agree with the shop? PixelPatch can review the claim and decide, if you ask within 7 days of the shop's answer."
+                          : "The shop didn't answer in time. PixelPatch can review the claim and decide."}
                       </Text>
                       <Button
                         title="Ask PixelPatch to review"

@@ -113,7 +113,7 @@ export const getDispute = async (req, res) => {
       [id]
     );
     const [payments] = await db.promise().query(
-      "SELECT id, amount, status, paid_at FROM payments WHERE request_id = ? ORDER BY id",
+      "SELECT id, kind, amount, status, gateway, paid_at FROM payments WHERE request_id = ? ORDER BY id",
       [dispute.request_id]
     );
     res.json({ dispute, history, payments });

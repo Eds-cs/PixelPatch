@@ -53,7 +53,10 @@ async function cardContext(requestId) {
             s.name AS shop_name,
             d.name AS device_name, d.brand AS device_brand, d.model AS device_model,
             d.device_type, d.photo_url AS device_photo,
-            CONCAT_WS(', ', NULLIF(TRIM(a.street), ''), NULLIF(TRIM(a.barangay), ''), NULLIF(TRIM(a.city), '')) AS service_address,
+            -- The client's area only (barangay, city): a chat keeps cards long
+            -- after the job, and can be handed to staff. The street is on the
+            -- repair page while the shop needs it.
+            CONCAT_WS(', ', NULLIF(TRIM(a.barangay), ''), NULLIF(TRIM(a.city), '')) AS service_address,
             CONCAT_WS(', ', NULLIF(TRIM(sa.street), ''), NULLIF(TRIM(sa.barangay), ''), NULLIF(TRIM(sa.city), '')) AS shop_address,
             (SELECT wc.request_id FROM warranty_claims wc WHERE wc.linked_request_id = sr.id LIMIT 1) AS warranty_of
        FROM service_requests sr
@@ -85,21 +88,40 @@ async function cardContext(requestId) {
   };
 }
 
-/** Saves the card in the repair's chat and sends it to anyone with it open. */
+/**
+ * Saves the card in the repair's chat and sends it to anyone with it open.
+ * Tried twice (a second later) before giving up, so a brief database hiccup
+ * doesn't lose it; the action behind it has already succeeded either way.
+ */
 async function postCard(row, actorUserId, card, text) {
+  try {
+    await postCardOnce(row, actorUserId, card, text);
+  } catch (err) {
+    console.error("repair card, retrying:", err.code || err.message);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await postCardOnce(row, actorUserId, card, text);
+  }
+}
+
+async function postCardOnce(row, actorUserId, card, text) {
   const chat = await findOrCreateChat({ clientId: row.client_id, shopId: row.shop_id, requestId: row.id });
   const [result] = await db.promise().query(
     `INSERT INTO chat_messages (chat_id, sender_id, sender_kind, sender_label, message_text, card, is_read, timestamp)
      VALUES (?, ?, 'SYSTEM', NULL, ?, ?, 0, NOW())`,
     [chat.id, actorUserId, text, JSON.stringify(card)]
   );
-  await db.promise().query("UPDATE chats SET last_message_at = NOW() WHERE id = ?", [chat.id]);
-  const [message] = await query(
-    `SELECT id, chat_id, sender_id, sender_kind, sender_label, message_text, card, timestamp
-       FROM chat_messages WHERE id = ?`,
-    [result.insertId]
-  );
-  broadcastMessage({ ...message, card: parseCard(message.card) });
+  // Saved: anything after this is not worth a retry (it would post twice).
+  try {
+    await db.promise().query("UPDATE chats SET last_message_at = NOW() WHERE id = ?", [chat.id]);
+    const [message] = await query(
+      `SELECT id, chat_id, sender_id, sender_kind, sender_label, message_text, card, timestamp
+         FROM chat_messages WHERE id = ?`,
+      [result.insertId]
+    );
+    broadcastMessage({ ...message, card: parseCard(message.card) });
+  } catch (err) {
+    console.error("repair card saved, not broadcast:", err.code || err.message);
+  }
 }
 
 /** The REPAIR_CONFIRMED card for a request: { row, card }, or null. */
@@ -121,8 +143,8 @@ export async function buildRepairConfirmation(requestId) {
       services: services.map((s) => s.name),
       issue: issue.length > ISSUE_PREVIEW ? `${issue.slice(0, ISSUE_PREVIEW - 1)}…` : issue,
       delivery_method: row.delivery_method,
-      // Where the job happens: the client's address for pickup and on-site,
-      // the shop's for drop-off. Both are already on the repair page.
+      // Where the job happens: the client's area (barangay, city) for pickup
+      // and on-site, the shop's address for drop-off.
       address: row.delivery_method === "DROPOFF" ? row.shop_address || null : row.service_address || null,
       preferred_date: row.preferred_date,
     },
