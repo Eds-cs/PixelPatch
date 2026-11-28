@@ -2,6 +2,7 @@
 import { timingSafeEqual } from "node:crypto";
 import axios from "axios";
 import { withTransaction } from "../utils/transaction.js";
+import { settleRequestPayments } from "../utils/paymentPlan.js";
 
 const XENDIT_INVOICE_URL = "https://api.xendit.co/v2/invoices";
 let settlementQueue = Promise.resolve();
@@ -93,7 +94,7 @@ export const handleXenditWebhook = async (req, res) => {
     // service_requests and request_quotations all move together or not at all.
     const result = await serializeSettlement(() => withTransaction(async (conn) => {
       const [payments] = await conn.query(
-        `SELECT p.id, p.amount, p.status, p.shop_id, sr.shop_id AS request_shop_id
+        `SELECT p.id, p.kind, p.amount, p.status, p.gateway, p.gateway_ref, p.shop_id, sr.shop_id AS request_shop_id
          FROM payments p
          JOIN service_requests sr ON sr.id = p.request_id
          WHERE p.request_id = ? AND sr.decision = 'ACCEPTED'
@@ -103,6 +104,7 @@ export const handleXenditWebhook = async (req, res) => {
 
       const candidates = payments.filter((payment) =>
         payment.shop_id === payment.request_shop_id &&
+        payment.gateway !== "CASH" &&
         amountsMatch(payment.amount, amount) &&
         (!expectedPaymentId || Number(payment.id) === expectedPaymentId)
       );
@@ -117,7 +119,10 @@ export const handleXenditWebhook = async (req, res) => {
         [payment.id]
       );
 
-      if (details.some((detail) => detail.transaction_ref !== xenditInvoiceId)) {
+      if (
+        (payment.gateway_ref && payment.gateway_ref !== xenditInvoiceId) ||
+        details.some((detail) => detail.transaction_ref !== xenditInvoiceId)
+      ) {
         return { status: 409, message: "Payment is associated with a different invoice" };
       }
 
@@ -132,26 +137,21 @@ export const handleXenditWebhook = async (req, res) => {
         await conn.query(
           `INSERT INTO payment_details
             (payment_id, type, status, method, transaction_ref)
-           VALUES (?, 'FULL', 'PAID', ?, ?)`,
-          [payment.id, mapPaymentMethod(paymentMethod, paymentChannel, ewalletType), xenditInvoiceId]
+           VALUES (?, ?, 'PAID', ?, ?)`,
+          [payment.id, payment.kind === "FULL" ? "FULL" : "PARTIAL", mapPaymentMethod(paymentMethod, paymentChannel, ewalletType), xenditInvoiceId]
         );
       }
 
+      // Paying means the client approved. Then settle: the deposit (or full
+      // payment) unlocks work; payment_status = 'PAID' and the quotation PAID
+      // only once everything is paid (utils/paymentPlan.js).
       await conn.query(
         `UPDATE service_requests
-         SET payment_status = 'PAID', client_approved = 1
+         SET client_approved = 1
          WHERE id = ? AND shop_id = ? AND decision = 'ACCEPTED'`,
         [requestId, payment.request_shop_id]
       );
-
-      // Close the quotation that was paid. Only a PENDING quotation moves, so a
-      // CANCELLED one is never revived.
-      await conn.query(
-        `UPDATE request_quotations
-         SET status = 'PAID', updated_at = NOW()
-         WHERE request_id = ? AND status = 'PENDING'`,
-        [requestId]
-      );
+      await settleRequestPayments(conn, requestId);
 
       return { status: 200, message: "Payment recorded" };
     }));

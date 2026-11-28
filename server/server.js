@@ -31,6 +31,7 @@ import userProfileRoutes from "./routes/userProfile.routes.js";
 
 // ROUTES FOR REPAIR REQUESTS CLIENT SIDE
 import clientRepairsRoutes from "./routes/clientRepairsRoutes.js";
+import warrantyClaimRoutes from "./routes/warrantyClaims.js";
 
 // ROUTES FOR SHOP'S PUBLIC SERVICES AND SHOPS
 import publicServicesRoutes from "./routes/publicServices.routes.js";
@@ -161,6 +162,8 @@ app.use("/api/webhooks", xenditWebhookRoutes);
 
 // client repair routes
 app.use("/api/client", clientRepairsRoutes);
+// Warranty claims (client and shop): /api/client/... and /api/business/...
+app.use("/api", warrantyClaimRoutes);
 
 // client reviews routes
 app.use("/api/client", clientReviewsRoutes);

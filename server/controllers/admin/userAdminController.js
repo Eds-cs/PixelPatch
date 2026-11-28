@@ -111,7 +111,7 @@ export const getUser = async (req, res) => {
       [id]
     );
     const [repairs] = await db.promise().query(
-      `SELECT sr.id, sr.created_at, sr.status, sr.decision, sr.payment_status, sr.client_approved, s.name AS shop_name
+      `SELECT sr.id, sr.created_at, sr.status, sr.decision, sr.payment_status, sr.deposit_paid_at, sr.client_approved, s.name AS shop_name
        FROM service_requests sr JOIN shops s ON s.id = sr.shop_id
        WHERE sr.client_id = ?
        ORDER BY sr.created_at DESC LIMIT 10`,

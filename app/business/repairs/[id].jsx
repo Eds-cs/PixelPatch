@@ -42,6 +42,11 @@ import { useShop } from "../../../lib/shop";
 import { useFetch } from "../../../lib/useFetch";
 import { parseDepositPercent } from "../../../lib/paymentTerms";
 import PaymentTermsFields from "../../../components/PaymentTermsFields";
+import PaymentProgress from "../../../components/PaymentProgress";
+import WarrantyFields from "../../../components/WarrantyFields";
+import WarrantyClaimList from "../../../components/WarrantyClaimList";
+import { NO_WARRANTY, formFromShop, warrantyPayload, warrantyProblem } from "../../../lib/warranty";
+import { confirmAction } from "../../../lib/confirm";
 import { COLORS } from "../../../constants/theme";
 import { useResponsive } from "../../../lib/useResponsive";
 
@@ -50,7 +55,6 @@ import { specRows, typeLabel } from "../../../lib/deviceSpecs";
 import { formatPhone } from "../../../lib/phone";
 const PESO = "₱";
 const TODAY_DATE = toDateString(new Date());
-const WARRANTY_UNITS = ["DAY", "WEEK", "MONTH", "YEAR"];
 
 const notify = (title, message) => {
   if (Platform.OS === "web") window.alert(`${title}\n\n${message}`);
@@ -86,6 +90,9 @@ export default function BusinessRepairDetail() {
   const [completionDateOpen, setCompletionDateOpen] = useState(false);
 
   const [rejectReason, setRejectReason] = useState("");
+  // Declining a warranty claim (business rule 9): the claim and the reason.
+  const [declineClaim, setDeclineClaim] = useState(null);
+  const [declineReason, setDeclineReason] = useState("");
   const [completionDate, setCompletionDate] = useState("");
   const [assessForm, setAssessForm] = useState({
     deviceCondition: "",
@@ -95,9 +102,7 @@ export default function BusinessRepairDetail() {
   });
   const [quoteForm, setQuoteForm] = useState({
     estimatedCompletionTime: "",
-    warrantyCovered: false,
-    warrantyValue: "",
-    warrantyUnit: "DAY",
+    warranty: { ...NO_WARRANTY },
     isPartsNeeded: false,
     partName: "",
     partPrice: "",
@@ -110,6 +115,8 @@ export default function BusinessRepairDetail() {
       ...form,
       depositPercent: String(shopInfo.data?.default_deposit_percent ?? 100),
       allowCash: shopAcceptsCash,
+      // The shop's usual warranty (Shop profile); it can be changed for this job.
+      warranty: formFromShop(shopInfo.data),
     }));
     setQuoteOpen(true);
   };
@@ -217,6 +224,13 @@ export default function BusinessRepairDetail() {
   // clientApproved: null = undecided, 1 = approved, 0 = cancelled by the client.
   const isCancelled = !isRejected && isClientCancelled(repair.clientApproved);
   const paymentStatus = String(repair.paymentStatus ?? "").toUpperCase();
+  // Deposit and balance (server/utils/paymentPlan.js). Work starts once the
+  // deposit is settled; completing needs the balance paid.
+  const plan = repair.paymentPlan ?? null;
+  const paidInFull = paymentStatus === "PAID";
+  const depositPaid = Boolean(plan?.deposit_paid) || paidInFull;
+  const due = plan?.due ?? null;
+  const clientApproved = repair.clientApproved !== null && repair.clientApproved !== undefined && Number(repair.clientApproved) === 1;
   const repairLocation = getRepairLocation({
     deliveryMethod: repair.deliveryMethod,
     serviceAddress: repair.pickupAddress,
@@ -238,10 +252,16 @@ export default function BusinessRepairDetail() {
   const canStart =
     normalizedDecision === "ACCEPTED" &&
     Boolean(quotation) &&
-    paymentStatus === "PAID" &&
+    depositPaid &&
     Boolean(assignment) &&
     !["IN_PROGRESS", "COMPLETED"].includes(normalizedStatus);
-  const canComplete = normalizedStatus === "IN_PROGRESS";
+  const canComplete = normalizedStatus === "IN_PROGRESS" && paidInFull;
+  const balanceOpen = normalizedStatus === "IN_PROGRESS" && !paidInFull && due?.kind === "BALANCE";
+  const canSendPaymentLink = !isCancelled && clientApproved && Boolean(due?.ready) && !due?.payment_link;
+  const canConfirmCash = balanceOpen && Boolean(due?.cash_allowed);
+  const warrantyClaims = repair.warrantyClaims ?? [];
+  const warrantyOf = repair.warrantyOf ?? null;
+  const claimWaiting = warrantyClaims.some((claim) => claim.status === "OPEN");
   // Pickup and drop-off bring the device to the shop; on-site repairs don't.
   // Mirrors the server rule in markDeviceReceived.
   const deliveryMethod = String(repair.deliveryMethod ?? "").toUpperCase();
@@ -253,7 +273,7 @@ export default function BusinessRepairDetail() {
     !repair.isReceived;
   const canManageAssignment =
     normalizedDecision === "ACCEPTED" &&
-    paymentStatus === "PAID" &&
+    depositPaid &&
     !["IN_PROGRESS", "COMPLETED"].includes(normalizedStatus);
 
   return (
@@ -299,16 +319,42 @@ export default function BusinessRepairDetail() {
               {canDecide ? "Review the request and choose whether to accept it."
                 : normalizedStatus === "COMPLETED" ? "Repair completed. You can review the repair information below."
                 : canComplete ? "Finish the repair, then mark it completed when the work is done."
+                : balanceOpen ? (canConfirmCash
+                    ? "When the work is done, collect the balance: send the client the payment link, or confirm their cash payment below. Then mark the repair completed."
+                    : "When the work is done, send the client the balance payment link below. Mark the repair completed once it's paid.")
                 : canAssess ? "Assess the device before preparing a quotation."
                 : canQuote ? "Prepare the quotation for the client to review."
                 : canSetCompletionDate ? "Add an estimated completion date to the quotation."
-                : canStart ? "The technician is assigned and payment is confirmed. Start the repair when ready."
+                : canStart ? "The technician is assigned and the deposit is settled. Start the repair when ready."
                 : canManageAssignment ? "Assign a technician in the section below."
                 : "Check quotation approval and payment before proceeding to assignment and repair work."}
             </Text>
           </View>
         ) : null}
       </View>
+
+      {warrantyOf ? (
+        <View className="mb-4 flex-row items-start gap-2 rounded-xl border border-teal-100 bg-teal-50 p-4">
+          <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.primary} style={{ marginTop: 1 }} />
+          <View className="flex-1">
+            <Text className="text-sm font-semibold text-teal-900">{`Warranty repair for repair #${warrantyOf.request_id} (claim #${warrantyOf.claim_id})`}</Text>
+            <Text className="mt-1 text-xs leading-5 text-teal-900">
+              {"Work the warranty covers is free: don't add services for it. Add a service or part only for something the warranty doesn't cover; the client approves the quotation first. A ₱0 quotation is paid as soon as the client approves it."}
+            </Text>
+            <Pressable onPress={() => router.push(`/business/repairs/${warrantyOf.request_id}`)} accessibilityRole="link" className="mt-1 min-h-11 justify-center self-start">
+              <Text className="text-sm font-semibold text-primary">Open the original repair</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+      {claimWaiting ? (
+        <View className="mb-4 flex-row items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <Ionicons name="alert-circle-outline" size={18} color="#B45309" style={{ marginTop: 1 }} />
+          <Text className="flex-1 text-sm leading-5 text-amber-900">
+            {"The client asked for warranty service. Accept or decline it below within 2 days, or the client can ask PixelPatch to decide."}
+          </Text>
+        </View>
+      ) : null}
 
       {isRejected ? <RepairRejectionNotice reason={repair.rejectionReason} /> : null}
       {isCancelled ? <RepairCancelledNotice /> : null}
@@ -527,37 +573,144 @@ export default function BusinessRepairDetail() {
             />
           ) : !assignment ? (
             <Text className="mt-2 text-xs text-gray-500">
-              Assign a technician after the client has paid.
+              Assign a technician after the client has paid the deposit.
             </Text>
           ) : null}
       </Section> : null}
 
       {!isRejected && quotation ? (
         <Section title="Payment">
-          <Row label="Status" value={String(repair.paymentStatus ?? "").replace(/_/g, " ")} />
-          <Row label="Checkout link" value={repair.paymentLink ? "Generated" : "Not generated"} />
+          {plan ? <PaymentProgress plan={plan} viewer="shop" /> : null}
 
-          {repair.paymentLink ? (
-            <Text selectable className="mt-2 text-xs text-primary">
-              {repair.paymentLink}
-            </Text>
-          ) : isCancelled ? null : (
-            <Button
-              title="Generate payment link"
-              className="mt-4"
-              loading={busy}
-              onPress={() =>
-                act(
-                  () => generatePaymentLink(id),
-                  "Payment link generated. The client can now pay."
-                )
-              }
-            />
-          )}
+          {isCancelled ? null : !clientApproved ? (
+            <Text className="mt-3 text-xs leading-5 text-gray-500">The client pays once they approve the quotation.</Text>
+          ) : due?.payment_link ? (
+            <View className="mt-3 rounded-xl bg-gray-50 p-3">
+              <Text className="text-xs font-semibold text-gray-700">
+                {due.kind === "BALANCE" ? "Balance link sent to the client" : due.kind === "DEPOSIT" ? "Deposit link sent to the client" : "Payment link sent to the client"}
+              </Text>
+              <Text selectable className="mt-1 text-xs text-primary">{due.payment_link}</Text>
+            </View>
+          ) : due?.kind === "BALANCE" && !due.ready ? (
+            <Text className="mt-3 text-xs leading-5 text-gray-500">You can ask for the balance once the repair has started.</Text>
+          ) : null}
+
+          {canSendPaymentLink || canConfirmCash ? (
+            <View className={`mt-4 ${isMobile ? "gap-2" : "flex-row flex-wrap gap-3"}`}>
+              {canSendPaymentLink ? (
+                <View style={isMobile ? undefined : { minWidth: 220 }}>
+                  <Button
+                    title={due.kind === "BALANCE" ? `Send balance link · ${PESO}${Number(due.amount).toLocaleString()}` : due.kind === "DEPOSIT" ? `Send deposit link · ${PESO}${Number(due.amount).toLocaleString()}` : "Generate payment link"}
+                    loading={busy}
+                    onPress={() =>
+                      act(
+                        () => generatePaymentLink(id),
+                        "Payment link created. The client can pay it from their repair page."
+                      )
+                    }
+                  />
+                </View>
+              ) : null}
+              {canConfirmCash ? (
+                <View style={isMobile ? undefined : { minWidth: 220 }}>
+                  <Button
+                    title={`Client paid ${PESO}${Number(due.amount).toLocaleString()} in cash`}
+                    variant="outline"
+                    disabled={busy}
+                    onPress={() =>
+                      confirmAction(
+                        "Confirm cash payment",
+                        `Confirm that you received ${PESO}${Number(due.amount).toLocaleString()} in cash from the client. Only confirm cash you have in hand. Any open online balance link will be closed.`,
+                        () => act(() => api.post(`/business/repairs/${id}/balance/cash`), "Cash payment recorded. The repair is paid in full."),
+                        { confirmLabel: "I received it" }
+                      )
+                    }
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </Section>
+      ) : null}
+
+      {warrantyClaims.length ? (
+        <Section title="Warranty claims">
+          <WarrantyClaimList
+            claims={warrantyClaims}
+            viewer="shop"
+            repairHref={(repairId) => `/business/repairs/${repairId}`}
+            actions={(claim) =>
+              ["OPEN", "DECLINED"].includes(claim.status) ? (
+                <View className={`mt-3 ${isMobile ? "gap-2" : "flex-row flex-wrap gap-3"}`}>
+                  <View style={isMobile ? undefined : { minWidth: 200 }}>
+                    <Button
+                      title={claim.status === "DECLINED" ? "Accept after all" : "Accept, create warranty repair"}
+                      loading={busy}
+                      onPress={() =>
+                        confirmAction(
+                          "Accept warranty claim",
+                          "A new repair request is created for this device, already accepted. Assess it as usual: covered work is free, and anything the warranty doesn't cover goes on the quotation for the client to approve.",
+                          () => act(() => api.post(`/business/warranty-claims/${claim.id}/accept`), "Warranty claim accepted. The warranty repair is in your repair requests."),
+                          { confirmLabel: "Accept" }
+                        )
+                      }
+                    />
+                  </View>
+                  {claim.status === "OPEN" ? (
+                    <View style={isMobile ? undefined : { minWidth: 160 }}>
+                      <Button
+                        title="Decline"
+                        variant="outline"
+                        disabled={busy}
+                        onPress={() => {
+                          setDeclineReason("");
+                          setDeclineClaim(claim);
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ) : null
+            }
+          />
         </Section>
       ) : null}
 
       <View className="h-8" />
+
+      {/* ---------- Decline a warranty claim ---------- */}
+      <Modal
+        visible={Boolean(declineClaim)}
+        onClose={() => setDeclineClaim(null)}
+        title="Decline warranty claim"
+        footer={
+          <Button
+            title="Decline claim"
+            loading={busy}
+            disabled={declineReason.trim().length < 10}
+            onPress={async () => {
+              const claim = declineClaim;
+              setDeclineClaim(null);
+              await act(
+                () => api.post(`/business/warranty-claims/${claim.id}/decline`, { reason: declineReason.trim() }),
+                "Claim declined. The client sees your reason and can ask PixelPatch to review it."
+              );
+            }}
+          />
+        }
+      >
+        <Text className="mb-3 text-sm leading-5 text-gray-600">
+          {"Tell the client why the warranty doesn't cover this, for example new damage such as a drop or water. They can ask PixelPatch to review your answer."}
+        </Text>
+        <TextField
+          label="Reason"
+          maxLength={LIMITS.warrantyClaim}
+          value={declineReason}
+          onChangeText={setDeclineReason}
+          placeholder="e.g. The screen has a new crack from a drop, which the warranty doesn't cover."
+          multiline
+        />
+      </Modal>
 
       {/* ---------- Reject ---------- */}
       <Modal
@@ -651,8 +804,7 @@ export default function BusinessRepairDetail() {
             disabled={
               !quoteForm.estimatedCompletionTime.trim() ||
               parseDepositPercent(quoteForm.depositPercent) === null ||
-              (quoteForm.warrantyCovered &&
-                (!Number.isSafeInteger(Number(quoteForm.warrantyValue)) || Number(quoteForm.warrantyValue) < 1))
+              Boolean(warrantyProblem(quoteForm.warranty))
             }
             onPress={async () => {
               setQuoteOpen(false);
@@ -668,13 +820,7 @@ export default function BusinessRepairDetail() {
                     parts,
                     depositPercent: Number(quoteForm.depositPercent),
                     allowCash: shopAcceptsCash && quoteForm.allowCash,
-                    warranty: quoteForm.warrantyCovered
-                      ? {
-                          isWarrantyCovered: true,
-                          warrantyValue: Number(quoteForm.warrantyValue),
-                          warrantyUnit: quoteForm.warrantyUnit,
-                        }
-                      : null,
+                    warranty: warrantyPayload(quoteForm.warranty),
                   }),
                 "Quotation sent."
               );
@@ -689,44 +835,13 @@ export default function BusinessRepairDetail() {
           minDate={TODAY_DATE}
           placeholder="Choose a date"
         />
-        <View className="mb-3 flex-row items-center justify-between">
-          <Text className="text-sm font-medium text-gray-700">Include warranty</Text>
-          <Switch
-            value={quoteForm.warrantyCovered}
-            onValueChange={(value) => setQuoteForm((form) => ({ ...form, warrantyCovered: value }))}
-            trackColor={{ true: COLORS.primary }}
+        <View className="mb-2 border-t border-gray-100 pt-3">
+          <WarrantyFields
+            value={quoteForm.warranty}
+            onChange={(warranty) => setQuoteForm((form) => ({ ...form, warranty }))}
+            label="Include a warranty"
           />
         </View>
-        {quoteForm.warrantyCovered ? (
-          <View>
-            <TextField
-              label="Warranty duration" maxLength={4}
-              value={quoteForm.warrantyValue}
-              onChangeText={(value) => setQuoteForm((form) => ({ ...form, warrantyValue: value }))}
-              placeholder="e.g. 30"
-              keyboardType="numeric"
-              inputMode="numeric"
-            />
-            <Text className="mb-2 text-sm font-medium text-gray-700">Duration unit</Text>
-            <View className="mb-4 flex-row flex-wrap">
-              {WARRANTY_UNITS.map((unit) => (
-                <Pressable
-                  key={unit}
-                  onPress={() => setQuoteForm((form) => ({ ...form, warrantyUnit: unit }))}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: quoteForm.warrantyUnit === unit }}
-                  className={`mb-2 mr-2 rounded-md border px-3 py-2 ${
-                    quoteForm.warrantyUnit === unit
-                      ? "border-primary bg-teal-50"
-                      : "border-gray-300 bg-white"
-                  }`}
-                >
-                  <Text className="text-xs font-semibold text-gray-700">{unit}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
         <View className="mb-4 flex-row items-center justify-between">
           <Text className="text-sm font-medium text-gray-700">Parts needed</Text>
           <Switch

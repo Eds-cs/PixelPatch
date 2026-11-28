@@ -3,6 +3,7 @@ import db from "../../config/db.js";
 import { resolveShopIdForUser } from "../../utils/resolveShopIdForUser.js";
 import { normalizePhone, PHONE_MESSAGE } from "../../utils/phone.js";
 import { withTransaction } from "../../utils/transaction.js";
+import { depositSettled } from "../../utils/paymentPlan.js";
 import { returnChatsToOwner } from "../../utils/staff.js";
 import { unlinkEmployeeAccount } from "./staffAccessController.js";
 import { broadcastMessage, broadcastChatUpdate } from "../../sockets/chatSocket.js";
@@ -127,6 +128,7 @@ export const assignEmployeeToRequest = (req, res) => {
       `SELECT id
               , decision
               , payment_status
+              , deposit_paid_at
               , status
        FROM service_requests
        WHERE id = ? AND shop_id = ?`,
@@ -143,11 +145,11 @@ export const assignEmployeeToRequest = (req, res) => {
 
         if (
           requestRows[0].decision !== "ACCEPTED" ||
-          requestRows[0].payment_status !== "PAID" ||
+          !depositSettled(requestRows[0]) ||
           ["IN_PROGRESS", "COMPLETED"].includes(requestRows[0].status)
         ) {
           return res.status(409).json({
-            message: "A technician can be assigned after the client has paid and before repair starts"
+            message: "A technician can be assigned after the client has paid the deposit and before repair starts"
           });
         }
 

@@ -50,7 +50,7 @@ function nextStep(repair) {
   if (current === "waiting") return "Your request is waiting for the shop's decision.";
   if (current === "progress") return "Repair work is underway. Open your repair for details.";
   if (current === "completed") return "Your repair is complete. View the details and your review options.";
-  if (Number(repair.client_approved) === 1 && repair.payment_status === "PAID") return "Payment confirmed. Check technician and repair updates.";
+  if (Number(repair.client_approved) === 1 && (repair.payment_status === "PAID" || repair.deposit_paid_at)) return "Payment confirmed. Check technician and repair updates.";
   if (Number(repair.client_approved) === 1) return "Quotation approved. Open your repair to check payment options.";
   return "Check the assessment and quotation in your repair details.";
 }
@@ -59,10 +59,12 @@ function PaymentState({ repair }) {
   const value = String(repair.payment_status || "").toUpperCase();
   const paid = value === "PAID";
   const failed = value === "FAILED";
+  // Deposit paid (or none needed), balance still to pay.
+  const partly = !paid && Boolean(repair.deposit_paid_at);
   return (
     <View className="flex-row items-center gap-1.5">
       <Ionicons name={paid ? "checkmark-circle" : failed ? "alert-circle-outline" : "time-outline"} size={15} color={paid ? COLORS.success : failed ? COLORS.danger : COLORS.textMuted} />
-      <Text className={`text-xs font-medium ${paid ? "text-emerald-700" : failed ? "text-red-700" : "text-gray-500"}`}>{paid ? "Payment confirmed" : failed ? "Payment failed" : value === "PENDING" ? "Payment pending" : "Payment not recorded"}</Text>
+      <Text className={`text-xs font-medium ${paid ? "text-emerald-700" : failed ? "text-red-700" : "text-gray-500"}`}>{paid ? "Payment confirmed" : failed ? "Payment failed" : partly ? "Balance due when done" : value === "PENDING" ? "Payment pending" : "Payment not recorded"}</Text>
     </View>
   );
 }

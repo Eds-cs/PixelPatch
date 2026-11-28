@@ -53,6 +53,7 @@ const ADMIN_NAV = [
   { label: "Shops", href: "/admin/shops" },
   { label: "Services", href: "/admin/services" },
   { label: "Disputes", href: "/admin/disputes" },
+  { label: "Warranty", href: "/admin/warranty" },
   { label: "Repairs", href: "/admin/repairs" },
   { label: "Users", href: "/admin/users" },
   { label: "Payments", href: "/admin/payments" },

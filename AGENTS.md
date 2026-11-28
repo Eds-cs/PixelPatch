@@ -601,6 +601,9 @@ navigation (`lib/adminSummary.js`).
 * Disputes: `GET /admin/disputes?view=NEEDS_ADMIN|IN_PROGRESS|RESOLVED|ALL&q=`,
   `GET /admin/disputes/:id`, `POST /admin/disputes/:id/decide { outcome: REFUND|RESERVICE|DECLINE, note }`.
   See business rule 7 in section 20.
+* Warranty claims: `GET /admin/warranty-claims?view=NEEDS_ADMIN|WITH_SHOP|SETTLED|ALL&q=`,
+  `GET /admin/warranty-claims/:id`, `POST /admin/warranty-claims/:id/decide { outcome: REPAIR|DECLINE, note }`.
+  See business rule 9 in section 20.
 
 Shop-service review:
 
@@ -828,11 +831,21 @@ payment link for it.
 
 ---
 
-## Step 6 — Client pays
+## Step 6 — Client pays the deposit
 
-After client approval, payment is performed through the Xendit payment flow.
+After client approval, the client pays the **deposit**: `deposit_percent` of
+the quotation total, online through Xendit (since 2026-11-28; see "Payment
+terms" in section 20). At 100% that is the whole amount, one `FULL` payment.
+With a 0% deposit nothing is due and the request is ready to start as soon as
+the client approves.
 
-Payment information is stored in the relevant payment tables.
+When the deposit is settled, `service_requests.deposit_paid_at` is set. The
+**balance** (the rest) is paid during step 8, before step 9: online, or in
+cash when the quotation allows it, confirmed in the app by the owner or the
+assigned member. `payment_status = 'PAID'` means paid in full.
+
+Payment information is stored in `payments` (one row per part, `kind` =
+FULL, DEPOSIT or BALANCE). The rules live in `server/utils/paymentPlan.js`.
 
 A browser/application redirect from Xendit does NOT prove payment was successful.
 
@@ -842,7 +855,7 @@ Payment status must come from verified backend/payment information.
 
 ## Step 7 — Business assigns employee
 
-After the required approval/payment stages are satisfied, the business may assign an employee to the repair.
+After the client approved and the deposit is settled (`deposit_paid_at` set), the business may assign an employee to the repair.
 
 Employee assignment belongs to the business repair workflow.
 
@@ -858,7 +871,11 @@ When repair work begins:
 status = 'IN_PROGRESS'
 ```
 
-Do not begin repair work before the required earlier workflow stages.
+Do not begin repair work before the required earlier workflow stages:
+accepted, approved by the client, deposit settled, employee assigned.
+
+While the repair is in progress the business can send the client the balance
+payment link, or confirm a cash balance.
 
 ---
 
@@ -869,6 +886,9 @@ When the repair is finished:
 ```text
 status = 'COMPLETED'
 ```
+
+Completing requires the repair to be paid in full (`payment_status = 'PAID'`),
+so the balance is paid before the client gets the device back.
 
 ---
 
@@ -934,6 +954,9 @@ PAID
 FAILED
 ```
 
+`PAID` means paid in full (deposit and balance). Whether work may start is
+`deposit_paid_at` (section 15 Step 6), not `payment_status`.
+
 ---
 
 ## `client_approved`
@@ -968,7 +991,11 @@ DO NOT:
 * create quotations before assessment
 * create multiple quotations for one request
 * automatically mark payment successful from redirect URLs
-* start repair before required approval/payment
+* assign or start repair before client approval and a settled deposit
+  (`deposit_paid_at`)
+* complete a repair that isn't paid in full
+* record cash the shop hasn't confirmed, or take a cash balance on a
+  quotation that doesn't allow cash
 * allow rejected repairs to continue
 * derive workflow solely from UI button labels
 * collapse `decision`, `status`, `payment_status`, and `client_approved` into one field
@@ -1178,13 +1205,17 @@ status here.
    possible additional costs, the estimated completion date and any warranty.
    The shop sets its own warranty terms.
    *Status: mostly built (sections 15 and 17; warranties in
-   `request_quotation_warranties`). "Possible additional costs" has no field
-   yet.*
+   `request_quotation_warranties`, see rule 9). "Possible additional costs"
+   has no field yet.*
 5. **Cash confirmation.** The shop owner, or the member assigned to the
    repair, confirms receipt of cash balances in the app.
-   *Status: NOT built. The terms that allow a cash balance exist (see
-   "Payment terms" below), but payments are still Xendit only and nothing
-   records cash.*
+   *Status: built 2026-11-28. "Client paid in cash" on the business and
+   staff repair pages (`POST /business/repairs/:id/balance/cash`,
+   `POST /staff/repairs/:id/balance/cash`, `confirmCashBalanceFor` in
+   `server/utils/paymentPlan.js`). Only for the balance, when the quotation
+   allows cash and the repair is in progress. It records a `payments` row
+   (`gateway = 'CASH'`, `confirmed_by`), and first expires any open online
+   balance link at Xendit so the client can't pay twice.*
 6. **Payouts.** Payments made through the platform are held and released in
    full to the shop after the repair is completed and the dispute period has
    passed, less any payment processing fees.
@@ -1219,8 +1250,75 @@ status here.
    the shop, their chats return to the owner, their unfinished repairs stay
    under their name for the owner to finish); **Deactivate** still needs
    their repairs finished first, and also removes access.
-   *Status: built 2026-11-28 (see "Shop members" below), except confirming
-   cash payments (rule 5 isn't built).*
+   *Status: built 2026-11-28 (see "Shop members" below), including
+   confirming cash balances for their repairs (rule 5).*
+9. **Warranties and warranty claims** (agreed 2026-11-28). A warranty is the
+   shop's promise that its work and the parts it fitted will hold up for a
+   set time. It never covers new damage (drops, water, opened elsewhere).
+   * **Optional.** The shop decides whether to offer one; "no warranty" is
+     allowed and PixelPatch sets no minimum.
+   * **One length per job** (e.g. 3 months), not per item, plus what it
+     covers (parts, labour or both) and a short note of exclusions. Set in
+     the quotation and locked on approval (section 15 Step 5).
+   * **Starts** when the repair is completed (`completed_at`) and ends that
+     length later. A warranty repair does not restart or extend it.
+   * **Claims.** While the warranty is active, the client can request
+     warranty service from the repair page, describing the problem (photos
+     optional). The claim works for online and cash jobs, and a review does
+     not block it. It is separate from disputes: a dispute (7 days, online
+     payments) is about the job or the charge being wrong; a claim is about
+     the problem coming back later.
+   * **The shop responds** within 2 days (like disputes): accept or decline
+     with a reason.
+   * **Accepting creates a new, linked repair request** for the same device,
+     which goes through the normal workflow. Covered items cost ₱0; anything
+     not covered is quoted and approved by the client as usual.
+   * **Declined, or no answer within 2 days:** the client can escalate it to
+     an admin, who decides (like rule 7).
+   * Money for the original job has usually already been paid out (rule 6),
+     so a claim ends in a free repair, a refund the shop pays directly, or
+     action on the shop's account. Tell clients this where they see the
+     warranty.
+   Agreed details (2026-11-28): the client chooses how the shop gets the
+   device for the warranty repair (starting with the original method); the
+   warranty repair starts already `ACCEPTED`, so it goes straight to
+   assessment; the admin's only decisions are "order the repair" or
+   "decline".
+   *Status: built 2026-11-28 (`server/sql/2026-11-28_warranties.sql`).*
+   * **Terms:** `validateWarranty` / `warrantyInfo` in
+     `server/utils/warranty.js` (mirror: `lib/warranty.js`): 1 to 3 years
+     at most, `coverage` PARTS/LABOUR/BOTH, `exclusions` up to 300
+     characters. The shop's usual warranty is `shops.default_warranty_*`
+     (`PUT /business/shop/warranty`, Shop profile), copied into new
+     quotations like the payment-term defaults. Controls:
+     `components/WarrantyFields.jsx`. The client's repair page shows a
+     warranty card with the end date once completed (`warranty_info`).
+   * **Claims:** `server/utils/warrantyClaims.js` (shared rules) and
+     `controllers/warrantyClaimController.js`:
+     `POST /client/repairs/:id/warranty-claims` (multipart: `problem`,
+     `delivery_method`, `pickup_address_id`, `preferred_date`, up to 5
+     `photos`; form: `app/warranty-claim/[id].jsx`),
+     `POST /client/warranty-claims/:id/escalate`,
+     `POST /business/warranty-claims/:id/accept` and `/decline { reason }`.
+     One claim at a time per repair, and none while its warranty repair is
+     still open. The shop may still accept a claim it declined, until it's
+     escalated. The problem and the shop's reason go through
+     `maskContactInfo`, like chat. Each step adds a SYSTEM line to the
+     original repair's chat. Statuses: OPEN, ACCEPTED (`linked_request_id`
+     = the warranty repair), DECLINED, ESCALATED, CLOSED (an admin declined).
+   * **Warranty repair:** `createWarrantyRepair` makes a new request for the
+     same device and shop, `decision = 'ACCEPTED'`, with no services (so
+     covered work is ₱0) and the claim's photos. It then follows sections
+     15-17 as usual. A ₱0 quotation is paid in full as soon as the client
+     approves it (`settleRequestPayments`). Repair details return
+     `warranty_claims`/`warrantyClaims` and `warranty_of`/`warrantyOf`; the
+     business list flags `open_warranty_claims` and `is_warranty_repair`.
+   * **Admin:** `app/admin/warranty.jsx`, `controllers/admin/warrantyAdminController.js`;
+     `warranty_claims_need_admin` in `/admin/summary` (dashboard and
+     navigation badge).
+   * NOT built: emails or push notifications about claims (they show in the
+     repair chat and on the repair pages), and anything that moves money:
+     a refund the shop pays is arranged outside PixelPatch.*
 
 ## Shop members (since 2026-11-28)
 
@@ -1286,14 +1384,29 @@ Rules live in `server/utils/paymentTerms.js` and `lib/paymentTerms.js` (keep
 them in sync); the controls are `components/PaymentTermsFields.jsx`, and the
 client view is `QuotationSection` in `components/RepairSummary.jsx`.
 
-*Status: the terms are stored, edited and shown (2026-11-24). Payment does
-NOT follow them yet: `generatePaymentLink` still charges the full total
-online, and assignment, start and completion still require
-`payment_status = 'PAID'`. Until the deposit/balance flow is built, clients
-see terms the payment step doesn't honour, so build that before going live
-with deposits below 100% or cash. Building it changes section 15 Step 6 and
-the "start repair before payment" restriction in section 17: those changes
-are intended, but update both sections when you make them.*
+**How payment follows the terms (since 2026-11-28).** Rules in
+`server/utils/paymentPlan.js` (amounts mirror `quotationAmounts` in
+`lib/paymentTerms.js`; keep them in sync). Applied by
+`server/sql/2026-11-28_partial_payments.sql`.
+
+1. The client approves. A 0% deposit is settled at once (a ₱0 total is paid
+   in full at once).
+2. The shop sends the deposit link (`POST /business/repairs/:id/payments/generate-link`
+   charges whatever is due now). The Xendit webhook marks that `payments`
+   row `PAID` and sets `deposit_paid_at`. Assignment and start need it.
+3. Once the repair is `IN_PROGRESS`, the same button sends the balance link,
+   or the owner/assigned member confirms cash (business rule 5).
+4. When the balance is paid, `payment_status = 'PAID'` and the quotation is
+   `PAID`; only then can the repair be completed.
+
+The total charged is the quotation's `estimated_cost` (what the client
+approved), not a recount of current service prices. Every repair response
+includes the plan (`payment_plan` for the client, `paymentPlan` for the
+business and staff); `components/PaymentProgress.jsx` shows it. Payment
+links are sent by the owner only; the client pays from their repair page.
+
+Payouts (rule 6) must skip `gateway = 'CASH'` rows: that money went straight
+to the shop.
 
 ---
 
@@ -1373,7 +1486,10 @@ Payment state is ultimately backend-controlled.
 
 Never treat a successful return URL as definitive proof of payment.
 
-The webhook currently updates payment records.
+The webhook marks the matching `payments` row paid (never a `CASH` row, and
+only for the invoice id stored in `gateway_ref`), then calls
+`settleRequestPayments` to update `deposit_paid_at`, `payment_status` and the
+quotation (section 15 Step 6).
 
 Check actual webhook behavior before expanding payment state handling.
 
@@ -1796,7 +1912,7 @@ The numbers live in `lib/inputLimits.js` (app) and
 `server/utils/inputLimits.js` (server); keep them in sync. Examples: names
 100, email 100 (the columns are varchar(100)), street 200, service name 80,
 service description 500, problem description, chat message, review, dispute
-text 1000, AI message 2000, search 100.
+text, warranty claim 1000, warranty exclusions 300, AI message 2000, search 100.
 
 * App: pass `maxLength={LIMITS.x}` to every `TextField`/`TextInput`.
   `TextField` shows a counter on multi-line fields (`showCount` forces it).
@@ -2044,9 +2160,9 @@ external call.
 
 ## Payment creation
 
-Payment records may currently be inserted before successful external Xendit invoice creation.
-
-This can cause failed invoice attempts to leave existing rows.
+A `payments` row is still inserted before the Xendit invoice is created. A
+failed attempt marks it `FAILED`, and the next attempt for the same part
+reuses that row (`createPaymentLinkFor` in `server/utils/paymentPlan.js`).
 
 Inspect this behavior before modifying retry logic.
 
@@ -2206,7 +2322,9 @@ preferred_date       datetime NOT NULL
 notes                text NULL
 rejection_reason     text NULL
 client_approved      tinyint(1) NULL DEFAULT NULL
-payment_status       enum('PENDING','PAID','FAILED') NOT NULL DEFAULT 'PENDING'
+payment_status       enum('PENDING','PAID','FAILED') NOT NULL DEFAULT 'PENDING'   (PAID = paid in full)
+deposit_paid_at      datetime NULL   (deposit settled, so work may start: set by the webhook, or on
+                     approval for a 0% deposit; added 2026-11-28, section 15 Step 6)
 is_received          tinyint(1) NOT NULL DEFAULT 0
 received_at          datetime NULL
 received_method      enum('PICKUP','DELIVERY') NULL
@@ -2332,13 +2450,46 @@ cost                   decimal(10,0) NOT NULL   (whole pesos only)
 ```text
 id
 request_quotation_id   int NOT NULL   No FK
-is_warranty_covered    tinyint(1) NOT NULL
+is_warranty_covered    tinyint(1) NOT NULL   (new rows are always 1: no row = no warranty)
 warranty_value         int NOT NULL
 warranty_unit          enum('YEAR','DAY','MONTH','WEEK') NOT NULL
+coverage               enum('PARTS','LABOUR','BOTH') NULL   (NULL on older rows = BOTH; added 2026-11-28)
+exclusions             varchar(300) NULL   (what isn't covered; added 2026-11-28)
 ```
 
 Warranty data lives here, not on `request_quotations`. The table holds orphan
-rows for deleted quotations (ids 3, 4, 5 as of 2026-11-16).
+rows for deleted quotations (ids 3, 4, 5 as of 2026-11-16). The warranty
+starts at `service_requests.completed_at` (business rule 9).
+
+### warranty_claims
+
+```text
+id
+request_id          FK -> service_requests.id   (the original repair)
+client_id           FK -> users.id
+shop_id             FK -> shops.id
+problem             text NOT NULL   (contact details hidden)
+delivery_method     enum('PICKUP','DROPOFF','ONSITE') NOT NULL
+pickup_address_id   NULL FK -> addresses.id
+preferred_date      date NOT NULL
+status              enum('OPEN','ACCEPTED','DECLINED','ESCALATED','CLOSED') NOT NULL DEFAULT 'OPEN'
+shop_response       text NULL   (the shop's reason for declining)
+admin_note          text NULL   (the admin's explanation)
+decided_by          int NULL   No FK   (the admin)
+linked_request_id   NULL FK -> service_requests.id  UNIQUE   (the warranty repair)
+created_at          datetime NOT NULL DEFAULT current_timestamp()
+responded_at, escalated_at, resolved_at   datetime NULL
+```
+
+Added 2026-11-28 (business rule 9).
+
+### warranty_claim_photos
+
+```text
+id
+claim_id    FK -> warranty_claims.id  ON DELETE CASCADE
+file_name   varchar(255) NOT NULL   (under uploads/requests/, like repair request photos)
+```
 
 ### request_assignments
 
@@ -2358,21 +2509,25 @@ id
 request_id     FK -> service_requests.id   (NOT unique)
 client_id      FK -> users.id
 shop_id        FK -> shops.id
+kind           enum('FULL','DEPOSIT','BALANCE') NOT NULL DEFAULT 'FULL'   (added 2026-11-28)
 amount         decimal(10,2) NULL
 paid_at        datetime NULL
 payment_link   varchar(500) NULL
-gateway        enum('XENDIT') DEFAULT 'XENDIT'
+gateway_ref    varchar(100) NULL   (Xendit invoice id; added 2026-11-28)
+confirmed_by   int NULL   No FK   (users.id who confirmed a cash payment; added 2026-11-28)
+gateway        enum('XENDIT','CASH') DEFAULT 'XENDIT'   (CASH added 2026-11-28)
 status         enum('PENDING','PAID','FAILED') DEFAULT 'PENDING'
 ```
 
-The webhook updates both `payments.status` and `service_requests.payment_status`.
+One row per part of the payment (section 15 Step 6). The webhook updates
+`payments.status`, then `settleRequestPayments` updates the request.
 
 ### payment_details
 
 ```text
 id
 payment_id        FK -> payments.id  ON DELETE CASCADE ON UPDATE CASCADE
-type              enum('PARTIAL','FULL') NOT NULL
+type              enum('PARTIAL','FULL') NOT NULL   (FULL for kind FULL, PARTIAL for a deposit or balance)
 status            enum('PAID','PROCESSING','PARTIALLY_PAID') NOT NULL
 method            enum('GCASH','MAYA','CARD') NOT NULL
 transaction_ref   varchar(255) NOT NULL
@@ -2467,6 +2622,8 @@ phone_number             varchar(20) NOT NULL     (NOT "phone")
 email                    varchar(100) NOT NULL
 accepts_cash             tinyint(1) NOT NULL DEFAULT 0                    (added 2026-11-24)
 default_deposit_percent  tinyint unsigned NOT NULL DEFAULT 100 (0-100, CHECK; added 2026-11-24)
+default_warranty_value, default_warranty_unit, default_warranty_coverage, default_warranty_exclusions
+                         NULL   (the shop's usual warranty; value NULL = none; added 2026-11-28)
 open_time, closing_time  time NOT NULL
 days_from, days_to       varchar(255) NOT NULL
 is_verified              tinyint(1) NOT NULL   (0 = pending, 1 = verified)

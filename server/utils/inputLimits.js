@@ -30,6 +30,8 @@ export const LIMITS = {
   chatMessage: 1000,
   reviewComment: 1000,
   disputeText: 1000,        // complaint, shop response, admin explanation
+  warrantyExclusions: 300,  // request_quotation_warranties.exclusions varchar(300)
+  warrantyClaim: 1000,      // claim problem, shop's decline reason, admin note
   adminNote: 1000,          // reasons sent to shops or applicants
   suspendReason: 500,       // users.suspended_reason varchar(500)
   employeeRole: 100,

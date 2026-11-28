@@ -19,7 +19,8 @@ import {
   getRepairInProgress,
   markRepairCompleted,
   getCompletedRepair,
-  markDeviceReceived
+  markDeviceReceived,
+  confirmCashBalance
 } from "../controllers/repairController.js";
 console.log("🔥 repairRoutes loaded");
 import { LIMITS, limitText } from "../utils/inputLimits.js";
@@ -74,6 +75,9 @@ router.post("/:id/start", startRepair);
 router.get("/:id/in-progress", getRepairInProgress);
 
 router.post("/:id/complete", markRepairCompleted);
+
+// Confirm the client paid the balance in cash (business rule 5)
+router.post("/:id/balance/cash", confirmCashBalance);
 
 // Record that the shop has the device (pickup / drop-off only)
 router.post("/:id/received", markDeviceReceived);

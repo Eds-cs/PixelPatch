@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { statusBadgeClasses } from "../constants/theme";
 import { quotationAmounts } from "../lib/paymentTerms";
 import { useResponsive } from "../lib/useResponsive";
+import { COVERAGE_LABELS } from "../lib/warranty";
 
 const PESO = "₱";
 
@@ -262,6 +263,8 @@ export function QuotationSection({ quotation, clientApproved = null, viewer = "c
   const stage = quotationStage(quotation, clientApproved, viewer);
   const date = readyBy(quotation.estimated_completion_date ?? quotation.estimated_completion_time);
   const warranty = warrantyLength(quotation.warranty);
+  const covered = quotation.warranty ? COVERAGE_LABELS[quotation.warranty.coverage || "BOTH"] : null;
+  const exclusions = warranty ? quotation.warranty?.exclusions : null;
   const you = viewer === "shop" ? "The client pays" : "You pay";
   // Desktop: items and payment side by side, so prices stay near their names.
   const { isDesktop } = useResponsive();
@@ -292,8 +295,13 @@ export function QuotationSection({ quotation, clientApproved = null, viewer = "c
         {/* Ready by and warranty */}
         <View className="flex-row flex-wrap gap-3">
           <InfoTile icon="calendar-outline" label="Ready by" value={date ?? "Date to be set"} muted={!date} />
-          <InfoTile icon="shield-checkmark-outline" label="Warranty" value={warranty ?? "No warranty"} muted={!warranty} />
+          <InfoTile icon="shield-checkmark-outline" label="Warranty" value={warranty ? `${warranty} · ${covered}` : "No warranty"} muted={!warranty} />
         </View>
+        {warranty ? (
+          <Text className="mt-2 text-xs leading-5 text-gray-500">
+            {`Starts when the repair is completed.${exclusions ? ` Not covered: ${exclusions}` : " It covers the shop's work and parts, not new damage."}`}
+          </Text>
+        ) : null}
 
         <View className={isDesktop ? "mt-5 flex-row items-start gap-10" : ""}>
         <View style={isDesktop ? { flex: 1, minWidth: 0 } : undefined}>

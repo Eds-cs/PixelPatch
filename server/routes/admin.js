@@ -19,6 +19,7 @@ import {
 import { listUsers, getUser, suspendUser, reactivateUser } from "../controllers/admin/userAdminController.js";
 import { listRepairs, getRepair } from "../controllers/admin/repairAdminController.js";
 import { listDisputes, getDispute, decideDispute } from "../controllers/admin/disputeAdminController.js";
+import { listWarrantyClaims, getWarrantyClaim, decideWarrantyClaim } from "../controllers/admin/warrantyAdminController.js";
 
 import { LIMITS, limitText } from "../utils/inputLimits.js";
 
@@ -56,5 +57,10 @@ router.get("/repairs/:id", getRepair);
 router.get("/disputes", listDisputes);
 router.get("/disputes/:id", getDispute);
 router.post("/disputes/:id/decide", limitText({ note: ["The explanation", LIMITS.disputeText] }), decideDispute);
+
+// Warranty claims a client asked PixelPatch to review (business rule 9)
+router.get("/warranty-claims", listWarrantyClaims);
+router.get("/warranty-claims/:id", getWarrantyClaim);
+router.post("/warranty-claims/:id/decide", limitText({ note: ["The explanation", LIMITS.warrantyClaim] }), decideWarrantyClaim);
 
 export default router;

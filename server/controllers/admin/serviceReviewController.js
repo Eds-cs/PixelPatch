@@ -60,7 +60,9 @@ export const getAdminSummary = async (req, res) => {
          (SELECT COUNT(*) FROM users) AS users,
          (SELECT COUNT(*) FROM shops WHERE is_verified = 1) AS verified_shops,
          (SELECT COUNT(*) FROM shops) AS shops,
-         (SELECT COUNT(*) FROM disputes WHERE status = 'OPEN') AS open_disputes`
+         (SELECT COUNT(*) FROM disputes WHERE status = 'OPEN') AS open_disputes,
+         (SELECT COUNT(*) FROM warranty_claims WHERE status = 'ESCALATED') AS warranty_claims_need_admin,
+         (SELECT MIN(escalated_at) FROM warranty_claims WHERE status = 'ESCALATED') AS warranty_claims_need_admin_since`
     );
     res.json({ summary: counts });
   } catch (err) {

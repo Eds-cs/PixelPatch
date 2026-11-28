@@ -58,11 +58,13 @@ function PaymentLabel({ repair }) {
   const status = String(repair.payment_status ?? "").toUpperCase();
   const paid = status === "PAID";
   const failed = status === "FAILED";
+  // Deposit paid (or none needed), balance still to collect.
+  const partly = !paid && Boolean(repair.deposit_paid_at);
   return (
     <View className="flex-row items-center gap-1.5">
       <Ionicons name={paid ? "checkmark-circle" : failed ? "alert-circle-outline" : "time-outline"} size={14} color={paid ? COLORS.success : failed ? COLORS.danger : COLORS.textMuted} />
       <Text className={`text-xs font-medium ${paid ? "text-emerald-700" : failed ? "text-red-700" : "text-gray-500"}`}>
-        {paid ? "Paid" : failed ? "Payment failed" : status === "PENDING" ? "Payment pending" : "Payment not recorded"}
+        {paid ? "Paid" : failed ? "Payment failed" : partly ? "Balance due" : status === "PENDING" ? "Payment pending" : "Payment not recorded"}
       </Text>
     </View>
   );
@@ -78,7 +80,7 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${action} #${repair.id}, ${device}, ${repair.client || "Client"}`}
-      className={`mb-3 rounded-xl border bg-white p-4 active:bg-teal-50 ${stage === "new" ? "border-amber-200" : "border-gray-200"}`}
+      className={`mb-3 rounded-xl border bg-white p-4 active:bg-teal-50 ${stage === "new" || Number(repair.open_warranty_claims) > 0 ? "border-amber-200" : "border-gray-200"}`}
     >
       <View className={desktop ? "flex-row items-center gap-4" : ""}>
         <View style={desktop ? { flex: 3, minWidth: 0 } : undefined}>
@@ -90,6 +92,9 @@ function QueueItem({ repair, desktop, mobile, onPress }) {
               <View className="flex-row flex-wrap items-center gap-2">
                 <Text className="text-xs font-semibold text-gray-400">#{repair.id}</Text>
                 {stage === "new" ? <Text className="text-xs font-semibold text-amber-700">Decision needed</Text> : null}
+                {/* Warranty claims (business rule 9): one waiting for an answer, or a warranty repair. */}
+                {Number(repair.open_warranty_claims) > 0 ? <Text className="text-xs font-semibold text-amber-700">Warranty claim waiting</Text> : null}
+                {Number(repair.is_warranty_repair) === 1 ? <Text className="text-xs font-semibold text-teal-700">Warranty repair</Text> : null}
               </View>
               <Text className="mt-1 text-base font-bold text-gray-900">{device}</Text>
               <Text className="mt-1 text-sm text-gray-500">{repair.client || "Client"}</Text>

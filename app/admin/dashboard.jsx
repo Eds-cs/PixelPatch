@@ -40,6 +40,15 @@ const TODOS = [
     note: "The client turned down the shop's offer, or the shop didn't reply within 2 days.",
   },
   {
+    key: "warranty_claims_need_admin",
+    since: "warranty_claims_need_admin_since",
+    href: "/admin/warranty",
+    icon: "shield-half-outline",
+    one: "warranty claim needs a decision",
+    many: "warranty claims need a decision",
+    note: "The shop declined the claim or didn't answer within 2 days, and the client asked PixelPatch.",
+  },
+  {
     key: "repairs_awaiting_shop",
     since: "repairs_awaiting_shop_since",
     href: "/admin/repairs",
@@ -54,6 +63,7 @@ const SECTIONS = [
   { href: "/admin/shops", icon: "storefront-outline", title: "Shops", note: "Verify new shops, documents and payout accounts.", ready: true },
   { href: "/admin/services", icon: "shield-checkmark-outline", title: "Services", note: "Review services shops add or change, in bulk.", ready: true },
   { href: "/admin/disputes", icon: "alert-circle-outline", title: "Disputes", note: "Decide disputes clients and shops can't settle.", ready: true },
+  { href: "/admin/warranty", icon: "shield-half-outline", title: "Warranty claims", note: "Decide warranty claims the shop declined or didn't answer.", ready: true },
   { href: "/admin/repairs", icon: "construct-outline", title: "Repairs", note: "Every repair request across shops, read-only.", ready: true },
   { href: "/admin/users", icon: "people-outline", title: "Users", note: "Find accounts, see their activity, suspend abuse.", ready: true },
   { href: "/admin/payments", icon: "card-outline", title: "Payments", note: "Xendit payments, refunds and shop payouts." },

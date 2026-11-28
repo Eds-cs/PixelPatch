@@ -59,7 +59,7 @@ export const listRepairs = async (req, res) => {
     const [[{ total }]] = await db.promise().query(`SELECT COUNT(*) AS total ${FROM} ${whereSql}`, params);
     const [repairs] = await db.promise().query(
       `SELECT sr.id, sr.created_at, sr.updated_at, sr.completed_at, sr.delivery_method,
-              sr.status, sr.decision, sr.payment_status, sr.client_approved,
+              sr.status, sr.decision, sr.payment_status, sr.deposit_paid_at, sr.client_approved,
               s.id AS shop_id, s.name AS shop_name,
               c.id AS client_id, CONCAT_WS(' ', c.first_name, c.last_name) AS client_name,
               dv.device_type, dv.name AS device_name, dv.brand AS device_brand, dv.model AS device_model,
@@ -117,7 +117,7 @@ export const getRepair = async (req, res) => {
         `SELECT id, estimated_cost, deposit_percent, allow_cash, estimated_completion_time, status, created_at
          FROM request_quotations WHERE request_id = ?`
       ),
-      q("SELECT id, amount, status, paid_at, gateway FROM payments WHERE request_id = ? ORDER BY id"),
+      q("SELECT id, kind, amount, status, paid_at, gateway, confirmed_by FROM payments WHERE request_id = ? ORDER BY id"),
       q(
         `SELECT ra.assigned_at, CONCAT_WS(' ', e.first_name, e.last_name) AS employee_name, e.role AS employee_role
          FROM request_assignments ra JOIN shop_employees e ON e.id = ra.employee_id WHERE ra.request_id = ?`

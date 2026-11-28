@@ -47,6 +47,7 @@ const HINTS = {
   ALL: "Every repair request.",
 };
 const DELIVERY = { PICKUP: "Pickup", DROPOFF: "Drop-off", ONSITE: "On-site" };
+const PAYMENT_KIND = { FULL: "Full payment", DEPOSIT: "Deposit", BALANCE: "Balance" };
 const DISPUTE = { OPEN: "Dispute open", SHOP_PROPOSED: "Dispute: shop offered", RESOLVED: "Dispute resolved", REJECTED: "Dispute: offer declined" };
 const TYPE = { PHONE: "Phone", LAPTOP: "Laptop", DESKTOP: "PC" };
 
@@ -171,7 +172,7 @@ function RepairDetail({ repairId, onClose }) {
           <Section title="Payment and dispute">
             {data.payments.length ? (
               data.payments.map((p) => (
-                <AdminDetail key={p.id} icon="card-outline" label={`Payment #${p.id} · ${p.gateway}`}>
+                <AdminDetail key={p.id} icon="card-outline" label={`${PAYMENT_KIND[p.kind] ?? "Payment"} #${p.id} · ${p.gateway === "CASH" ? "Cash (confirmed by the shop)" : p.gateway}`}>
                   {adminMoney(p.amount)} · {p.status}
                   {p.paid_at ? ` · paid ${adminDate(p.paid_at)}` : ""}
                 </AdminDetail>

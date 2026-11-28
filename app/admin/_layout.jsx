@@ -15,6 +15,7 @@ const SCREENS = [
   { name: "shops", title: "Shops", icon: "storefront" },
   { name: "services", title: "Services", icon: "shield-checkmark" },
   { name: "disputes", title: "Disputes", icon: "alert-circle" },
+  { name: "warranty", title: "Warranty claims", icon: "shield-half" },
   { name: "repairs", title: "Repairs", icon: "construct" },
   { name: "users", title: "Users", icon: "people" },
   { name: "payments", title: "Payments", icon: "card" },
