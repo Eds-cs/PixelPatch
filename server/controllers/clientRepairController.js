@@ -1,6 +1,9 @@
 import db from "../config/db.js";
 import { withTransaction } from "../utils/transaction.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
+import { loadPaymentState, settleRequestPayments } from "../utils/paymentPlan.js";
+import { warrantyInfo } from "../utils/warranty.js";
+import { canEscalate, claimEligibility, claimsForRequest } from "../utils/warrantyClaims.js";
 
 /* ======================================================
    GET CLIENT REPAIRS (LIST)
@@ -17,6 +20,7 @@ export const getClientRepairs = async (req, res) => {
         sr.decision,
         sr.status,
         sr.payment_status,
+        sr.deposit_paid_at,
         sr.client_approved,
         DATE_FORMAT(sr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
 
@@ -155,7 +159,7 @@ export const getClientRepairById = async (req, res) => {
       );
 
       const [[warrantyRow]] = await db.promise().query(
-        `SELECT is_warranty_covered, warranty_value, warranty_unit
+        `SELECT is_warranty_covered, warranty_value, warranty_unit, coverage, exclusions
          FROM request_quotation_warranties
          WHERE request_quotation_id = ?
          LIMIT 1`,
@@ -165,20 +169,34 @@ export const getClientRepairById = async (req, res) => {
     }
 
     /* ======================================================
-       PAYMENT (READ-ONLY, LATEST)
+       PAYMENT (READ-ONLY)
+       payment: the latest row (lib/payments.js polls its status).
+       payment_plan: deposit and balance (utils/paymentPlan.js).
     ====================================================== */
     const [[payment]] = await db.promise().query(
       `
       SELECT
+        kind,
         amount,
         status,
+        gateway,
         payment_link,
         paid_at
       FROM payments
       WHERE request_id = ?
-      ORDER BY paid_at DESC
+      ORDER BY id DESC
       LIMIT 1
       `,
+      [requestId]
+    );
+    const { plan: paymentPlan } = await loadPaymentState(requestId);
+
+    /* WARRANTY CLAIMS (business rule 9): this repair's claims, whether a new
+       one can be opened, and, for a warranty repair, the original repair. */
+    const warrantyDetails = warrantyInfo(warranty, repair);
+    const warrantyClaims = (await claimsForRequest(requestId)).map((claim) => ({ ...claim, can_escalate: canEscalate(claim) }));
+    const [[warrantyOf]] = await db.promise().query(
+      "SELECT id AS claim_id, request_id FROM warranty_claims WHERE linked_request_id = ? LIMIT 1",
       [requestId]
     );
 
@@ -235,7 +253,6 @@ export const getClientRepairById = async (req, res) => {
 
     const dispute = disputes.length > 0 ? disputes[0] : null;
 
-    console.log("DISPUTE:", dispute);
 
     // FETCH DISPUTE EDITS (MESSAGE HISTORY)
     let disputeEdits = [];
@@ -279,6 +296,12 @@ export const getClientRepairById = async (req, res) => {
           : null,
 
         payment: payment || null,
+        payment_plan: paymentPlan,
+        // The warranty with its dates once the repair is completed (utils/warranty.js).
+        warranty_info: warrantyDetails,
+        warranty_claims: warrantyClaims,
+        warranty_claim: claimEligibility(repair, warrantyDetails, warrantyClaims),
+        warranty_of: warrantyOf ?? null,
         review: review || null,
         assigned_employee: assignedEmployee || null,
       },
@@ -337,17 +360,23 @@ export const approveQuotation = async (req, res) => {
       });
     }
 
-    // Conditional update so a concurrent cancel cannot be overwritten.
-    const [result] = await db.promise().query(
-      `
-      UPDATE service_requests
-      SET client_approved = 1, updated_at = NOW()
-      WHERE id = ? AND client_id = ? AND client_approved IS NULL
-      `,
-      [requestId, clientId]
-    );
+    // Conditional update so a concurrent cancel cannot be overwritten. Then
+    // settle: with a 0% deposit, work can start right away (paymentPlan.js).
+    const approved = await withTransaction(async (conn) => {
+      const [result] = await conn.query(
+        `
+        UPDATE service_requests
+        SET client_approved = 1, updated_at = NOW()
+        WHERE id = ? AND client_id = ? AND client_approved IS NULL
+        `,
+        [requestId, clientId]
+      );
+      if (result.affectedRows === 0) return false;
+      await settleRequestPayments(conn, requestId);
+      return true;
+    });
 
-    if (result.affectedRows === 0) {
+    if (!approved) {
       return res.status(409).json({ message: "Quotation cannot be approved at this stage" });
     }
 

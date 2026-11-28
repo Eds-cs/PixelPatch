@@ -15,6 +15,7 @@
 import db from "../config/db.js";
 import { membershipFor } from "../utils/staff.js";
 import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
+import { loadPaymentState, depositSettled, confirmCashBalanceFor } from "../utils/paymentPlan.js";
 import { clientPhoneFor } from "./repairController.js";
 
 const query = (sql, params = []) => db.promise().query(sql, params).then(([rows]) => rows);
@@ -165,7 +166,7 @@ export const getStaffRepair = async (req, res) => {
   try {
     const [row] = await query(
       `SELECT sr.id, sr.issue_description, sr.decision AS decisionStatus, sr.status, sr.delivery_method,
-              sr.preferred_date, sr.is_received, sr.received_at, sr.payment_status, sr.client_approved,
+              sr.preferred_date, sr.is_received, sr.received_at, sr.payment_status, sr.deposit_paid_at, sr.client_approved,
               sr.completed_at, sr.notes,
               CONCAT_WS(' ', u.first_name, u.last_name) AS client, u.phone AS client_phone,
               d.name AS device_name, d.device_type, d.brand, d.model, d.serial_number, d.model_number, d.specs,
@@ -193,6 +194,8 @@ export const getStaffRepair = async (req, res) => {
     );
     const onSiteOrPickup = row.delivery_method === "PICKUP" || row.delivery_method === "ONSITE";
     const paid = row.payment_status === "PAID";
+    const { plan } = await loadPaymentState(requestId);
+    const canConfirmCash = row.status === "IN_PROGRESS" && plan?.due?.kind === "BALANCE" && plan.due.cash_allowed;
     return res.json({
       repair: {
         id: row.id,
@@ -223,8 +226,11 @@ export const getStaffRepair = async (req, res) => {
         // Same rule as the owner (clientPhoneFor in repairController.js).
         clientPhone: clientPhoneFor(row),
         chatId: chat?.id ?? null,
-        canStart: row.decisionStatus === "ACCEPTED" && paid && !["IN_PROGRESS", "COMPLETED"].includes(row.status),
+        // What the client pays and what's still open (no payment links here).
+        paymentPlan: plan,
+        canStart: row.decisionStatus === "ACCEPTED" && depositSettled(row) && !["IN_PROGRESS", "COMPLETED"].includes(row.status),
         canComplete: row.status === "IN_PROGRESS" && paid,
+        canConfirmCash,
       },
     });
   } catch (err) {
@@ -237,7 +243,7 @@ const lifecycle = (fn, failure) => async (req, res) => {
   const requestId = positiveId(req.params.id);
   if (!requestId) return res.status(404).json({ message: "Repair not found." });
   try {
-    const { status, body } = await fn({ requestId, shopId: req.staff.shopId, employeeId: req.staff.employeeId });
+    const { status, body } = await fn({ requestId, shopId: req.staff.shopId, employeeId: req.staff.employeeId, actorUserId: req.user.id });
     return res.status(status).json(body);
   } catch (err) {
     console.error("staff repair lifecycle:", err.code || err.message);
@@ -248,3 +254,22 @@ const lifecycle = (fn, failure) => async (req, res) => {
 /* POST /api/staff/repairs/:id/start, /complete (only the assigned employee) */
 export const startStaffRepair = lifecycle(startRepairFor, "Couldn't start the repair.");
 export const completeStaffRepair = lifecycle(completeRepairFor, "Couldn't complete the repair.");
+
+/* POST /api/staff/repairs/:id/balance/cash: the assigned member confirms the
+   client paid the balance in cash (business rules 5 and 8). */
+export const confirmStaffCashBalance = async (req, res) => {
+  const requestId = positiveId(req.params.id);
+  if (!requestId) return res.status(404).json({ message: "Repair not found." });
+  try {
+    const { status, body } = await confirmCashBalanceFor({
+      requestId,
+      shopId: req.staff.shopId,
+      employeeId: req.staff.employeeId,
+      userId: req.user.id,
+    });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("confirmStaffCashBalance:", err.code || err.message);
+    return res.status(500).json({ message: "Couldn't record the cash payment." });
+  }
+};

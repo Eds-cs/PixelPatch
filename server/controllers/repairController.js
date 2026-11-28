@@ -3,6 +3,10 @@ import db from "../config/db.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
 import { quotationTerms } from "../utils/paymentTerms.js";
 import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
+import { loadPaymentState, confirmCashBalanceFor } from "../utils/paymentPlan.js";
+import { validateWarranty } from "../utils/warranty.js";
+import { claimsForRequest } from "../utils/warrantyClaims.js";
+import { postRepairConfirmation, postRepairUpdate } from "../utils/repairCards.js";
 
 // service_requests.client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
 const CANCELLED_MESSAGE = "The client cancelled this repair request";
@@ -80,8 +84,11 @@ export const getRepairsForShop = async (req, res) => {
         sr.decision AS decisionStatus,
         sr.status,
         sr.payment_status,
+        sr.deposit_paid_at,
         sr.client_approved,
         DATE_FORMAT(sr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+        (SELECT COUNT(*) FROM warranty_claims wc WHERE wc.request_id = sr.id AND wc.status = 'OPEN') AS open_warranty_claims,
+        EXISTS (SELECT 1 FROM warranty_claims wl WHERE wl.linked_request_id = sr.id) AS is_warranty_repair,
 
         /* Fallback for old MySQL: return comma-separated service list */
         COALESCE(GROUP_CONCAT(ss.name SEPARATOR ', '), '') AS services
@@ -95,7 +102,7 @@ export const getRepairsForShop = async (req, res) => {
 
       WHERE sr.shop_id = ?
       GROUP BY sr.id, u.first_name, d.name, sr.issue_description,
-        sr.decision, sr.status, sr.payment_status, sr.client_approved, sr.created_at
+        sr.decision, sr.status, sr.payment_status, sr.deposit_paid_at, sr.client_approved, sr.created_at
       ORDER BY sr.id DESC
     `;
 
@@ -172,9 +179,8 @@ export const getRepairById = async (req, res) => {
           sr.received_at,
           sr.received_method,
           sr.payment_status,
+          sr.deposit_paid_at,
           sr.client_approved,
-
-          p.payment_link,
 
           CONCAT(u.first_name, ' ', u.last_name) AS client,
           u.phone AS client_phone,
@@ -206,8 +212,6 @@ export const getRepairById = async (req, res) => {
           COALESCE(GROUP_CONCAT(DISTINCT ss.name SEPARATOR ', '), '') AS services
 
         FROM service_requests sr
-        LEFT JOIN payments p 
-          ON p.request_id = sr.id
         LEFT JOIN users u ON sr.client_id = u.id
         LEFT JOIN devices d ON sr.device_id = d.id
         LEFT JOIN addresses a ON sr.pickup_address_id = a.id
@@ -232,6 +236,15 @@ export const getRepairById = async (req, res) => {
     }
 
     const row = rows[0];
+    // Deposit and balance (utils/paymentPlan.js).
+    const { plan: paymentPlan } = await loadPaymentState(row.id);
+    // Warranty claims on this repair, and the original repair when this is a
+    // warranty repair (business rule 9).
+    const warrantyClaims = await claimsForRequest(row.id);
+    const [warrantyOf] = await query(
+      "SELECT id AS claim_id, request_id FROM warranty_claims WHERE linked_request_id = ? LIMIT 1",
+      [row.id]
+    );
 
     const repair = {
       id: row.id,
@@ -260,7 +273,12 @@ export const getRepairById = async (req, res) => {
       shopAddress: row.shopAddress || null,
       services: row.services ? row.services.split(", ") : [],
       paymentStatus: row.payment_status,
-      paymentLink: row.payment_link || null,
+      depositPaidAt: row.deposit_paid_at,
+      // The open link for what is due now (deposit or balance), if any.
+      paymentLink: paymentPlan?.due?.payment_link ?? null,
+      paymentPlan,
+      warrantyClaims,
+      warrantyOf: warrantyOf ?? null,
       // NULL = undecided, 1 = approved, 0 = cancelled by the client.
       clientApproved: row.client_approved,
       // Only while the shop has to reach the client (see clientPhoneFor).
@@ -491,6 +509,8 @@ export const confirmRepair = async (req, res) => {
     );
 
     console.log("✅ Repair confirmed");
+    // "Repair confirmed" card in the repair's chat (utils/repairCards.js).
+    await postRepairConfirmation(Number(id), req.user.id);
 
     return res.json({
       success: true,
@@ -743,6 +763,12 @@ export const createQuotation = async (req, res) => {
       return res.status(400).json({ success: false, message: payment.error });
     }
 
+    // Warranty (optional, the shop decides: utils/warranty.js).
+    const checkedWarranty = validateWarranty(warranty);
+    if (checkedWarranty.error) {
+      return res.status(400).json({ success: false, message: checkedWarranty.error, field: checkedWarranty.field });
+    }
+
     /* -------------------------------------------------
        1️⃣ Verify request ownership + accepted + assessment
     -------------------------------------------------- */
@@ -859,20 +885,19 @@ export const createQuotation = async (req, res) => {
     /* -------------------------------------------------
        8️⃣ Insert WARRANTY (optional)
     -------------------------------------------------- */
-    if (warranty) {
+    if (checkedWarranty.warranty) {
+      const w = checkedWarranty.warranty;
       await query(
         `INSERT INTO request_quotation_warranties
          (request_quotation_id, is_warranty_covered,
-          warranty_value, warranty_unit)
-         VALUES (?, ?, ?, ?)`,
-        [
-          quotationId,
-          warranty.isWarrantyCovered ? 1 : 0,
-          warranty.warrantyValue,
-          warranty.warrantyUnit
-        ]
+          warranty_value, warranty_unit, coverage, exclusions)
+         VALUES (?, 1, ?, ?, ?, ?)`,
+        [quotationId, w.value, w.unit, w.coverage, w.exclusions]
       );
     }
+
+    // "Quotation sent" card in the repair's chat (utils/repairCards.js).
+    await postRepairUpdate(Number(id), req.user.id, "QUOTE_SENT");
 
     return res.json({
       success: true,
@@ -923,7 +948,7 @@ export const getQuotationByRequest = async (req, res) => {
     );
 
     const warranty = await query(
-      `SELECT is_warranty_covered, warranty_value, warranty_unit
+      `SELECT is_warranty_covered, warranty_value, warranty_unit, coverage, exclusions
        FROM request_quotation_warranties
        WHERE request_quotation_id = ?
        LIMIT 1`,
@@ -1016,6 +1041,11 @@ export const updateQuotation = async (req, res) => {
       return res.status(400).json({ success: false, message: payment.error });
     }
 
+    const checkedWarranty = validateWarranty(warranty);
+    if (checkedWarranty.error) {
+      return res.status(400).json({ success: false, message: checkedWarranty.error, field: checkedWarranty.field });
+    }
+
     // 2️⃣ Update quotation (non-price fields)
     await query(
       `UPDATE request_quotations
@@ -1089,17 +1119,13 @@ export const updateQuotation = async (req, res) => {
       [quotationId]
     );
 
-    if (warranty) {
+    if (checkedWarranty.warranty) {
+      const w = checkedWarranty.warranty;
       await query(
         `INSERT INTO request_quotation_warranties
-         (request_quotation_id, is_warranty_covered, warranty_value, warranty_unit)
-         VALUES (?, ?, ?, ?)`,
-        [
-          quotationId,
-          warranty.isWarrantyCovered ? 1 : 0,
-          warranty.warrantyValue,
-          warranty.warrantyUnit
-        ]
+         (request_quotation_id, is_warranty_covered, warranty_value, warranty_unit, coverage, exclusions)
+         VALUES (?, 1, ?, ?, ?, ?)`,
+        [quotationId, w.value, w.unit, w.coverage, w.exclusions]
       );
     }
 
@@ -1163,7 +1189,7 @@ export const startRepair = async (req, res) => {
     return res.status(403).json({ message: "Business access only" });
   }
   try {
-    const { status, body } = await startRepairFor({ requestId: req.params.id, shopId: req.shopId });
+    const { status, body } = await startRepairFor({ requestId: req.params.id, shopId: req.shopId, actorUserId: req.user.id });
     return res.status(status).json(body);
   } catch (err) {
     console.error("startRepair:", err.code || err.message);
@@ -1371,11 +1397,29 @@ export const markRepairCompleted = async (req, res) => {
     return res.status(403).json({ message: "Business access only" });
   }
   try {
-    const { status, body } = await completeRepairFor({ requestId: req.params.id, shopId: req.shopId });
+    const { status, body } = await completeRepairFor({ requestId: req.params.id, shopId: req.shopId, actorUserId: req.user.id });
     return res.status(status).json(body);
   } catch (err) {
     console.error("markRepairCompleted:", err.code || err.message);
     return res.status(500).json({ message: "Update failed" });
+  }
+};
+
+// POST /api/business/repairs/:id/balance/cash
+// Business rule 5: the owner confirms the client paid the balance in cash.
+// Shared with the staff portal (utils/paymentPlan.js).
+export const confirmCashBalance = async (req, res) => {
+  if (!req.user || Number(req.user.role_id) !== 3) {
+    return res.status(403).json({ message: "Business access only" });
+  }
+  const requestId = Number(req.params.id);
+  if (!Number.isSafeInteger(requestId) || requestId <= 0) return res.status(404).json({ message: "Repair not found" });
+  try {
+    const { status, body } = await confirmCashBalanceFor({ requestId, shopId: req.shopId, userId: req.user.id });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("confirmCashBalance:", err.code || err.message);
+    return res.status(500).json({ message: "Couldn't record the cash payment" });
   }
 };
 

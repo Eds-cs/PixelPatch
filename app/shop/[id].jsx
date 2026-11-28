@@ -16,6 +16,7 @@ import { mapsDirectionsUrl, mapsSearchUrl, openInMaps } from "../../lib/maps";
 import { useFetch } from "../../lib/useFetch";
 import { useAuth } from "../../lib/auth";
 import { shopTermsLabel } from "../../lib/paymentTerms";
+import { shopWarrantyLabel } from "../../lib/warranty";
 import { categoryLabel } from "../../lib/serviceCategories";
 import api from "../../lib/api";
 import { COLORS } from "../../constants/theme";
@@ -281,6 +282,12 @@ export default function ShopDetail() {
       <InfoRow icon="wallet-outline">
         <Text className="text-sm text-gray-800">{shopTermsLabel(s)}</Text>
         <Text className="text-xs text-gray-500">The exact terms are on each quotation.</Text>
+      </InfoRow>
+      <InfoRow icon="shield-checkmark-outline">
+        <Text className="text-sm text-gray-800">
+          {shopWarrantyLabel(s) ? `Usual warranty: ${shopWarrantyLabel(s)}` : "Warranty terms come with the quotation"}
+        </Text>
+        <Text className="text-xs text-gray-500">{"The warranty on your quotation is the one that applies."}</Text>
       </InfoRow>
       {/* The shop's phone and email are not shown (the API leaves them out):
           clients reach shops through PixelPatch chat, which keeps the job,

@@ -1,8 +1,9 @@
 // app/staff/repairs/[id].jsx — one repair assigned to this employee
 // (GET /api/staff/repairs/:id). An employee can start the repair and mark it
 // completed (POST .../start, .../complete), call the client for a pickup or
-// on-site job while that's allowed, and open the repair's chat once the owner
-// hands it over. Quotations, assignment and payment stay with the owner.
+// on-site job while that's allowed, confirm a cash balance the client paid
+// them (POST .../balance/cash), and open the repair's chat once the owner
+// hands it over. Quotations, assignment and payment links stay with the owner.
 import { useState } from "react";
 import { ActivityIndicator, Linking, RefreshControl, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -16,6 +17,7 @@ import { useResponsive } from "../../../lib/useResponsive";
 import { formatPhone } from "../../../lib/phone";
 import { specRows, typeLabel } from "../../../lib/deviceSpecs";
 import { COLORS } from "../../../constants/theme";
+import PaymentProgress from "../../../components/PaymentProgress";
 
 const METHOD = { PICKUP: "Pickup", DROPOFF: "Drop-off", ONSITE: "On-site" };
 
@@ -39,6 +41,28 @@ export default function StaffRepair() {
       </View>
     );
   }
+
+  const plan = repair.paymentPlan ?? null;
+  const balance = plan?.due?.kind === "BALANCE" ? plan.due.amount : null;
+  const peso = (value) => `₱${Number(value || 0).toLocaleString()}`;
+
+  const confirmCash = () => confirmAction(
+    "Confirm cash payment",
+    `Confirm that you received ${peso(balance)} in cash from the client. Only confirm cash you have in hand.`,
+    async () => {
+      setBusy("cash");
+      setActionError(null);
+      try {
+        await api.post(`/staff/repairs/${id}/balance/cash`);
+        await refresh();
+      } catch (e) {
+        setActionError(e.message || "Couldn't record the cash payment.");
+      } finally {
+        setBusy(null);
+      }
+    },
+    { confirmLabel: "I received it" }
+  );
 
   const run = (action, label) => confirmAction(
     label,
@@ -79,6 +103,7 @@ export default function StaffRepair() {
 
       <View className={`mb-4 ${isMobile ? "gap-3" : "flex-row flex-wrap gap-3"}`}>
         {repair.canStart ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title="Start repair" loading={busy === "start"} disabled={Boolean(busy)} onPress={() => run("start", "Start repair")} /></View> : null}
+        {repair.canConfirmCash ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title={`Client paid ${peso(balance)} in cash`} variant="outline" loading={busy === "cash"} disabled={Boolean(busy)} onPress={confirmCash} /></View> : null}
         {repair.canComplete ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title="Mark completed" loading={busy === "complete"} disabled={Boolean(busy)} onPress={() => run("complete", "Mark completed")} /></View> : null}
         {repair.chatId ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title="Open chat with client" variant="outline" onPress={() => router.push(`/chat/${repair.chatId}`)} /></View> : null}
       </View>
@@ -86,7 +111,14 @@ export default function StaffRepair() {
         <Text className="mb-4 text-xs leading-5 text-gray-500">The chat with the client stays with your shop owner until they hand it to you.</Text>
       ) : null}
       {!repair.canStart && repair.status !== "IN_PROGRESS" && repair.status !== "COMPLETED" ? (
-        <Text className="mb-4 text-xs leading-5 text-gray-500">You can start this repair once the client has paid.</Text>
+        <Text className="mb-4 text-xs leading-5 text-gray-500">You can start this repair once the client has paid the deposit.</Text>
+      ) : null}
+      {repair.status === "IN_PROGRESS" && !repair.canComplete ? (
+        <Text className="mb-4 text-xs leading-5 text-gray-500">
+          {repair.canConfirmCash
+            ? `The client still owes the balance of ${peso(balance)}. They can pay it online, or pay you in cash and you confirm it here. Then mark the repair completed.`
+            : `The client still owes the balance${balance ? ` of ${peso(balance)}` : ""}. Your shop owner sends them the payment link. You can mark the repair completed once it's paid.`}
+        </Text>
       ) : null}
 
       {repair.clientPhone ? (
@@ -112,9 +144,14 @@ export default function StaffRepair() {
         <Row label="Preferred date" value={formatRepairDate(repair.preferredDate)} />
         <Row label="Estimated completion" value={formatRepairDate(repair.estimatedCompletion)} />
         {repair.deliveryMethod !== "ONSITE" ? <Row label="Device received" value={repair.isReceived ? `Yes, ${formatRepairDate(repair.receivedAt)}` : "Not yet"} /> : null}
-        <Row label="Payment" value={repair.paymentStatus === "PAID" ? "Paid" : "Not paid yet"} />
         {repair.completedAt ? <Row label="Completed" value={formatRepairDate(repair.completedAt)} /> : null}
       </Section>
+
+      {plan ? (
+        <Section title="Payment">
+          <PaymentProgress plan={plan} viewer="shop" />
+        </Section>
+      ) : null}
 
       <Section title="Device">
         <Row label="Device" value={repair.device?.name} />

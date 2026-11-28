@@ -35,7 +35,10 @@ import { useMessageShop } from "../../lib/useMessageShop";
 import { openCheckout, pollPaymentStatus, isTerminal } from "../../lib/payments";
 import { COLORS } from "../../constants/theme";
 import { useResponsive } from "../../lib/useResponsive";
-import { quotationDueNow } from "../../lib/paymentTerms";
+import { quotationDueNow, quotationTermsText } from "../../lib/paymentTerms";
+import PaymentProgress, { paymentPlanLabel } from "../../components/PaymentProgress";
+import { COVERAGE_LABELS, lengthLabel } from "../../lib/warranty";
+import WarrantyClaimList from "../../components/WarrantyClaimList";
 import { typeIcon } from "../../lib/deviceSpecs";
 
 import { SHOW_BACK_BUTTONS } from "../../lib/navigation";
@@ -97,25 +100,27 @@ function Chip({ label, tone }) {
 
 // Where the repair is, as steps. Mobile: a bar with the current step; wider: every step.
 const STEPS = ["Requested", "Accepted", "Quoted", "Approved", "Paid", "Repairing", "Done"];
+// With a deposit below 100%, step 5 is the deposit; the balance comes before "Done".
+const DEPOSIT_STEPS = ["Requested", "Accepted", "Quoted", "Approved", "Deposit", "Repairing", "Done"];
 
-function Progress({ done, compact }) {
-  const current = Math.min(done, STEPS.length - 1);
+function Progress({ done, compact, steps = STEPS }) {
+  const current = Math.min(done, steps.length - 1);
   if (compact) {
-    const finished = done >= STEPS.length;
+    const finished = done >= steps.length;
     return (
       <View>
         <View className="h-2 overflow-hidden rounded-full bg-gray-100">
-          <View className="h-2 rounded-full bg-primary" style={{ width: `${Math.round((Math.max(done, 1) / STEPS.length) * 100)}%` }} />
+          <View className="h-2 rounded-full bg-primary" style={{ width: `${Math.round((Math.max(done, 1) / steps.length) * 100)}%` }} />
         </View>
         <Text className="mt-2 text-xs font-semibold text-gray-600">
-          {finished ? "All steps done" : `Step ${current + 1} of ${STEPS.length}: ${STEPS[current]}`}
+          {finished ? "All steps done" : `Step ${current + 1} of ${steps.length}: ${steps[current]}`}
         </Text>
       </View>
     );
   }
   return (
     <View className="flex-row">
-      {STEPS.map((label, index) => {
+      {steps.map((label, index) => {
         const complete = index < done;
         const active = index === done;
         return (
@@ -125,7 +130,7 @@ function Progress({ done, compact }) {
               <View className={`h-7 w-7 items-center justify-center rounded-full ${complete ? "bg-primary" : active ? "border-2 border-primary bg-white" : "border-2 border-gray-200 bg-white"}`}>
                 {complete ? <Ionicons name="checkmark" size={15} color="#fff" /> : <Text className={`text-xs font-bold ${active ? "text-primary" : "text-gray-400"}`}>{index + 1}</Text>}
               </View>
-              <View className={`h-0.5 flex-1 ${index === STEPS.length - 1 ? "bg-transparent" : index < done ? "bg-primary" : "bg-gray-200"}`} />
+              <View className={`h-0.5 flex-1 ${index === steps.length - 1 ? "bg-transparent" : index < done ? "bg-primary" : "bg-gray-200"}`} />
             </View>
             <Text className={`mt-1.5 text-center text-xs ${complete ? "font-semibold text-gray-700" : active ? "font-bold text-primary" : "text-gray-400"}`}>{label}</Text>
           </View>
@@ -281,12 +286,27 @@ export default function RepairDetail() {
   // Phone, laptop or desktop icon (lib/deviceSpecs.js). Devices added before
   // device types existed have none, so guess from the name (icon only).
   const deviceIcon = repair.device_type ? typeIcon(repair.device_type) : guessDeviceIcon(`${repair.device_name ?? ""} ${repair.device_brand ?? ""}`);
+  // Deposit and balance (server/utils/paymentPlan.js).
+  const plan = repair.payment_plan ?? null;
+  // The warranty with its dates, once completed (server/utils/warranty.js).
+  const warranty = repair.warranty_info ?? null;
+  const claims = repair.warranty_claims ?? [];
+  const claimAllowed = Boolean(repair.warranty_claim?.allowed);
+  const warrantyOf = repair.warranty_of ?? null;
   const paid = String(repair.payment_status || "").toUpperCase() === "PAID";
+  const depositPaid = Boolean(plan?.deposit_paid) || paid;
+  const due = plan?.due ?? null;
+  const canPay = Boolean(due?.payment_link) && String(due?.status ?? "").toUpperCase() === "PENDING";
+  const steps = plan && plan.deposit_percent < 100 ? DEPOSIT_STEPS : STEPS;
   const approved = repair.client_approved !== null && repair.client_approved !== undefined && Number(repair.client_approved) === 1;
   const nextUpdate = canReview
     ? repair.review ? "Your repair is complete. Thanks for leaving a review." : "Your repair is complete. Tell others how it went by leaving a review."
     : status === "IN_PROGRESS"
-      ? "The shop is working on your device. Message them any time for an update."
+      ? due?.kind === "BALANCE"
+        ? canPay
+          ? `The shop is working on your device. Pay the balance of ${peso(due.amount)} below before the repair is completed.`
+          : `The shop is working on your device. The balance of ${peso(due.amount)} is due before the repair is completed${due.cash_allowed ? ": pay online or in cash to the shop" : ""}.`
+        : "The shop is working on your device. Message them any time for an update."
       : String(repair.decision || "").toUpperCase() === "PENDING"
         ? "The shop will review your request and decide whether it can take the repair."
         : canApprove
@@ -295,10 +315,10 @@ export default function RepairDetail() {
             ? "The shop is assessing your device. Their quotation will appear here."
             : !hasCompletionDate
               ? "The shop needs to add an estimated completion date before you can approve the quotation."
-              : paid
+              : depositPaid
                 ? repair.assigned_employee ? "Payment confirmed and a technician is assigned. Work starts soon." : "Payment confirmed. The shop will assign a technician before work starts."
                 : approved
-                  ? repair.payment?.payment_link ? "Quotation approved. Pay below so the shop can start." : "Quotation approved. The shop will send the payment link next."
+                  ? canPay ? "Quotation approved. Pay below so the shop can start." : "Quotation approved. The shop will send the payment link next."
                   : "Check the quotation and details below for the latest update.";
   // How many steps of STEPS are done.
   const stepsDone = [
@@ -306,19 +326,19 @@ export default function RepairDetail() {
     String(repair.decision || "").toUpperCase() === "ACCEPTED",
     Boolean(quotation),
     approved,
-    paid,
+    depositPaid,
     status === "IN_PROGRESS" || status === "COMPLETED",
     status === "COMPLETED",
   ].findIndex((done) => !done);
-  const progress = stepsDone === -1 ? STEPS.length : stepsDone;
+  const progress = stepsDone === -1 ? steps.length : stepsDone;
   const delivery = DELIVERY[String(repair.delivery_method ?? "").toUpperCase()];
-  const paymentStatus = String(repair.payment?.status ?? "").toUpperCase();
+  const planStatus = paymentPlanLabel(plan);
   const technician = repair.assigned_employee
     ? [repair.assigned_employee.first_name, repair.assigned_employee.last_name].filter(Boolean).join(" ")
     : null;
 
   const mainHasContent = !isRejected && Boolean(
-    quotation || repair.assessment || repair.payment || repair.review || canReview || canCancel
+    quotation || repair.assessment || repair.payment || (plan && approved) || repair.review || canReview || canCancel
   );
 
   const sideColumn = (
@@ -354,6 +374,20 @@ export default function RepairDetail() {
 
   const mainColumn = (
     <View>
+      {warrantyOf ? (
+        <View className="mb-4 flex-row items-start gap-2 rounded-xl border border-teal-100 bg-teal-50 p-4">
+          <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.primary} style={{ marginTop: 1 }} />
+          <View className="flex-1">
+            <Text className="text-sm font-semibold text-teal-900">{`Warranty repair for repair #${warrantyOf.request_id}`}</Text>
+            <Text className="mt-1 text-xs leading-5 text-teal-900">
+              {"Work the warranty covers is free. If the shop finds something it doesn't cover, it quotes that first and you decide."}
+            </Text>
+            <Pressable onPress={() => router.push(`/repair/${warrantyOf.request_id}`)} accessibilityRole="link" className="mt-1 min-h-11 justify-center self-start">
+              <Text className="text-sm font-semibold text-primary">Open the original repair</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       {!isRejected && quotation ? (
         <QuotationSection quotation={quotation} clientApproved={repair.client_approved}>
           {!isCancelled && isUndecided && !hasCompletionDate ? (
@@ -370,7 +404,7 @@ export default function RepairDetail() {
                   title={`Approve · ${quotationDueNow(quotation)}`}
                   loading={busy}
                   onPress={() =>
-                    confirm("Approve quotation", "Approve this quotation? Payment and technician assignment are required before repair starts.", () =>
+                    confirm("Approve quotation", `Approve this quotation? ${quotationTermsText(quotation)} The quotation can't be changed after you approve.`, () =>
                       act("approve", "Quotation approved.")
                     )
                   }
@@ -397,21 +431,110 @@ export default function RepairDetail() {
 
       {!isRejected && repair.assessment ? <AssessmentSection assessment={repair.assessment} /> : null}
 
-      {repair.payment && !isRejected ? (
+      {plan && approved && !isRejected ? (
         <Card
           icon="card-outline"
           title="Payment"
-          right={<Chip label={paymentStatus === "PAID" ? "Paid" : paymentStatus === "FAILED" ? "Failed" : "Waiting for payment"} tone={paymentStatus === "PAID" ? "green" : paymentStatus === "FAILED" ? "red" : "amber"} />}
+          right={planStatus ? <Chip label={planStatus.label} tone={planStatus.tone} /> : null}
         >
-          <Text className="text-3xl font-extrabold text-gray-900">{repair.payment.amount ? peso(repair.payment.amount) : "—"}</Text>
-          <Text className="mt-1 text-sm text-gray-500">
-            {paymentStatus === "PAID"
-              ? `Paid online${dateOnly(repair.payment.paid_at) ? ` on ${dateOnly(repair.payment.paid_at)}` : ""}. PixelPatch holds it until the repair is done.`
-              : "Pay securely online through PixelPatch."}
+          <PaymentProgress plan={plan} />
+          <Text className="mt-3 text-xs leading-5 text-gray-500">
+            {plan.allow_cash
+              ? "Online payments are held by PixelPatch until the repair is done and can be refunded through a dispute. Cash goes straight to the shop and can't be refunded through PixelPatch."
+              : "Online payments are held by PixelPatch until the repair is done and can be refunded through a dispute."}
           </Text>
+          {due && !canPay ? (
+            <Text className="mt-3 text-sm leading-5 text-gray-600">
+              {due.kind === "BALANCE" && !due.ready
+                ? "You'll pay the balance once the shop has started the work."
+                : due.cash_allowed
+                  ? "Pay the shop in cash and they'll confirm it in the app, or wait for the shop's online payment link."
+                  : "The shop will send the payment link here."}
+            </Text>
+          ) : null}
           {paymentNote ? <Text className="mt-3 text-sm text-gray-600">{paymentNote}</Text> : null}
-          {repair.payment.payment_link && !isTerminal(repair.payment.status) ? (
-            <Button title={`Pay ${repair.payment.amount ? peso(repair.payment.amount) : "now"}`} className="mt-4" loading={paying} onPress={() => payNow(repair.payment.payment_link)} />
+          {canPay ? (
+            <Button
+              title={`${due.kind === "DEPOSIT" ? "Pay deposit" : due.kind === "BALANCE" ? "Pay balance" : "Pay"} ${peso(due.amount)}`}
+              className="mt-4"
+              loading={paying}
+              onPress={() => payNow(due.payment_link)}
+            />
+          ) : null}
+        </Card>
+      ) : null}
+
+      {canReview && warranty ? (
+        <Card
+          icon="shield-checkmark-outline"
+          title="Warranty"
+          right={<Chip label={warranty.active ? "Active" : "Expired"} tone={warranty.active ? "green" : "gray"} />}
+        >
+          <Text className="text-base font-semibold text-gray-900">
+            {warranty.active
+              ? `Until ${dateOnly(warranty.ends_at)} · ${warranty.days_left} day${warranty.days_left === 1 ? "" : "s"} left`
+              : `Ended ${dateOnly(warranty.ends_at)}`}
+          </Text>
+          <Text className="mt-1 text-sm text-gray-600">
+            {`${lengthLabel(warranty.value, warranty.unit)} from ${dateOnly(warranty.starts_at)} · ${COVERAGE_LABELS[warranty.coverage] ?? "Parts and labour"}`}
+          </Text>
+          <Text className="mt-2 text-xs leading-5 text-gray-500">
+            {`${warranty.exclusions ? `Not covered: ${warranty.exclusions}. ` : ""}It covers the shop's work and the parts it fitted, not new damage such as drops or water.`}
+          </Text>
+          <Text className="mt-2 text-xs leading-5 text-gray-500">
+            {"The shop has usually been paid by the time a warranty is used, so a claim ends in a free repair, not a refund through PixelPatch."}
+          </Text>
+          {claimAllowed ? (
+            <Button
+              title="Request warranty service"
+              className="mt-4"
+              onPress={() => router.push(`/warranty-claim/${id}`)}
+            />
+          ) : warranty.active && repair.warranty_claim?.reason && claims.length ? (
+            <Text className="mt-3 text-xs leading-5 text-gray-500">{repair.warranty_claim.reason}</Text>
+          ) : null}
+          {claims.length ? (
+            <View className="mt-4">
+              <WarrantyClaimList
+                claims={claims}
+                viewer="client"
+                repairHref={(repairId) => `/repair/${repairId}`}
+                actions={(claim) =>
+                  claim.can_escalate ? (
+                    <View className="mt-3">
+                      <Text className="mb-2 text-xs leading-5 text-gray-500">
+                        {claim.status === "DECLINED"
+                          ? "Don't agree with the shop? PixelPatch can review the claim and decide."
+                          : "The shop didn't answer within 2 days. PixelPatch can review the claim and decide."}
+                      </Text>
+                      <Button
+                        title="Ask PixelPatch to review"
+                        variant="outline"
+                        loading={busy}
+                        onPress={() =>
+                          confirm(
+                            "Ask PixelPatch to review",
+                            "An admin will look at your claim, the shop's answer and your photos, then decide whether the shop must do a warranty repair.",
+                            async () => {
+                              setBusy(true);
+                              setActionError(null);
+                              try {
+                                await api.post(`/client/warranty-claims/${claim.id}/escalate`);
+                                await refresh();
+                              } catch (e) {
+                                setActionError(e.message || "Couldn't send the claim to PixelPatch.");
+                              } finally {
+                                setBusy(false);
+                              }
+                            }
+                          )
+                        }
+                      />
+                    </View>
+                  ) : null
+                }
+              />
+            </View>
           ) : null}
         </Card>
       ) : null}
@@ -507,7 +630,7 @@ export default function RepairDetail() {
           </Pressable>
           {!isRejected && !isCancelled ? (
             <View className="mt-5">
-              <Progress done={progress} compact={!isDesktop && !isTablet} />
+              <Progress done={progress} steps={steps} compact={!isDesktop && !isTablet} />
             </View>
           ) : null}
         </View>

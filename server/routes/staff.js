@@ -10,6 +10,7 @@ import {
   getStaffRepair,
   startStaffRepair,
   completeStaffRepair,
+  confirmStaffCashBalance,
 } from "../controllers/staffController.js";
 
 const router = express.Router();
@@ -23,5 +24,6 @@ router.get("/repairs", staffRequired, listStaffRepairs);
 router.get("/repairs/:id", staffRequired, getStaffRepair);
 router.post("/repairs/:id/start", staffRequired, startStaffRepair);
 router.post("/repairs/:id/complete", staffRequired, completeStaffRepair);
+router.post("/repairs/:id/balance/cash", staffRequired, confirmStaffCashBalance);
 
 export default router;

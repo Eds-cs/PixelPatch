@@ -1,17 +1,70 @@
 // app/(business)/profile.jsx — GET /api/shops/:id
 // Payment options: PUT /api/business/shop/payment-terms (lib/paymentTerms.js).
+// Usual warranty: PUT /api/business/shop/warranty (lib/warranty.js).
 import { useState } from "react";
 import { ActivityIndicator, Alert, Platform, RefreshControl, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../../components/Button";
 import PaymentTermsFields from "../../components/PaymentTermsFields";
+import WarrantyFields from "../../components/WarrantyFields";
+import { formFromShop, shopWarrantyLabel, warrantyPayload, warrantyProblem } from "../../lib/warranty";
 import api from "../../lib/api";
 import { useFetch } from "../../lib/useFetch";
 import { useShop } from "../../lib/shop";
 import { useAuth } from "../../lib/auth";
 import { shopTermsLabel, shopTermsProblem } from "../../lib/paymentTerms";
 import { COLORS } from "../../constants/theme";
+
+function WarrantyOptions({ shop, onSaved }) {
+  const saved = formFromShop(shop);
+  const [form, setForm] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [note, setNote] = useState(null);
+
+  const changed = JSON.stringify(form) !== JSON.stringify(saved);
+  const problem = warrantyProblem(form);
+  const label = shopWarrantyLabel(shop);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await api.put("/business/shop/warranty", { warranty: warrantyPayload(form) });
+      setNote("Saved. New quotations will start with this warranty; quotations already sent keep theirs.");
+      await onSaved?.();
+    } catch (e) {
+      setError(e.message || "Couldn't save your warranty.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
+      <Text className="text-base font-bold text-gray-900">Usual warranty</Text>
+      <Text className="mb-1 mt-1 text-sm text-gray-500">Clients see: {label ? `${label} warranty` : "No warranty"}</Text>
+      <Text className="mb-4 text-xs leading-5 text-gray-500">
+        {"New quotations start with this; you can change it on each quotation. You must honour the warranty you give."}
+      </Text>
+      <WarrantyFields value={form} onChange={setForm} disabled={busy} label="Offer a warranty by default" />
+      {error ? <Text className="mb-2 text-sm text-red-600">{error}</Text> : null}
+      {note ? <Text className="mb-2 text-sm text-teal-800">{note}</Text> : null}
+      {changed ? (
+        <View className="mt-2 flex-row flex-wrap justify-end gap-3">
+          <View className="w-32">
+            <Button title="Reset" variant="outline" disabled={busy} onPress={() => { setForm(saved); setError(null); }} />
+          </View>
+          <View className="w-40">
+            <Button title="Save warranty" loading={busy} disabled={Boolean(problem)} onPress={save} />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 function PaymentOptions({ shop, onSaved, note, setNote }) {
   const saved = {
@@ -171,6 +224,14 @@ export default function BusinessProfile() {
           onSaved={refresh}
           note={termsNote}
           setNote={setTermsNote}
+        />
+      ) : null}
+
+      {shop ? (
+        <WarrantyOptions
+          key={`${shop.default_warranty_value}-${shop.default_warranty_unit}-${shop.default_warranty_coverage}-${shop.default_warranty_exclusions}`}
+          shop={shop}
+          onSaved={refresh}
         />
       ) : null}
 

@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import Button from "../../components/Button";
+import RepairChatCard from "../../components/RepairChatCard";
 import api from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { confirmAction } from "../../lib/confirm";
@@ -293,6 +294,15 @@ function Conversation({ chatId, initialDraft = "", fromAssistant = false }) {
                   <Text className="rounded-full bg-gray-200/70 px-3 py-1 text-xs font-medium text-gray-600">{chatDate(item.timestamp)}</Text>
                 </View>
               ) : null;
+              // A repair card, e.g. "Repair confirmed" (server/utils/repairCards.js).
+              if (item.sender_kind === "SYSTEM" && item.card) {
+                return (
+                  <View>
+                    {dayLine}
+                    <RepairChatCard card={item.card} viewerAs={chat?.as} maxWidth={bubbleMax} />
+                  </View>
+                );
+              }
               // "TechFix Pro handed this chat to Juan (Technician)."
               if (item.sender_kind === "SYSTEM") {
                 return (
