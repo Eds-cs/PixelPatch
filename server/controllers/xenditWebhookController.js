@@ -1,8 +1,10 @@
 // server/controllers/xenditWebhookController.js
 import { timingSafeEqual } from "node:crypto";
 import axios from "axios";
+import db from "../config/db.js";
 import { withTransaction } from "../utils/transaction.js";
 import { settleRequestPayments } from "../utils/paymentPlan.js";
+import { postRepairUpdate } from "../utils/repairCards.js";
 
 const XENDIT_INVOICE_URL = "https://api.xendit.co/v2/invoices";
 let settlementQueue = Promise.resolve();
@@ -153,11 +155,21 @@ export const handleXenditWebhook = async (req, res) => {
       );
       await settleRequestPayments(conn, requestId);
 
-      return { status: 200, message: "Payment recorded" };
+      return {
+        status: 200,
+        message: "Payment recorded",
+        // A repeated callback for a row already paid posts no second card.
+        card: payment.status === "PAID" ? null : { kind: payment.kind, amount: payment.amount },
+      };
     }));
 
     if (result.status !== 200) {
       return res.status(result.status).json({ message: result.message });
+    }
+    if (result.card) {
+      // "Payment received" card in the repair's chat, from the client.
+      const [[request]] = await db.promise().query("SELECT client_id FROM service_requests WHERE id = ?", [requestId]);
+      await postRepairUpdate(requestId, request?.client_id ?? 0, "PAYMENT_RECEIVED", { ...result.card, method: "ONLINE" });
     }
     return res.json({ received: true });
   } catch (error) {

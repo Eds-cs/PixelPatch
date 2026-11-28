@@ -6,6 +6,7 @@
 // Each returns { status, body } for the caller to send.
 import db from "../config/db.js";
 import { depositSettled } from "./paymentPlan.js";
+import { postRepairUpdate } from "./repairCards.js";
 
 const query = (sql, params = []) => db.promise().query(sql, params).then(([rows]) => rows);
 
@@ -14,7 +15,7 @@ const query = (sql, params = []) => db.promise().query(sql, params).then(([rows]
  * deposit is settled (utils/paymentPlan.js) with an employee assigned. `employeeId` (staff only): that employee must be the
  * one assigned.
  */
-export async function startRepairFor({ requestId, shopId, employeeId = null }) {
+export async function startRepairFor({ requestId, shopId, employeeId = null, actorUserId = null }) {
   if (!requestId) return { status: 400, body: { message: "Request ID is required" } };
 
   const [request] = await query(
@@ -39,6 +40,8 @@ export async function startRepairFor({ requestId, shopId, employeeId = null }) {
     "UPDATE service_requests SET status = 'IN_PROGRESS', updated_at = NOW() WHERE id = ? AND shop_id = ?",
     [requestId, shopId]
   );
+  // "Work started" card in the repair's chat (utils/repairCards.js).
+  await postRepairUpdate(Number(requestId), actorUserId ?? 0, "REPAIR_STARTED");
   return { status: 200, body: { message: "Repair started successfully", status: "IN_PROGRESS" } };
 }
 
@@ -47,7 +50,7 @@ export async function startRepairFor({ requestId, shopId, employeeId = null }) {
  * balance is paid online or confirmed in cash before completing. `employeeId`
  * (staff only): the repair must be assigned to that employee.
  */
-export async function completeRepairFor({ requestId, shopId, employeeId = null }) {
+export async function completeRepairFor({ requestId, shopId, employeeId = null, actorUserId = null }) {
   const [request] = await query(
     "SELECT status, payment_status FROM service_requests WHERE id = ? AND shop_id = ? LIMIT 1",
     [requestId, shopId]
@@ -72,5 +75,7 @@ export async function completeRepairFor({ requestId, shopId, employeeId = null }
     "UPDATE service_requests SET status = 'COMPLETED', updated_at = NOW(), completed_at = NOW() WHERE id = ? AND shop_id = ?",
     [requestId, shopId]
   );
+  // "Repair completed" card in the repair's chat (utils/repairCards.js).
+  await postRepairUpdate(Number(requestId), actorUserId ?? 0, "REPAIR_COMPLETED");
   return { status: 200, body: { message: "Repair marked as completed", status: "COMPLETED" } };
 }

@@ -243,7 +243,7 @@ const lifecycle = (fn, failure) => async (req, res) => {
   const requestId = positiveId(req.params.id);
   if (!requestId) return res.status(404).json({ message: "Repair not found." });
   try {
-    const { status, body } = await fn({ requestId, shopId: req.staff.shopId, employeeId: req.staff.employeeId });
+    const { status, body } = await fn({ requestId, shopId: req.staff.shopId, employeeId: req.staff.employeeId, actorUserId: req.user.id });
     return res.status(status).json(body);
   } catch (err) {
     console.error("staff repair lifecycle:", err.code || err.message);

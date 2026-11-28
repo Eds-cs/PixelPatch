@@ -6,7 +6,7 @@ import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
 import { loadPaymentState, confirmCashBalanceFor } from "../utils/paymentPlan.js";
 import { validateWarranty } from "../utils/warranty.js";
 import { claimsForRequest } from "../utils/warrantyClaims.js";
-import { postRepairConfirmation } from "../utils/repairCards.js";
+import { postRepairConfirmation, postRepairUpdate } from "../utils/repairCards.js";
 
 // service_requests.client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
 const CANCELLED_MESSAGE = "The client cancelled this repair request";
@@ -896,6 +896,9 @@ export const createQuotation = async (req, res) => {
       );
     }
 
+    // "Quotation sent" card in the repair's chat (utils/repairCards.js).
+    await postRepairUpdate(Number(id), req.user.id, "QUOTE_SENT");
+
     return res.json({
       success: true,
       message: "Quotation created successfully",
@@ -1186,7 +1189,7 @@ export const startRepair = async (req, res) => {
     return res.status(403).json({ message: "Business access only" });
   }
   try {
-    const { status, body } = await startRepairFor({ requestId: req.params.id, shopId: req.shopId });
+    const { status, body } = await startRepairFor({ requestId: req.params.id, shopId: req.shopId, actorUserId: req.user.id });
     return res.status(status).json(body);
   } catch (err) {
     console.error("startRepair:", err.code || err.message);
@@ -1394,7 +1397,7 @@ export const markRepairCompleted = async (req, res) => {
     return res.status(403).json({ message: "Business access only" });
   }
   try {
-    const { status, body } = await completeRepairFor({ requestId: req.params.id, shopId: req.shopId });
+    const { status, body } = await completeRepairFor({ requestId: req.params.id, shopId: req.shopId, actorUserId: req.user.id });
     return res.status(status).json(body);
   } catch (err) {
     console.error("markRepairCompleted:", err.code || err.message);

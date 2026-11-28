@@ -1569,7 +1569,20 @@ client, owner or staff).
   Built by `server/utils/repairCards.js` (`postRepairConfirmation`, best
   effort), drawn by `components/RepairChatCard.jsx` in `app/chat/[id].jsx`.
   `GET /chat/:id/messages` and the socket send `card` parsed.
-* A snapshot of that moment: it doesn't change when the repair does.
+* Later steps post **update cards** (`type: "REPAIR_UPDATE"`, `stage`), like
+  a delivery tracker with a "Latest update" line:
+  * `QUOTE_SENT` (createQuotation): total, how it's paid, ready-by date,
+    warranty. The client's button is "Review quotation".
+  * `PAYMENT_RECEIVED` (the Xendit webhook, only when it newly marks a row
+    paid; and a confirmed cash balance): which part, amount, online or cash,
+    what's still to pay.
+  * `REPAIR_STARTED` (startRepairFor, owner or staff): technician (first
+    name and role), ready-by date.
+  * `REPAIR_COMPLETED` (completeRepairFor): completion date, warranty end
+    date. The client's button is "Leave a review".
+  `postRepairUpdate(requestId, actorUserId, stage, extra)`. A ₱0 repair
+  paid in full on approval gets no payment card.
+* Cards are snapshots of that moment: they don't change when the repair does.
 * Never put phone numbers or emails in a card (see below).
 
 ## Keeping clients and shops on PixelPatch (since 2026-11-27)

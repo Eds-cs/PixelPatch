@@ -17,6 +17,7 @@
 import axios from "axios";
 import db from "../config/db.js";
 import { withTransaction } from "./transaction.js";
+import { postRepairUpdate } from "./repairCards.js";
 
 const XENDIT_INVOICE_URL = "https://api.xendit.co/v2/invoices";
 const XENDIT_EXPIRE_URL = "https://api.xendit.co/invoices";
@@ -310,5 +311,7 @@ export async function confirmCashBalanceFor({ requestId, shopId, employeeId = nu
   });
 
   if (!done) return { status: 409, body: { message: "The balance can no longer be confirmed. Refresh the repair." } };
+  // "Payment received" card in the repair's chat (utils/repairCards.js).
+  await postRepairUpdate(Number(requestId), userId, "PAYMENT_RECEIVED", { kind: "BALANCE", amount: plan.due.amount, method: "CASH" });
   return { status: 200, body: { message: "Cash payment recorded. The repair is paid in full." } };
 }
