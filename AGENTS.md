@@ -829,6 +829,22 @@ a `PENDING` quotation to `CANCELLED`. A cancelled request must not continue:
 the business cannot accept, reject, assess, quote, add services, or generate a
 payment link for it.
 
+**An approved repair whose deposit isn't paid** (agreed 2026-11-28, so it
+can't stay open forever; `cancelUnpaidRepair` in `server/utils/paymentPlan.js`):
+
+* the client may still cancel it (`PATCH /client/repairs/:id/cancel`,
+  `client_approved = 0`) until the deposit is settled;
+* the shop may **withdraw** it 3 days after approval
+  (`service_requests.client_approved_at`) with a reason
+  (`POST /business/repairs/:id/withdraw { reason }`): `decision = 'REJECTED'`,
+  `rejection_reason` = the reason. This is the one case where an accepted
+  request becomes rejected.
+
+Both close any open Xendit link first (so nobody pays for a cancelled job),
+cancel the quotation and add a line to the repair chat. Neither is possible
+once anything is paid or work has started. The webhook never sets
+`client_approved` back to 1 on a cancelled request.
+
 ---
 
 ## Step 6 — Client pays the deposit
@@ -1300,9 +1316,16 @@ status here.
      `photos`; form: `app/warranty-claim/[id].jsx`),
      `POST /client/warranty-claims/:id/escalate`,
      `POST /business/warranty-claims/:id/accept` and `/decline { reason }`.
-     One claim at a time per repair, and none while its warranty repair is
-     still open. The shop may still accept a claim it declined, until it's
-     escalated. The problem and the shop's reason go through
+     One claim at a time per repair, none while its warranty repair is
+     still open, and at most 3 claims per repair. The shop has **2 open
+     days** to answer: `warranty_claims.reply_due` is set when the claim is
+     made, counting only the shop's open days (`replyDueFor`, from
+     `shops.days_from`/`days_to`; unreadable days = 2 calendar days). The
+     client can ask PixelPatch to review **within 7 days** of a decline, or
+     any time once an unanswered claim is past `reply_due`. A claim against
+     a shop whose owner is suspended goes straight to PixelPatch
+     (`ESCALATED`, no email). The shop may still accept a claim it
+     declined, until it's escalated. The problem and the shop's reason go through
      `maskContactInfo`, like chat. Each step adds a SYSTEM line to the
      original repair's chat. Statuses: OPEN, ACCEPTED (`linked_request_id`
      = the warranty repair), DECLINED, ESCALATED, CLOSED (an admin declined).
@@ -1317,9 +1340,12 @@ status here.
    * **Admin:** `app/admin/warranty.jsx`, `controllers/admin/warrantyAdminController.js`;
      `warranty_claims_need_admin` in `/admin/summary` (dashboard and
      navigation badge).
-   * NOT built: emails or push notifications about claims (they show in the
-     repair chat and on the repair pages), and anything that moves money:
-     a refund the shop pays is arranged outside PixelPatch.*
+   * **The shop is told:** an email to the shop's email when a claim
+     arrives (best effort, no client contact details), the business
+     dashboard lists claims waiting for an answer with their deadline, the
+     repair list flags them, and the repair chat gets a line.
+   * NOT built: push notifications, and anything that moves money: a
+     refund the shop pays is arranged outside PixelPatch.*
 
 ## Shop members (since 2026-11-28)
 
@@ -1339,8 +1365,10 @@ status here.
   the repairs assigned to them (`request_assignments.employee_id`), start and
   complete (rules shared with the owner in `server/utils/repairLifecycle.js`),
   the client's phone under the same rule as the owner (`clientPhoneFor`),
-  and only the repair chats handed to them. No quotations, assignment,
-  payment links, services, payouts, disputes or reviews. `lib/staff.jsx`
+  and only the repair chats handed to them. They can confirm a cash balance
+  and ask the client to pay the balance (a chat card, not a payment link).
+  No quotations, assignment, payment links, services, payouts, disputes or
+  reviews. `lib/staff.jsx`
   holds the membership; the root layout keeps non-members out of `/staff`.
 * **Remove access** (`POST /business/employees/:id/remove-access`) and
   deactivate both unlink the account and return their chats.
@@ -1392,19 +1420,40 @@ client view is `QuotationSection` in `components/RepairSummary.jsx`.
 
 1. The client approves. A 0% deposit is settled at once (a ₱0 total is paid
    in full at once).
-2. The shop sends the deposit link (`POST /business/repairs/:id/payments/generate-link`
-   charges whatever is due now). The Xendit webhook marks that `payments`
-   row `PAID` and sets `deposit_paid_at`. Assignment and start need it.
-3. Once the repair is `IN_PROGRESS`, the same button sends the balance link,
-   or the owner/assigned member confirms cash (business rule 5).
+2. The client pays from their repair page (`POST /client/repairs/:id/pay`
+   makes or reuses the Xendit link for whatever is due now; the owner's
+   `POST /business/repairs/:id/payments/generate-link` does the same). The
+   Xendit webhook marks that `payments` row `PAID` and sets
+   `deposit_paid_at`. Assignment and start need it.
+3. Once the repair is `IN_PROGRESS`, the client pays the balance the same
+   way, or the owner/assigned member confirms cash (business rule 5).
+   "Ask the client to pay" (`POST /business/repairs/:id/payments/request`;
+   members: `POST /staff/repairs/:id/balance/request`, balance only) posts a
+   Payment due card in the repair chat, at most once every 6 hours.
 4. When the balance is paid, `payment_status = 'PAID'` and the quotation is
    `PAID`; only then can the repair be completed.
+
+**Amounts.** The deposit is rounded to whole pesos and the balance is the
+rest (`quotationAmountsCents` / `quotationAmounts`, keep in sync). Any
+online part must be at least **₱20** (Xendit's card minimum; GCash takes
+₱1): a quotation whose deposit, or online-only balance, would be under ₱20
+is refused (`onlineAmountProblem` in `server/utils/paymentTerms.js`), and
+the link refuses a smaller amount. A ₱0 total is fine. Link creation runs
+one at a time per repair (in-process queue in `paymentPlan.js`), so two taps
+can't make two invoices; this assumes one server process.
 
 The total charged is the quotation's `estimated_cost` (what the client
 approved), not a recount of current service prices. Every repair response
 includes the plan (`payment_plan` for the client, `paymentPlan` for the
-business and staff); `components/PaymentProgress.jsx` shows it. Payment
-links are sent by the owner only; the client pays from their repair page.
+business and staff); `components/PaymentProgress.jsx` shows it. Nobody
+waits on the owner to pay: the client makes the link. Members never create
+payment links (rule 8).
+
+**Expired links (fixed 2026-11-28).** Xendit invoices expire. A saved link
+is checked with Xendit before it's handed out: an expired one becomes
+`FAILED` and a fresh link is made; a paid one is never reused; if Xendit
+can't be reached the saved link is returned. The webhook's `EXPIRED`
+callback (verified with Xendit) also marks the row `FAILED`.
 
 Payouts (rule 6) must skip `gateway = 'CASH'` rows: that money went straight
 to the shop.
@@ -1490,7 +1539,8 @@ Never treat a successful return URL as definitive proof of payment.
 The webhook marks the matching `payments` row paid (never a `CASH` row, and
 only for the invoice id stored in `gateway_ref`), then calls
 `settleRequestPayments` to update `deposit_paid_at`, `payment_status` and the
-quotation (section 15 Step 6).
+quotation (section 15 Step 6). An `EXPIRED` callback marks the row `FAILED`
+(section 20, "Expired links").
 
 Check actual webhook behavior before expanding payment state handling.
 
@@ -1576,6 +1626,9 @@ client, owner or staff).
   * `PAYMENT_RECEIVED` (the Xendit webhook, only when it newly marks a row
     paid; and a confirmed cash balance): which part, amount, online or cash,
     what's still to pay.
+  * `PAYMENT_DUE` ("Ask the client to pay", owner or assigned member; at
+    most every 6 hours): which part, amount, cash allowed. The client's
+    button is "Pay ₱…".
   * `REPAIR_STARTED` (startRepairFor, owner or staff): technician (first
     name and role), ready-by date.
   * `REPAIR_COMPLETED` (completeRepairFor): completion date, warranty end
@@ -1583,6 +1636,11 @@ client, owner or staff).
   `postRepairUpdate(requestId, actorUserId, stage, extra)`. A ₱0 repair
   paid in full on approval gets no payment card.
 * Cards are snapshots of that moment: they don't change when the repair does.
+* For pickup and on-site the confirmation card shows only the client's
+  barangay and city, never the street (a chat outlives the job and can be
+  handed to staff); the full address stays on the repair page.
+* Saving a card is retried once; a card that still fails is logged and
+  skipped (the action behind it has already succeeded).
 * Never put phone numbers or emails in a card (see below).
 
 ## Keeping clients and shops on PixelPatch (since 2026-11-27)
@@ -1953,7 +2011,8 @@ text, warranty claim 1000, warranty exclusions 300, AI message 2000, search 100.
   any upload middleware). It answers `400 { error, message, field,
   code: "TEXT_TOO_LONG" }`, and also refuses objects or arrays in text fields.
   `"parts[].name"` checks every item of an array. The chat socket uses
-  `textProblem` directly.
+  `textProblem` directly. On an upload route it deletes the request's
+  uploaded files when it refuses (since 2026-11-28).
 * A new text column must be able to hold its limit; add a migration if not.
 
 ---
@@ -2354,6 +2413,7 @@ preferred_date       datetime NOT NULL
 notes                text NULL
 rejection_reason     text NULL
 client_approved      tinyint(1) NULL DEFAULT NULL
+client_approved_at   datetime NULL   (when the client approved; added 2026-11-28, section 15 Step 5)
 payment_status       enum('PENDING','PAID','FAILED') NOT NULL DEFAULT 'PENDING'   (PAID = paid in full)
 deposit_paid_at      datetime NULL   (deposit settled, so work may start: set by the webhook, or on
                      approval for a 0% deposit; added 2026-11-28, section 15 Step 6)
@@ -2504,6 +2564,7 @@ problem             text NOT NULL   (contact details hidden)
 delivery_method     enum('PICKUP','DROPOFF','ONSITE') NOT NULL
 pickup_address_id   NULL FK -> addresses.id
 preferred_date      date NOT NULL
+reply_due           datetime NULL   (end of the shop's 2 open days; added 2026-11-28)
 status              enum('OPEN','ACCEPTED','DECLINED','ESCALATED','CLOSED') NOT NULL DEFAULT 'OPEN'
 shop_response       text NULL   (the shop's reason for declining)
 admin_note          text NULL   (the admin's explanation)

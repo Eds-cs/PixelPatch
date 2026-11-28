@@ -33,13 +33,14 @@ const SECTIONS = [
     body: [
       "Shops that register must give true business, location and payout details. Every shop and every service is reviewed by a PixelPatch administrator before clients can see it, and an application may be rejected.",
       "Shops must honour their published prices, quotations and warranties, and treat clients' devices and data with care.",
+      "After approving a quotation, pay the deposit from your repair page. You can cancel until the deposit is paid; if it's still unpaid 3 days after you approve, the shop may withdraw the repair.",
     ],
   },
   {
     heading: "Reviews, chats and disputes",
     body: [
       "Keep messages and reviews honest and respectful. If a completed repair goes wrong, open a dispute so the shop can propose a refund or re-service.",
-      "If your repair has a warranty and the problem comes back while it's active, ask for warranty service from the repair page. The shop has 2 days to accept or decline; if it declines or doesn't answer, you can ask PixelPatch to review. A warranty covers the shop's work and parts, not new damage, and usually ends in a free repair rather than a refund, because the shop has been paid by then.",
+      "If your repair has a warranty and the problem comes back while it's active, ask for warranty service from the repair page. The shop has 2 open days to accept or decline. If it declines, you can ask PixelPatch to review within 7 days; if it doesn't answer, you can ask any time. Each repair can have up to 3 warranty claims. A warranty covers the shop's work and parts, not new damage, and usually ends in a free repair rather than a refund, because the shop has been paid by then.",
       "To protect you, phone numbers, email addresses, links and social media accounts are hidden in chats with shops, and shops' own phone numbers and emails aren't shown. Keep the conversation and the payment on PixelPatch: payments made outside it aren't covered by disputes or refunds.",
       "Each repair has its own chat. A shop may hand a repair's chat to the staff member working on it; messages from a shop always show who wrote them, by first name and role.",
     ],

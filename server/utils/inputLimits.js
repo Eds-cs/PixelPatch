@@ -6,6 +6,7 @@
 //
 // Numbers follow the brief, adjusted to the database: emails are 100
 // because users.email and shops.email are varchar(100).
+import { removeUploadedFiles } from "./fileSignatures.js";
 
 export const LIMITS = {
   personName: 100,          // first, middle, last name; account holder; employee names
@@ -80,5 +81,7 @@ export function textProblem(body, rules) {
 export const limitText = (rules) => (req, res, next) => {
   const problem = textProblem(req.body, rules);
   if (!problem) return next();
+  // On an upload route the files are already saved: don't leave them behind.
+  removeUploadedFiles(req);
   return res.status(400).json({ error: problem.message, message: problem.message, field: problem.field, code: "TEXT_TOO_LONG" });
 };

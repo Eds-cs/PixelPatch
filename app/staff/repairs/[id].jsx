@@ -11,7 +11,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import Button from "../../../components/Button";
 import { RepairRow as Row, RepairSection as Section, RepairStatusBadge, formatRepairDate } from "../../../components/RepairSummary";
 import api from "../../../lib/api";
-import { confirmAction } from "../../../lib/confirm";
+import { confirmAction, notify } from "../../../lib/confirm";
 import { useFetch } from "../../../lib/useFetch";
 import { useResponsive } from "../../../lib/useResponsive";
 import { formatPhone } from "../../../lib/phone";
@@ -64,6 +64,22 @@ export default function StaffRepair() {
     { confirmLabel: "I received it" }
   );
 
+  // A "Payment due" card in the chat; the client pays from their repair page.
+  const askToPay = async () => {
+    setBusy("ask");
+    setActionError(null);
+    try {
+      await api.post(`/staff/repairs/${id}/balance/request`);
+      setActionError(null);
+      await refresh();
+      notify("Done", "The client has been asked to pay the balance.");
+    } catch (e) {
+      setActionError(e.message || "Couldn't ask the client to pay.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const run = (action, label) => confirmAction(
     label,
     action === "start"
@@ -103,6 +119,7 @@ export default function StaffRepair() {
 
       <View className={`mb-4 ${isMobile ? "gap-3" : "flex-row flex-wrap gap-3"}`}>
         {repair.canStart ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title="Start repair" loading={busy === "start"} disabled={Boolean(busy)} onPress={() => run("start", "Start repair")} /></View> : null}
+        {repair.canAskForBalance ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title={`Ask the client to pay ${peso(balance)}`} loading={busy === "ask"} disabled={Boolean(busy)} onPress={askToPay} /></View> : null}
         {repair.canConfirmCash ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title={`Client paid ${peso(balance)} in cash`} variant="outline" loading={busy === "cash"} disabled={Boolean(busy)} onPress={confirmCash} /></View> : null}
         {repair.canComplete ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title="Mark completed" loading={busy === "complete"} disabled={Boolean(busy)} onPress={() => run("complete", "Mark completed")} /></View> : null}
         {repair.chatId ? <View style={isMobile ? undefined : { minWidth: 200 }}><Button title="Open chat with client" variant="outline" onPress={() => router.push(`/chat/${repair.chatId}`)} /></View> : null}
@@ -116,8 +133,8 @@ export default function StaffRepair() {
       {repair.status === "IN_PROGRESS" && !repair.canComplete ? (
         <Text className="mb-4 text-xs leading-5 text-gray-500">
           {repair.canConfirmCash
-            ? `The client still owes the balance of ${peso(balance)}. They can pay it online, or pay you in cash and you confirm it here. Then mark the repair completed.`
-            : `The client still owes the balance${balance ? ` of ${peso(balance)}` : ""}. Your shop owner sends them the payment link. You can mark the repair completed once it's paid.`}
+            ? `The client still owes the balance of ${peso(balance)}. When the work is done, ask them to pay in the app, or take cash and confirm it here. Then mark the repair completed.`
+            : `The client still owes the balance${balance ? ` of ${peso(balance)}` : ""}. When the work is done, ask them to pay in the app. You can mark the repair completed once it's paid.`}
         </Text>
       ) : null}
 

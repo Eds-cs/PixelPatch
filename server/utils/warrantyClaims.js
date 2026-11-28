@@ -20,8 +20,35 @@ import { broadcastMessage } from "../sockets/chatSocket.js";
 const query = (sql, params = [], conn = null) => (conn ?? db.promise()).query(sql, params).then(([rows]) => rows);
 
 export const SHOP_REPLY_DAYS = 2;
-/** Claims still being handled (the client can't open another meanwhile). */
-export const ACTIVE_CLAIM_STATUSES = ["OPEN", "DECLINED", "ESCALATED"];
+/** After the shop declines, the client has this long to ask PixelPatch. */
+export const ESCALATE_WITHIN_DAYS = 7;
+/** Claims per repair, so a declined claim can't be filed over and over. */
+export const MAX_CLAIMS_PER_REPAIR = 3;
+
+const WEEK = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/**
+ * When the shop's 2 days to answer end, counting only the days it's open
+ * (shops.days_from .. days_to, "Mon".."Sat" or "Monday".."Saturday", may wrap
+ * round the week). A claim made on Saturday at a Mon-Sat shop is due Tuesday.
+ * Unreadable days: 2 calendar days.
+ */
+export function replyDueFor(createdAt, daysFrom, daysTo) {
+  const from = WEEK.indexOf(String(daysFrom ?? "").trim().slice(0, 3).toLowerCase());
+  const to = WEEK.indexOf(String(daysTo ?? "").trim().slice(0, 3).toLowerCase());
+  const due = new Date(createdAt);
+  const open = (day) => (from <= to ? day >= from && day <= to : day >= from || day <= to);
+  if (from < 0 || to < 0) {
+    due.setDate(due.getDate() + SHOP_REPLY_DAYS);
+    return due;
+  }
+  let left = SHOP_REPLY_DAYS;
+  for (let i = 0; left > 0 && i < 14; i += 1) {
+    due.setDate(due.getDate() + 1);
+    if (open(due.getDay())) left -= 1;
+  }
+  return due;
+}
 
 /** The original repair and its warranty: { request, warranty } (warranty null = none). */
 export async function loadRepairWarranty(requestId, conn = null) {
@@ -53,8 +80,8 @@ export async function claimsForRequest(requestId, conn = null) {
             DATE_FORMAT(wc.preferred_date, '%Y-%m-%d') AS preferred_date,
             wc.shop_response, wc.admin_note, wc.linked_request_id, wc.created_at, wc.responded_at,
             wc.escalated_at, wc.resolved_at,
-            wc.created_at + INTERVAL ${SHOP_REPLY_DAYS} DAY AS reply_due,
-            (wc.status = 'OPEN' AND wc.created_at < NOW() - INTERVAL ${SHOP_REPLY_DAYS} DAY) AS overdue,
+            COALESCE(wc.reply_due, wc.created_at + INTERVAL ${SHOP_REPLY_DAYS} DAY) AS reply_due,
+            (wc.status = 'OPEN' AND COALESCE(wc.reply_due, wc.created_at + INTERVAL ${SHOP_REPLY_DAYS} DAY) < NOW()) AS overdue,
             lr.status AS linked_status, lr.client_approved AS linked_client_approved, lr.decision AS linked_decision
        FROM warranty_claims wc
        LEFT JOIN service_requests lr ON lr.id = wc.linked_request_id
@@ -91,8 +118,13 @@ export function claimEligibility(request, warranty, claims) {
   if (!request || request.status !== "COMPLETED") return { allowed: false, reason: "The repair isn't completed yet." };
   if (!warranty) return { allowed: false, reason: "This repair has no warranty." };
   if (!warranty.active) return { allowed: false, reason: "The warranty has ended." };
-  if (claims.some((c) => ACTIVE_CLAIM_STATUSES.includes(c.status))) {
+  // Still being handled: waiting for the shop or PixelPatch, or a decline
+  // the client can still take to PixelPatch.
+  if (claims.some((c) => c.status === "OPEN" || c.status === "ESCALATED" || (c.status === "DECLINED" && canEscalate(c)))) {
     return { allowed: false, reason: "You already have a warranty claim open for this repair." };
+  }
+  if (claims.length >= MAX_CLAIMS_PER_REPAIR) {
+    return { allowed: false, reason: `You've made ${MAX_CLAIMS_PER_REPAIR} warranty claims for this repair. Message the shop about anything else.` };
   }
   if (claims.some(linkedRepairOpen)) {
     return { allowed: false, reason: "The warranty repair for this device is still in progress." };
@@ -100,8 +132,16 @@ export function claimEligibility(request, warranty, claims) {
   return { allowed: true, reason: null };
 }
 
-/** The client may ask PixelPatch to review: after a decline, or 2 days without an answer. */
-export const canEscalate = (claim) => claim.status === "DECLINED" || (claim.status === "OPEN" && Boolean(claim.overdue));
+/**
+ * The client may ask PixelPatch to review: within 7 days of the shop's
+ * decline, or any time once the shop's deadline has passed without an answer
+ * (the shop's silence shouldn't cost the client).
+ */
+export function canEscalate(claim, now = new Date()) {
+  if (claim.status === "OPEN") return Boolean(claim.overdue);
+  if (claim.status !== "DECLINED" || !claim.responded_at) return false;
+  return now - new Date(claim.responded_at) < ESCALATE_WITHIN_DAYS * 86400000;
+}
 
 /**
  * Creates the warranty repair for an accepted claim, inside `conn`'s

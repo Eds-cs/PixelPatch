@@ -7,6 +7,30 @@
 // quotation keeps its own copy (deposit_percent, allow_cash). Keep this in
 // sync with lib/paymentTerms.js.
 
+/** Smallest online charge (Xendit's card minimum); keep in sync with paymentPlan.js. */
+const MIN_ONLINE_PESOS = 20;
+
+/**
+ * A quotation whose online part couldn't be paid: a deposit (or full amount)
+ * under ₱20, or a balance under ₱20 that can only be paid online. A ₱0
+ * total is fine (nothing to pay). Returns a message, or null.
+ */
+export function onlineAmountProblem(totalPesos, depositPercent, allowCash) {
+  const totalC = Math.round(Number(totalPesos || 0) * 100);
+  if (totalC <= 0) return null;
+  const pct = Number(depositPercent);
+  const depositC = pct >= 100 ? totalC : Math.round((totalC * pct) / 10000) * 100;
+  const balanceC = totalC - depositC;
+  const min = MIN_ONLINE_PESOS * 100;
+  if (depositC > 0 && depositC < min) {
+    return `The online deposit would be under ₱${MIN_ONLINE_PESOS}, too small to pay by card. Raise it, or set it to 0%.`;
+  }
+  if (balanceC > 0 && balanceC < min && !allowCash) {
+    return `The balance would be under ₱${MIN_ONLINE_PESOS}, too small to pay by card. Ask for the full amount upfront, or allow cash.`;
+  }
+  return null;
+}
+
 /** A whole-number percentage 0-100 from a form value, or null. */
 export function parseDepositPercent(value) {
   if (value === undefined || value === null || value === "") return null;

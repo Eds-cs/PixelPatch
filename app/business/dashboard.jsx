@@ -8,6 +8,7 @@ import Button from "../../components/Button";
 import { useFetch } from "../../lib/useFetch";
 import { useResponsive } from "../../lib/useResponsive";
 import { COLORS } from "../../constants/theme";
+import { calendarDate } from "../../components/RepairSummary";
 
 const RANGES = [
   { key: "week", label: "This week" },
@@ -68,6 +69,8 @@ function DashboardContent({ range, onRangeChange }) {
   const revenueTotal = revenueRows.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
   const period = RANGES.find((item) => item.key === range).label.toLowerCase();
   const pending = Number(status.pending || 0);
+  // Warranty claims to accept or decline within 2 days (business rule 9).
+  const claims = data.warrantyClaimsWaiting ?? [];
 
   return (
     <ScrollView
@@ -93,6 +96,38 @@ function DashboardContent({ range, onRangeChange }) {
         </View>
         <Ionicons name="arrow-forward-outline" size={20} color={COLORS.textMuted} />
       </Pressable>
+
+      {claims.length ? (
+        <View className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <View className="flex-row items-center gap-3">
+            <Ionicons name="shield-half-outline" size={24} color="#b45309" />
+            <View className="flex-1">
+              <Text className="text-sm font-bold text-gray-900">
+                {`${claims.length} warranty claim${claims.length === 1 ? "" : "s"} waiting for your answer`}
+              </Text>
+              <Text className="mt-1 text-xs leading-5 text-gray-600">
+                {"Accept or decline within 2 days. If you don't, the client can ask PixelPatch to decide."}
+              </Text>
+            </View>
+          </View>
+          <View className="mt-3 gap-2">
+            {claims.map((claim) => (
+              <Pressable
+                key={claim.id}
+                onPress={() => router.push(`/business/repairs/${claim.request_id}`)}
+                accessibilityRole="button"
+                className="min-h-11 flex-row items-center justify-between gap-3 rounded-lg bg-white px-3 py-2"
+              >
+                <Text className="flex-1 text-sm font-semibold text-gray-900">{`Repair #${claim.request_id} · claim #${claim.id}`}</Text>
+                <Text className={`text-xs font-semibold ${claim.overdue ? "text-red-700" : "text-amber-800"}`}>
+                  {claim.overdue ? "Overdue" : `Answer by ${calendarDate(claim.reply_due)}`}
+                </Text>
+                <Ionicons name="arrow-forward-outline" size={16} color={COLORS.textMuted} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       <View className="mb-5 flex-row flex-wrap justify-between gap-y-3">
         {[

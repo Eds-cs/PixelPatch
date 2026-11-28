@@ -36,6 +36,31 @@ function mapPaymentMethod(method, channel, ewalletType) {
   return "CARD";
 }
 
+/** EXPIRED callback: verified with Xendit, then the matching PENDING row becomes FAILED. */
+async function handleExpiredInvoice(req, res) {
+  const { external_id: externalId, id: invoiceId } = req.body ?? {};
+  const match = /^repair_request_(\d+)_(\d+)_(\d+)$/.exec(externalId || "");
+  if (!match || !invoiceId || !process.env.XENDIT_SECRET_KEY) return res.json({ received: true });
+  try {
+    const { data: invoice } = await axios.get(
+      `${XENDIT_INVOICE_URL}/${encodeURIComponent(invoiceId)}`,
+      { auth: { username: process.env.XENDIT_SECRET_KEY, password: "" }, timeout: 10000 }
+    );
+    if (invoice?.id !== invoiceId || invoice?.external_id !== externalId || invoice?.status !== "EXPIRED") {
+      return res.status(400).json({ message: "Invoice details do not match callback" });
+    }
+    await db.promise().query(
+      `UPDATE payments SET status = 'FAILED'
+        WHERE id = ? AND request_id = ? AND status = 'PENDING' AND (gateway_ref IS NULL OR gateway_ref = ?)`,
+      [Number(match[2]), Number(match[1]), invoiceId]
+    );
+    return res.json({ received: true });
+  } catch (error) {
+    console.error("Xendit expired callback failed:", { status: error.response?.status, code: error.code });
+    return res.status(500).json({ message: "Unable to process payment notification" });
+  }
+}
+
 export const handleXenditWebhook = async (req, res) => {
   const expectedToken = process.env.XENDIT_WEBHOOK_TOKEN;
   const callbackToken = req.headers["x-callback-token"];
@@ -54,6 +79,11 @@ export const handleXenditWebhook = async (req, res) => {
     ewallet_type: ewalletType,
   } = req.body ?? {};
 
+  // An invoice that expired unpaid: retire its row so a fresh link is made
+  // next time (utils/paymentPlan.js createPaymentLinkFor).
+  if (status === "EXPIRED") {
+    return handleExpiredInvoice(req, res);
+  }
   if (status !== "PAID") {
     return res.json({ received: true });
   }
@@ -147,10 +177,13 @@ export const handleXenditWebhook = async (req, res) => {
       // Paying means the client approved. Then settle: the deposit (or full
       // payment) unlocks work; payment_status = 'PAID' and the quotation PAID
       // only once everything is paid (utils/paymentPlan.js).
+      // A cancelled request (client_approved = 0) is never revived; open
+      // links are closed when it is cancelled, so this shouldn't happen.
       await conn.query(
         `UPDATE service_requests
-         SET client_approved = 1
-         WHERE id = ? AND shop_id = ? AND decision = 'ACCEPTED'`,
+         SET client_approved = 1, client_approved_at = COALESCE(client_approved_at, NOW())
+         WHERE id = ? AND shop_id = ? AND decision = 'ACCEPTED'
+           AND (client_approved IS NULL OR client_approved = 1)`,
         [requestId, payment.request_shop_id]
       );
       await settleRequestPayments(conn, requestId);

@@ -20,7 +20,9 @@ import {
   markRepairCompleted,
   getCompletedRepair,
   markDeviceReceived,
-  confirmCashBalance
+  confirmCashBalance,
+  requestClientPayment,
+  withdrawUnpaidRepair
 } from "../controllers/repairController.js";
 console.log("🔥 repairRoutes loaded");
 import { LIMITS, limitText } from "../utils/inputLimits.js";
@@ -78,6 +80,12 @@ router.post("/:id/complete", markRepairCompleted);
 
 // Confirm the client paid the balance in cash (business rule 5)
 router.post("/:id/balance/cash", confirmCashBalance);
+
+// Ask the client to pay what's due (a Payment due card in the chat)
+router.post("/:id/payments/request", requestClientPayment);
+
+// Withdraw an approved repair whose deposit is unpaid after 3 days
+router.post("/:id/withdraw", limitText({ reason: ["Reason", LIMITS.rejectionReason] }), withdrawUnpaidRepair);
 
 // Record that the shop has the device (pickup / drop-off only)
 router.post("/:id/received", markDeviceReceived);

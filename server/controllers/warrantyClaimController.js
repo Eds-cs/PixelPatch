@@ -13,6 +13,7 @@
 // The problem and the shop's reason are messages between client and shop, so
 // contact details are hidden (utils/contactFilter.js), as in chat.
 import db from "../config/db.js";
+import { mailFrom, transporter } from "../config/mail.js";
 import { withTransaction } from "../utils/transaction.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
 import { removeUploadedFiles } from "../utils/fileSignatures.js";
@@ -27,6 +28,7 @@ import {
   createWarrantyRepair,
   loadRepairWarranty,
   noteInRepairChat,
+  replyDueFor,
 } from "../utils/warrantyClaims.js";
 
 const METHODS = { PICKUP: "is_pickup", DROPOFF: "is_dropoff", ONSITE: "is_onsite" };
@@ -39,6 +41,33 @@ const todayString = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+/**
+ * Emails the shop about a new claim, so the 2-day deadline isn't missed.
+ * Best effort: a failed email never fails the claim. No client contact
+ * details (AGENTS.md section 25); the shop answers in the app.
+ */
+async function emailShopAboutClaim({ shopId, requestId, problem, replyDue }) {
+  if (!process.env.EMAIL_USER) return;
+  try {
+    const [[shop]] = await db.promise().query("SELECT name, email FROM shops WHERE id = ? LIMIT 1", [shopId]);
+    if (!shop?.email) return;
+    await transporter.sendMail({
+      from: mailFrom(),
+      to: shop.email,
+      subject: `Warranty claim for repair #${requestId}: answer within 2 days`,
+      text:
+        `Hi ${shop.name},\n\n` +
+        `A client asked for warranty service on repair #${requestId}:\n\n"${problem}"\n\n` +
+        `Accept or decline it in PixelPatch (Repairs > #${requestId}) by ` +
+        `${replyDue.toLocaleString("en-PH", { weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}. ` +
+        `If you don't answer, the client can ask PixelPatch to decide.\n\n` +
+        `This is an automatic message from PixelPatch.`,
+    });
+  } catch (err) {
+    console.error("warranty claim email:", err.code || err.message);
+  }
+}
 
 /* POST /api/client/repairs/:id/warranty-claims */
 export const createWarrantyClaim = async (req, res) => {
@@ -83,12 +112,25 @@ export const createWarrantyClaim = async (req, res) => {
     }
 
     const { text: problem } = maskContactInfo(problemText);
+    // The shop's 2 open days to answer. A shop whose owner is suspended can't
+    // answer at all, so the claim goes straight to PixelPatch.
+    const [[shop]] = await db.promise().query(
+      `SELECT s.days_from, s.days_to, owner.suspended_at
+         FROM shops s JOIN users owner ON owner.id = s.user_id WHERE s.id = ? LIMIT 1`,
+      [request.shop_id]
+    );
+    const toPixelPatch = Boolean(shop?.suspended_at);
+    const replyDue = replyDueFor(new Date(), shop?.days_from, shop?.days_to);
     const claimId = await withTransaction(async (conn) => {
       const [result] = await conn.query(
         `INSERT INTO warranty_claims
-           (request_id, client_id, shop_id, problem, delivery_method, pickup_address_id, preferred_date, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
-        [requestId, request.client_id, request.shop_id, problem, method, method === "DROPOFF" ? null : addressId, preferredDate]
+           (request_id, client_id, shop_id, problem, delivery_method, pickup_address_id, preferred_date, reply_due,
+            status, escalated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          requestId, request.client_id, request.shop_id, problem, method, method === "DROPOFF" ? null : addressId,
+          preferredDate, replyDue, toPixelPatch ? "ESCALATED" : "OPEN", toPixelPatch ? new Date() : null,
+        ]
       );
       for (const file of req.files ?? []) {
         await conn.query("INSERT INTO warranty_claim_photos (claim_id, file_name) VALUES (?, ?)", [result.insertId, file.filename]);
@@ -99,9 +141,13 @@ export const createWarrantyClaim = async (req, res) => {
     await noteInRepairChat(
       { client_id: request.client_id, shop_id: request.shop_id, request_id: requestId },
       req.user.id,
-      `The client asked for warranty service: "${problem}" The shop has 2 days to accept or decline.`
+      toPixelPatch
+        ? `The client asked for warranty service: "${problem}" The shop can't answer right now, so PixelPatch will review it.`
+        : `The client asked for warranty service: "${problem}" The shop has 2 open days to accept or decline.`
     );
-    return res.status(201).json({ success: true, claim_id: claimId });
+    // Not awaited: the client shouldn't wait for Gmail.
+    if (!toPixelPatch) emailShopAboutClaim({ shopId: request.shop_id, requestId, problem, replyDue });
+    return res.status(201).json({ success: true, claim_id: claimId, sent_to: toPixelPatch ? "PIXELPATCH" : "SHOP" });
   } catch (err) {
     console.error("createWarrantyClaim:", err.code || err.message);
     return fail(500, "Couldn't send your warranty claim.");
@@ -114,8 +160,8 @@ export const escalateWarrantyClaim = async (req, res) => {
   if (!claimId) return res.status(404).json({ message: "Claim not found" });
   try {
     const [[claim]] = await db.promise().query(
-      `SELECT id, request_id, client_id, shop_id, status,
-              (status = 'OPEN' AND created_at < NOW() - INTERVAL 2 DAY) AS overdue
+      `SELECT id, request_id, client_id, shop_id, status, responded_at,
+              (status = 'OPEN' AND COALESCE(reply_due, created_at + INTERVAL 2 DAY) < NOW()) AS overdue
          FROM warranty_claims WHERE id = ? AND client_id = ? LIMIT 1`,
       [claimId, req.user.id]
     );
@@ -123,8 +169,10 @@ export const escalateWarrantyClaim = async (req, res) => {
     if (!canEscalate({ ...claim, overdue: Boolean(Number(claim.overdue)) })) {
       return res.status(409).json({
         message: claim.status === "OPEN"
-          ? "The shop still has time to answer. You can ask PixelPatch once 2 days have passed."
-          : "This claim can't be sent to PixelPatch now.",
+          ? "The shop still has time to answer. You can ask PixelPatch once its deadline has passed."
+          : claim.status === "DECLINED"
+            ? "PixelPatch can review a declined claim within 7 days of the shop's answer."
+            : "This claim can't be sent to PixelPatch now.",
       });
     }
     const [result] = await db.promise().query(

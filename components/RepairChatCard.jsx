@@ -218,6 +218,42 @@ function Update({ card, client, ...shell }) {
     );
   }
 
+  if (card.stage === "PAYMENT_DUE") {
+    const part = d.kind === "BALANCE" ? "balance" : d.kind === "DEPOSIT" ? "deposit" : "payment";
+    return (
+      <Shell
+        {...shell}
+        card={card}
+        icon="wallet-outline"
+        iconColor="#B45309"
+        title={client ? "Payment due" : "Payment requested"}
+        label={`${PART[d.kind] ?? "Payment"} of ${peso(d.amount)} due for repair ${card.request_id}`}
+        button={client ? `Pay ${peso(d.amount)}` : "View repair"}
+        primary={client}
+      >
+        <DeviceRow device={card.device} subtitle={`${PART[d.kind] ?? "Payment"} · ${peso(d.amount)}`} />
+        <View className="mt-2">
+          {repairNo}
+          <Row label="Due now" value={`${PART[d.kind] ?? "Payment"} ${peso(d.amount)}`} />
+          <Row
+            label="How to pay"
+            value={d.kind === "BALANCE" && d.cash_allowed ? "Online in the app, or cash to the shop" : "Online in the app"}
+          />
+        </View>
+        <Latest
+          at={card.at}
+          text={
+            client
+              ? d.kind === "BALANCE"
+                ? "Pay the balance before you get your device back. Open the repair to pay securely."
+                : `Pay the ${part} so the shop can start work. Open the repair to pay securely.`
+              : `The client was asked to pay the ${part}. It shows here once it's paid.`
+          }
+        />
+      </Shell>
+    );
+  }
+
   if (card.stage === "REPAIR_STARTED") {
     return (
       <Shell

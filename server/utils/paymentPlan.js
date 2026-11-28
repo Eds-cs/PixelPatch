@@ -18,6 +18,7 @@ import axios from "axios";
 import db from "../config/db.js";
 import { withTransaction } from "./transaction.js";
 import { postRepairUpdate } from "./repairCards.js";
+import { addSystemMessage } from "./staff.js";
 
 const XENDIT_INVOICE_URL = "https://api.xendit.co/v2/invoices";
 const XENDIT_EXPIRE_URL = "https://api.xendit.co/invoices";
@@ -25,13 +26,24 @@ const XENDIT_EXPIRE_URL = "https://api.xendit.co/invoices";
 const cents = (value) => Math.round(Number(value || 0) * 100);
 const pesos = (value) => value / 100;
 
-/** { totalC, depositPercent, depositC, balanceC, allowCash } in centavos. */
+/**
+ * Smallest amount charged online: Xendit's card minimum is ₱20 (GCash ₱1),
+ * so a smaller online part couldn't be paid by card. Quotations can't be made
+ * with an online part under this (utils/paymentTerms.js onlineAmountProblem).
+ */
+export const MIN_ONLINE_PESOS = 20;
+
+/**
+ * { totalC, depositPercent, depositC, balanceC, allowCash } in centavos. The
+ * deposit is rounded to whole pesos (some channels don't take centavos); the
+ * balance is the rest, so the two always add up to the total.
+ */
 export function quotationAmountsCents(quotation) {
   const totalC = cents(quotation?.estimated_cost);
   const depositPercent = quotation?.deposit_percent === null || quotation?.deposit_percent === undefined
     ? 100
     : Number(quotation.deposit_percent);
-  const depositC = Math.round((totalC * depositPercent) / 100);
+  const depositC = depositPercent >= 100 ? totalC : Math.round((totalC * depositPercent) / 10000) * 100;
   const balanceC = totalC - depositC;
   const allowCash = Number(quotation?.allow_cash) === 1 && balanceC > 0;
   return { totalC, depositPercent, depositC, balanceC, allowCash };
@@ -105,7 +117,8 @@ export function paymentPlan({ request, quotation, payments = [] }) {
 export async function loadPaymentState(requestId, conn = null) {
   const run = (sql, params) => (conn ?? db.promise()).query(sql, params).then(([rows]) => rows);
   const [request] = await run(
-    `SELECT id, client_id, shop_id, decision, status, payment_status, deposit_paid_at, client_approved
+    `SELECT id, client_id, shop_id, decision, status, payment_status, deposit_paid_at, client_approved,
+            client_approved_at
        FROM service_requests WHERE id = ? LIMIT 1${conn ? " FOR UPDATE" : ""}`,
     [requestId]
   );
@@ -162,14 +175,44 @@ const DESCRIPTION = {
   BALANCE: (id) => `Balance for repair request #${id}`,
 };
 
+/** The invoice's status at Xendit ("PENDING", "PAID", "SETTLED", "EXPIRED"), or throws. */
+async function invoiceStatus(invoiceId) {
+  const { data } = await axios.get(`${XENDIT_INVOICE_URL}/${encodeURIComponent(invoiceId)}`, { auth: xenditAuth(), timeout: 10000 });
+  return String(data?.status ?? "").toUpperCase();
+}
+
 /**
  * Creates (or returns) the Xendit link for whatever is due now on this
  * request: the deposit/full amount after approval, or the balance once work
- * has started. `shopId` must own the request. Returns { status, body }.
+ * has started. The caller is the shop (`shopId` must own the request) or the
+ * client (`clientId` must be the request's client), who can pay without
+ * waiting for the shop. A saved link is checked with Xendit first: an
+ * expired one is replaced. Returns { status, body }.
  */
-export async function createPaymentLinkFor({ requestId, shopId }) {
+// One link creation at a time per repair, so two taps (or the client and the
+// shop at once) can't create two invoices for the same part. In-process:
+// PixelPatch runs one server process (deploy/); several would need a DB lock.
+const linkQueues = new Map();
+function oneAtATime(key, task) {
+  const previous = linkQueues.get(key) ?? Promise.resolve();
+  const run = previous.then(task, task);
+  const tail = run.then(() => undefined, () => undefined);
+  linkQueues.set(key, tail);
+  tail.then(() => { if (linkQueues.get(key) === tail) linkQueues.delete(key); });
+  return run;
+}
+
+export function createPaymentLinkFor(args) {
+  return oneAtATime(`link:${Number(args.requestId)}`, () => createPaymentLinkNow(args));
+}
+
+async function createPaymentLinkNow({ requestId, shopId = null, clientId = null }) {
   const { request, quotation, payments, plan } = await loadPaymentState(requestId);
-  if (!request || Number(request.shop_id) !== Number(shopId)) return { status: 404, body: { message: "Repair not found" } };
+  const owns = request && (
+    (shopId !== null && Number(request.shop_id) === Number(shopId)) ||
+    (clientId !== null && Number(request.client_id) === Number(clientId))
+  );
+  if (!owns) return { status: 404, body: { message: "Repair not found" } };
   if (request.decision !== "ACCEPTED") return { status: 400, body: { message: "Request has not been accepted" } };
   if (!quotation) return { status: 400, body: { message: "Request must have a quotation" } };
   if (request.client_approved === null || Number(request.client_approved) !== 1) {
@@ -184,11 +227,40 @@ export async function createPaymentLinkFor({ requestId, shopId }) {
 
   const due = plan?.due;
   if (!due) return { status: 400, body: { message: "Nothing is left to pay online for this repair." } };
-  if (!due.ready) return { status: 409, body: { message: "Ask for the balance once the repair has started." } };
+  if (!due.ready) return { status: 409, body: { message: "The balance can be paid once the repair has started." } };
+
   if (due.payment_link) {
-    return { status: 200, body: { message: "Payment link already generated", payment_link: due.payment_link, kind: due.kind, amount: due.amount } };
+    const open = payments.find((p) => p.id === due.payment_id);
+    let status = "PENDING";
+    if (open?.gateway_ref) {
+      try {
+        status = await invoiceStatus(open.gateway_ref);
+      } catch (err) {
+        // Xendit unreachable: the saved link is still the best answer.
+        console.error("Xendit invoice check failed:", { status: err.response?.status, code: gatewayCode(err) });
+      }
+    }
+    if (status === "PAID" || status === "SETTLED") {
+      return { status: 409, body: { message: "This payment went through. It will show here as soon as Xendit confirms it." } };
+    }
+    if (status !== "EXPIRED") {
+      return { status: 200, body: { message: "Payment link already generated", payment_link: due.payment_link, kind: due.kind, amount: due.amount } };
+    }
+    // Expired: retire it and make a fresh link below.
+    await db.promise().query("UPDATE payments SET status = 'FAILED' WHERE id = ? AND status = 'PENDING'", [open.id]);
+    open.status = "FAILED";
   }
   if (!(due.amount > 0)) return { status: 400, body: { message: "Computed payment amount is invalid" } };
+  if (due.amount < MIN_ONLINE_PESOS) {
+    return {
+      status: 409,
+      body: {
+        message: due.cash_allowed
+          ? `Online payments start at ₱${MIN_ONLINE_PESOS}. Pay this ₱${due.amount} in cash to the shop.`
+          : `Online payments start at ₱${MIN_ONLINE_PESOS}, and this is ₱${due.amount}. Message the shop to settle it.`,
+      },
+    };
+  }
 
   // Reuse an unpaid row of this kind (a failed or link-less attempt), else add one.
   const reusable = payments.filter((p) => p.kind === due.kind && p.gateway !== "CASH" && p.status !== "PAID").sort((a, b) => b.id - a.id)[0];
@@ -235,8 +307,8 @@ export async function createPaymentLinkFor({ requestId, shopId }) {
 }
 
 /**
- * Stops an unpaid online invoice from being paid (the shop took cash instead).
- * Returns "EXPIRED", "PAID" (the client paid it first) or throws.
+ * Stops an unpaid online invoice from being paid (the shop took cash, or the
+ * repair was cancelled). Returns "EXPIRED", "PAID" (it was paid first) or throws.
  */
 async function expireInvoice(invoiceId) {
   try {
@@ -244,12 +316,157 @@ async function expireInvoice(invoiceId) {
     return "EXPIRED";
   } catch (err) {
     // Already expired or already paid: ask Xendit which.
-    const { data } = await axios.get(`${XENDIT_INVOICE_URL}/${encodeURIComponent(invoiceId)}`, { auth: xenditAuth(), timeout: 10000 });
-    const status = String(data?.status ?? "").toUpperCase();
+    const status = await invoiceStatus(invoiceId);
     if (status === "PAID" || status === "SETTLED") return "PAID";
     if (status === "EXPIRED") return "EXPIRED";
     throw err;
   }
+}
+
+/**
+ * Closes the request's open online links (all of them, or only `kinds`) at
+ * Xendit, before cash is recorded or the repair is cancelled, so nobody pays
+ * for it afterwards. Call before any transaction (AGENTS.md section 12).
+ * Returns null when all are closed, or { status, body } to send back.
+ */
+export async function closeOpenLinks(payments, kinds = null) {
+  const open = payments.filter(
+    (p) => p.gateway !== "CASH" && p.status === "PENDING" && p.gateway_ref && (!kinds || kinds.includes(p.kind))
+  );
+  for (const payment of open) {
+    let outcome;
+    try {
+      outcome = await expireInvoice(payment.gateway_ref);
+    } catch (err) {
+      console.error("Xendit invoice expiry failed:", { status: err.response?.status, code: gatewayCode(err) });
+      return { status: 502, body: { message: "Couldn't close the open online payment link. Please try again." } };
+    }
+    if (outcome === "PAID") {
+      return { status: 409, body: { message: "A payment for this repair has just gone through. Refresh to see it." } };
+    }
+    await db.promise().query("UPDATE payments SET status = 'FAILED' WHERE id = ? AND status = 'PENDING'", [payment.id]);
+  }
+  return null;
+}
+
+/** The assigned member check for staff calls, or null when it passes. */
+async function assignedCheck(requestId, employeeId) {
+  if (employeeId === null) return null;
+  const [assignment] = await db.promise()
+    .query("SELECT employee_id FROM request_assignments WHERE request_id = ? LIMIT 1", [requestId])
+    .then(([rows]) => rows);
+  return !assignment || Number(assignment.employee_id) !== Number(employeeId)
+    ? { status: 403, body: { message: "This repair isn't assigned to you." } }
+    : null;
+}
+
+const ASK_AGAIN_HOURS = 6;
+
+/**
+ * "Ask the client to pay": posts a PAYMENT_DUE card in the repair's chat with
+ * what's due now. The client pays from the card or the repair page (they make
+ * the link themselves), so nobody waits on the owner. The owner can ask for
+ * any due part; a member (`employeeId`) only for the balance of a repair
+ * assigned to them. Once every 6 hours. Returns { status, body }.
+ */
+export async function requestPaymentFor({ requestId, shopId, employeeId = null, userId }) {
+  const { request, plan } = await loadPaymentState(requestId);
+  if (!request || Number(request.shop_id) !== Number(shopId)) return { status: 404, body: { message: "Repair not found" } };
+  const notAssigned = await assignedCheck(requestId, employeeId);
+  if (notAssigned) return notAssigned;
+
+  const due = plan?.due;
+  if (!due) return { status: 409, body: { message: "Nothing is due from the client right now." } };
+  if (!due.ready) return { status: 409, body: { message: "Ask for the balance once the repair has started." } };
+  if (employeeId !== null && due.kind !== "BALANCE") {
+    return { status: 403, body: { message: "Only the shop owner can ask for the deposit." } };
+  }
+
+  const [recent] = await db.promise().query(
+    `SELECT m.id FROM chat_messages m JOIN chats c ON c.id = m.chat_id
+      WHERE c.request_id = ? AND m.sender_kind = 'SYSTEM' AND m.card LIKE '%"stage":"PAYMENT_DUE"%'
+        AND m.timestamp > NOW() - INTERVAL ${ASK_AGAIN_HOURS} HOUR
+      LIMIT 1`,
+    [requestId]
+  ).then(([rows]) => rows);
+  if (recent) {
+    return { status: 429, body: { message: `You already asked in the last ${ASK_AGAIN_HOURS} hours. The client can see it in the chat and on their repair page.` } };
+  }
+
+  await postRepairUpdate(Number(requestId), userId, "PAYMENT_DUE", { kind: due.kind, amount: due.amount, cash_allowed: due.cash_allowed });
+  return { status: 200, body: { message: "The client has been asked to pay." } };
+}
+
+/**
+ * Cancels an approved repair whose deposit isn't paid yet (AGENTS.md section
+ * 15, Step 5), so it can't stay open forever:
+ *   by "CLIENT": any time before the deposit is settled (client_approved = 0)
+ *   by "SHOP":   3 days after approval, with a reason (decision = REJECTED)
+ * Open payment links are closed at Xendit first. Returns { status, body }.
+ */
+export const WITHDRAW_AFTER_DAYS = 3;
+
+export async function cancelUnpaidRepair({ requestId, by, clientId = null, shopId = null, userId, reason = null }) {
+  const { request, payments } = await loadPaymentState(requestId);
+  const owns = request && (by === "CLIENT" ? Number(request.client_id) === Number(clientId) : Number(request.shop_id) === Number(shopId));
+  if (!owns) return { status: 404, body: { message: "Repair not found" } };
+  const unpaid =
+    request.decision === "ACCEPTED" &&
+    request.client_approved !== null && Number(request.client_approved) === 1 &&
+    !depositSettled(request) &&
+    ["PENDING", "REVIEW"].includes(request.status) &&
+    !payments.some((p) => p.status === "PAID");
+  if (!unpaid) return { status: 409, body: { message: "This repair can't be cancelled: the deposit is paid or work has started." } };
+  if (by === "SHOP") {
+    const approvedAt = request.client_approved_at ? new Date(request.client_approved_at) : null;
+    if (approvedAt && Date.now() - approvedAt.getTime() < WITHDRAW_AFTER_DAYS * 86400000) {
+      return { status: 409, body: { message: `You can withdraw ${WITHDRAW_AFTER_DAYS} days after the client approved if the deposit is still unpaid. Ask the client to pay first.` } };
+    }
+  }
+
+  const blocked = await closeOpenLinks(payments);
+  if (blocked) return blocked;
+
+  const done = await withTransaction(async (conn) => {
+    const fresh = await loadPaymentState(requestId, conn);
+    if (depositSettled(fresh.request) || fresh.payments.some((p) => p.status === "PAID")) return false;
+    const [result] = by === "CLIENT"
+      ? await conn.query(
+        `UPDATE service_requests SET client_approved = 0, updated_at = NOW()
+          WHERE id = ? AND client_approved = 1 AND deposit_paid_at IS NULL AND status IN ('PENDING', 'REVIEW')`,
+        [requestId]
+      )
+      : await conn.query(
+        `UPDATE service_requests SET decision = 'REJECTED', rejection_reason = ?, updated_at = NOW()
+          WHERE id = ? AND client_approved = 1 AND deposit_paid_at IS NULL AND status IN ('PENDING', 'REVIEW')`,
+        [reason, requestId]
+      );
+    if (!result.affectedRows) return false;
+    await conn.query(
+      "UPDATE request_quotations SET status = 'CANCELLED', updated_at = NOW() WHERE request_id = ? AND status = 'PENDING'",
+      [requestId]
+    );
+    return true;
+  });
+  if (!done) return { status: 409, body: { message: "This repair has changed. Refresh to see it." } };
+
+  // A line in the repair's chat, best effort.
+  try {
+    const [chat] = await db.promise().query("SELECT id FROM chats WHERE request_id = ? LIMIT 1", [requestId]).then(([rows]) => rows);
+    if (chat) {
+      const { broadcastMessage } = await import("../sockets/chatSocket.js");
+      broadcastMessage(await addSystemMessage(
+        chat.id,
+        userId,
+        by === "CLIENT"
+          ? "The client cancelled this repair before paying the deposit."
+          : `The shop withdrew this repair because the deposit wasn't paid: ${reason}`
+      ));
+    }
+  } catch (err) {
+    console.error("cancel note:", err.code || err.message);
+  }
+  return { status: 200, body: { message: by === "CLIENT" ? "Repair cancelled." : "Repair withdrawn." } };
 }
 
 /**
@@ -263,14 +480,8 @@ export async function confirmCashBalanceFor({ requestId, shopId, employeeId = nu
   const { request, payments, plan } = await loadPaymentState(requestId);
   if (!request || Number(request.shop_id) !== Number(shopId)) return { status: 404, body: { message: "Repair not found" } };
 
-  if (employeeId !== null) {
-    const [assignment] = await db.promise()
-      .query("SELECT employee_id FROM request_assignments WHERE request_id = ? LIMIT 1", [requestId])
-      .then(([rows]) => rows);
-    if (!assignment || Number(assignment.employee_id) !== Number(employeeId)) {
-      return { status: 403, body: { message: "This repair isn't assigned to you." } };
-    }
-  }
+  const notAssigned = await assignedCheck(requestId, employeeId);
+  if (notAssigned) return notAssigned;
 
   if (!plan || plan.due?.kind !== "BALANCE") {
     return { status: 409, body: { message: plan?.balance_paid ? "The balance is already paid." : "There's no balance to collect yet." } };
@@ -280,19 +491,8 @@ export async function confirmCashBalanceFor({ requestId, shopId, employeeId = nu
 
   // An online balance link may be open: close it first, so the client can't
   // also pay it. External calls happen before the transaction (AGENTS.md 12).
-  const openLinks = payments.filter((p) => p.kind === "BALANCE" && p.gateway !== "CASH" && p.status === "PENDING" && p.gateway_ref);
-  for (const payment of openLinks) {
-    let outcome;
-    try {
-      outcome = await expireInvoice(payment.gateway_ref);
-    } catch (err) {
-      console.error("Xendit invoice expiry failed:", { status: err.response?.status, code: gatewayCode(err) });
-      return { status: 502, body: { message: "Couldn't close the client's online payment link. Please try again." } };
-    }
-    if (outcome === "PAID") {
-      return { status: 409, body: { message: "The client has already paid the balance online. Refresh to see it." } };
-    }
-  }
+  const blocked = await closeOpenLinks(payments, ["BALANCE"]);
+  if (blocked) return blocked;
 
   const done = await withTransaction(async (conn) => {
     const fresh = await loadPaymentState(requestId, conn);
