@@ -1307,7 +1307,8 @@ status here.
      original repair's chat. Statuses: OPEN, ACCEPTED (`linked_request_id`
      = the warranty repair), DECLINED, ESCALATED, CLOSED (an admin declined).
    * **Warranty repair:** `createWarrantyRepair` makes a new request for the
-     same device and shop, `decision = 'ACCEPTED'`, with no services (so
+     same device and shop, `decision = 'ACCEPTED'` and `status = 'REVIEW'`
+     (as an accepted request), with no services (so
      covered work is ₱0) and the claim's photos. It then follows sections
      15-17 as usual. A ₱0 quotation is paid in full as soon as the client
      approves it (`settleRequestPayments`). Repair details return
@@ -1552,6 +1553,24 @@ Clean up socket listeners when React components unmount.
   `/business/messages`, STAFF on `/staff/messages`, grouped by shop or
   client. `GET /chat/:id` gives the chat screen its state (role, can send,
   handler, transfer target).
+
+## Repair cards in chat (since 2026-11-28)
+
+When a shop accepts a repair request (`confirmRepair`), or a warranty repair
+is created (business rule 9), PixelPatch posts a **"Repair confirmed"** card
+in that repair's chat, like an order confirmation: repair number, device
+(photo or icon), services, delivery method and address (the client's for
+pickup/on-site, the shop's for drop-off), preferred date, price note, the
+start of the problem description, and **View details** (opens the repair as
+client, owner or staff).
+
+* It is a SYSTEM message with `chat_messages.card` (JSON, `type:
+  "REPAIR_CONFIRMED"`); `message_text` keeps a plain line for inbox previews.
+  Built by `server/utils/repairCards.js` (`postRepairConfirmation`, best
+  effort), drawn by `components/RepairChatCard.jsx` in `app/chat/[id].jsx`.
+  `GET /chat/:id/messages` and the socket send `card` parsed.
+* A snapshot of that moment: it doesn't change when the repair does.
+* Never put phone numbers or emails in a card (see below).
 
 ## Keeping clients and shops on PixelPatch (since 2026-11-27)
 
@@ -2798,6 +2817,7 @@ sender_id        int NOT NULL   No FK
 sender_kind      enum('CLIENT','OWNER','STAFF','SYSTEM') NULL   (NULL on older messages; added 2026-11-28)
 sender_label     varchar(150) NULL   ("Juan · Technician"; added 2026-11-28)
 message_text     text NOT NULL
+card             longtext NULL   (JSON repair card on a SYSTEM message; added 2026-11-28, section 25)
 attachment_url   text NULL
 is_read          tinyint(1) NOT NULL
 timestamp        datetime NOT NULL

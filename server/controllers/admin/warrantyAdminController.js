@@ -9,6 +9,7 @@
 import db from "../../config/db.js";
 import { withTransaction } from "../../utils/transaction.js";
 import { createWarrantyRepair, noteInRepairChat } from "../../utils/warrantyClaims.js";
+import { postRepairConfirmation } from "../../utils/repairCards.js";
 
 const MAX_PAGE = 100;
 const VIEWS = {
@@ -147,6 +148,11 @@ export const decideWarrantyClaim = async (req, res) => {
         ? `PixelPatch reviewed the warranty claim and ordered a warranty repair (#${result.linkedId}): ${note}`
         : `PixelPatch reviewed the warranty claim and declined it: ${note}`
     );
+    // The card comes from the shop: it has to do the repair.
+    if (result.linkedId) {
+      const [[shop]] = await db.promise().query("SELECT user_id FROM shops WHERE id = ?", [result.claim.shop_id]);
+      await postRepairConfirmation(result.linkedId, shop?.user_id ?? req.user.id);
+    }
     res.json({ success: true, outcome, linked_request_id: result.linkedId ?? null });
   } catch (err) {
     console.error("decideWarrantyClaim:", { code: err.code, message: err.message });

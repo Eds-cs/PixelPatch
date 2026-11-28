@@ -106,7 +106,8 @@ export const canEscalate = (claim) => claim.status === "DECLINED" || (claim.stat
 /**
  * Creates the warranty repair for an accepted claim, inside `conn`'s
  * transaction: a new request for the same device and shop, already ACCEPTED
- * (accepting the claim is the shop's yes), with no services, so covered work
+ * with status REVIEW, as confirmRepair leaves an accepted request (accepting
+ * the claim is the shop's yes), with no services, so covered work
  * costs ₱0. The claim's photos are copied to it. Returns the new request id.
  */
 export async function createWarrantyRepair(conn, claim, actorUserId) {
@@ -119,7 +120,7 @@ export async function createWarrantyRepair(conn, claim, actorUserId) {
     `INSERT INTO service_requests
        (client_id, shop_id, delivery_method, device_id, issue_description, pickup_address_id,
         preferred_date, notes, estimated_price, status, decision, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.00, 'PENDING', 'ACCEPTED', NOW(), NOW())`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.00, 'REVIEW', 'ACCEPTED', NOW(), NOW())`,
     [
       original.client_id,
       original.shop_id,

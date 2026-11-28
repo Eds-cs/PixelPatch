@@ -18,6 +18,7 @@ import { isValidDateOnly } from "../utils/dateValidation.js";
 import { removeUploadedFiles } from "../utils/fileSignatures.js";
 import { maskContactInfo } from "../utils/contactFilter.js";
 import { resolveShopDeliveryTypes } from "../utils/shopDeliveryTypes.js";
+import { postRepairConfirmation } from "../utils/repairCards.js";
 import { SERVICE_AREA_MESSAGE, isInServiceArea } from "../utils/serviceArea.js";
 import {
   canEscalate,
@@ -171,6 +172,7 @@ export const acceptWarrantyClaim = async (req, res) => {
     });
     if (result.status !== 200) return res.status(result.status).json({ message: result.message });
     await noteInRepairChat(result.claim, req.user.id, `The shop accepted the warranty claim. Warranty repair #${result.linkedId} has been created.`);
+    await postRepairConfirmation(result.linkedId, req.user.id);
     return res.json({ success: true, linked_request_id: result.linkedId });
   } catch (err) {
     console.error("acceptWarrantyClaim:", err.code || err.message);

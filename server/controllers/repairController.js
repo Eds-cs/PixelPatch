@@ -6,6 +6,7 @@ import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
 import { loadPaymentState, confirmCashBalanceFor } from "../utils/paymentPlan.js";
 import { validateWarranty } from "../utils/warranty.js";
 import { claimsForRequest } from "../utils/warrantyClaims.js";
+import { postRepairConfirmation } from "../utils/repairCards.js";
 
 // service_requests.client_approved: NULL = undecided, 1 = approved, 0 = cancelled.
 const CANCELLED_MESSAGE = "The client cancelled this repair request";
@@ -508,6 +509,8 @@ export const confirmRepair = async (req, res) => {
     );
 
     console.log("✅ Repair confirmed");
+    // "Repair confirmed" card in the repair's chat (utils/repairCards.js).
+    await postRepairConfirmation(Number(id), req.user.id);
 
     return res.json({
       success: true,

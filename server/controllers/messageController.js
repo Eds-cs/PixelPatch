@@ -13,6 +13,7 @@ import { hideContactInfo, CONTACT_HIDDEN_NOTICE } from "../utils/contactFilter.j
 import { chatAccess, CHAT_HANDED_OVER_MESSAGE } from "../utils/chatAccess.js";
 import { membershipFor, senderLabel, OWNER_ROLE_LABEL } from "../utils/staff.js";
 import { saveChatMessage, broadcastMessage } from "../sockets/chatSocket.js";
+import { parseCard } from "../utils/repairCards.js";
 
 const query = (sql, params = []) => db.promise().query(sql, params).then(([rows]) => rows);
 
@@ -50,7 +51,7 @@ export const getMessages = async (req, res) => {
     const { chat } = access;
 
     const rows = await query(
-      `SELECT m.id, m.chat_id, m.sender_id, m.sender_kind, m.sender_label, m.message_text, m.timestamp,
+      `SELECT m.id, m.chat_id, m.sender_id, m.sender_kind, m.sender_label, m.message_text, m.card, m.timestamp,
               u.first_name, u.last_name
          FROM chat_messages m
          LEFT JOIN users u ON u.id = m.sender_id
@@ -71,6 +72,8 @@ export const getMessages = async (req, res) => {
         last_name: kind === "CLIENT" ? row.last_name : null,
         // Also hides contact details in messages saved before the filter existed.
         message_text: hideContactInfo(row.message_text),
+        // A repair card (utils/repairCards.js), drawn by the chat screen.
+        card: parseCard(row.card),
       };
     }));
   } catch (err) {
