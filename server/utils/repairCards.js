@@ -11,6 +11,8 @@
 //     QUOTE_SENT        createQuotation: total, deposit/balance, ready-by date, warranty
 //     PAYMENT_RECEIVED  the Xendit webhook or a confirmed cash balance:
 //                       which part, how much, online or cash, what's left
+//     PAYMENT_DUE       the owner or the assigned member asks the client to pay
+//                       (requestPaymentFor): which part, how much, cash allowed
 //     REPAIR_STARTED    startRepairFor: technician (first name and role), ready-by date
 //     REPAIR_COMPLETED  completeRepairFor: completion date, warranty end date
 //
@@ -187,6 +189,13 @@ async function stageDetails(stage, row, extra) {
           cash_allowed: Boolean(plan?.allow_cash),
         },
         text: `${PART_WORDS[kind] ?? "Payment"} of ${peso(extra.amount)} received ${method === "CASH" ? "in cash" : "online"} for repair #${id}.`,
+      };
+    }
+    case "PAYMENT_DUE": {
+      const kind = extra.kind;
+      return {
+        data: { kind, amount: Number(extra.amount) || 0, cash_allowed: Boolean(extra.cash_allowed) },
+        text: `${PART_WORDS[kind] ?? "Payment"} of ${peso(extra.amount)} due for repair #${id}.`,
       };
     }
     case "REPAIR_STARTED": {

@@ -13,6 +13,7 @@
 // The problem and the shop's reason are messages between client and shop, so
 // contact details are hidden (utils/contactFilter.js), as in chat.
 import db from "../config/db.js";
+import { mailFrom, transporter } from "../config/mail.js";
 import { withTransaction } from "../utils/transaction.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
 import { removeUploadedFiles } from "../utils/fileSignatures.js";
@@ -39,6 +40,32 @@ const todayString = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+/**
+ * Emails the shop about a new claim, so the 2-day deadline isn't missed.
+ * Best effort: a failed email never fails the claim. No client contact
+ * details (AGENTS.md section 25); the shop answers in the app.
+ */
+async function emailShopAboutClaim({ shopId, requestId, problem }) {
+  if (!process.env.EMAIL_USER) return;
+  try {
+    const [[shop]] = await db.promise().query("SELECT name, email FROM shops WHERE id = ? LIMIT 1", [shopId]);
+    if (!shop?.email) return;
+    await transporter.sendMail({
+      from: mailFrom(),
+      to: shop.email,
+      subject: `Warranty claim for repair #${requestId}: answer within 2 days`,
+      text:
+        `Hi ${shop.name},\n\n` +
+        `A client asked for warranty service on repair #${requestId}:\n\n"${problem}"\n\n` +
+        `Accept or decline it within 2 days in PixelPatch (Repairs > #${requestId}). ` +
+        `If you don't answer, the client can ask PixelPatch to decide.\n\n` +
+        `This is an automatic message from PixelPatch.`,
+    });
+  } catch (err) {
+    console.error("warranty claim email:", err.code || err.message);
+  }
+}
 
 /* POST /api/client/repairs/:id/warranty-claims */
 export const createWarrantyClaim = async (req, res) => {
@@ -101,6 +128,8 @@ export const createWarrantyClaim = async (req, res) => {
       req.user.id,
       `The client asked for warranty service: "${problem}" The shop has 2 days to accept or decline.`
     );
+    // Not awaited: the client shouldn't wait for Gmail.
+    emailShopAboutClaim({ shopId: request.shop_id, requestId, problem });
     return res.status(201).json({ success: true, claim_id: claimId });
   } catch (err) {
     console.error("createWarrantyClaim:", err.code || err.message);

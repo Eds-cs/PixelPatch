@@ -1,7 +1,7 @@
 import db from "../config/db.js";
 import { withTransaction } from "../utils/transaction.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
-import { loadPaymentState, settleRequestPayments } from "../utils/paymentPlan.js";
+import { cancelUnpaidRepair, createPaymentLinkFor, loadPaymentState, settleRequestPayments } from "../utils/paymentPlan.js";
 import { warrantyInfo } from "../utils/warranty.js";
 import { canEscalate, claimEligibility, claimsForRequest } from "../utils/warrantyClaims.js";
 
@@ -366,7 +366,7 @@ export const approveQuotation = async (req, res) => {
       const [result] = await conn.query(
         `
         UPDATE service_requests
-        SET client_approved = 1, updated_at = NOW()
+        SET client_approved = 1, client_approved_at = NOW(), updated_at = NOW()
         WHERE id = ? AND client_id = ? AND client_approved IS NULL
         `,
         [requestId, clientId]
@@ -418,11 +418,11 @@ export const cancelRequest = async (req, res) => {
       return res.status(400).json({ message: "This request is already cancelled" });
     }
 
-    // Approved repairs cannot be cancelled
+    // Approved, but the deposit isn't paid yet: still cancellable, after
+    // closing any open payment link (utils/paymentPlan.js).
     if (repair.client_approved === 1) {
-      return res.status(400).json({
-        message: "Approved requests cannot be cancelled",
-      });
+      const { status, body } = await cancelUnpaidRepair({ requestId: Number(requestId), by: "CLIENT", clientId, userId: clientId });
+      return res.status(status).json(body);
     }
 
     if (
@@ -473,5 +473,23 @@ export const cancelRequest = async (req, res) => {
   } catch (err) {
     console.error("❌ cancelRequest:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* ======================================================
+   CLIENT PAYS WHAT'S DUE NOW
+   POST /api/client/repairs/:id/pay
+   The deposit after approving, or the balance once work has started. The
+   client makes the link, so nobody waits on the shop (utils/paymentPlan.js).
+====================================================== */
+export const payRepair = async (req, res) => {
+  const requestId = Number(req.params.id);
+  if (!Number.isSafeInteger(requestId) || requestId <= 0) return res.status(404).json({ message: "Repair not found" });
+  try {
+    const { status, body } = await createPaymentLinkFor({ requestId, clientId: req.user.id });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("payRepair:", err.code || err.message);
+    return res.status(500).json({ message: "Couldn't open the payment page." });
   }
 };

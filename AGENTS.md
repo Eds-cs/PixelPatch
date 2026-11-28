@@ -829,6 +829,22 @@ a `PENDING` quotation to `CANCELLED`. A cancelled request must not continue:
 the business cannot accept, reject, assess, quote, add services, or generate a
 payment link for it.
 
+**An approved repair whose deposit isn't paid** (agreed 2026-11-28, so it
+can't stay open forever; `cancelUnpaidRepair` in `server/utils/paymentPlan.js`):
+
+* the client may still cancel it (`PATCH /client/repairs/:id/cancel`,
+  `client_approved = 0`) until the deposit is settled;
+* the shop may **withdraw** it 3 days after approval
+  (`service_requests.client_approved_at`) with a reason
+  (`POST /business/repairs/:id/withdraw { reason }`): `decision = 'REJECTED'`,
+  `rejection_reason` = the reason. This is the one case where an accepted
+  request becomes rejected.
+
+Both close any open Xendit link first (so nobody pays for a cancelled job),
+cancel the quotation and add a line to the repair chat. Neither is possible
+once anything is paid or work has started. The webhook never sets
+`client_approved` back to 1 on a cancelled request.
+
 ---
 
 ## Step 6 — Client pays the deposit
@@ -1317,9 +1333,12 @@ status here.
    * **Admin:** `app/admin/warranty.jsx`, `controllers/admin/warrantyAdminController.js`;
      `warranty_claims_need_admin` in `/admin/summary` (dashboard and
      navigation badge).
-   * NOT built: emails or push notifications about claims (they show in the
-     repair chat and on the repair pages), and anything that moves money:
-     a refund the shop pays is arranged outside PixelPatch.*
+   * **The shop is told:** an email to the shop's email when a claim
+     arrives (best effort, no client contact details), the business
+     dashboard lists claims waiting for an answer with their deadline, the
+     repair list flags them, and the repair chat gets a line.
+   * NOT built: push notifications, and anything that moves money: a
+     refund the shop pays is arranged outside PixelPatch.*
 
 ## Shop members (since 2026-11-28)
 
@@ -1339,8 +1358,10 @@ status here.
   the repairs assigned to them (`request_assignments.employee_id`), start and
   complete (rules shared with the owner in `server/utils/repairLifecycle.js`),
   the client's phone under the same rule as the owner (`clientPhoneFor`),
-  and only the repair chats handed to them. No quotations, assignment,
-  payment links, services, payouts, disputes or reviews. `lib/staff.jsx`
+  and only the repair chats handed to them. They can confirm a cash balance
+  and ask the client to pay the balance (a chat card, not a payment link).
+  No quotations, assignment, payment links, services, payouts, disputes or
+  reviews. `lib/staff.jsx`
   holds the membership; the root layout keeps non-members out of `/staff`.
 * **Remove access** (`POST /business/employees/:id/remove-access`) and
   deactivate both unlink the account and return their chats.
@@ -1392,19 +1413,31 @@ client view is `QuotationSection` in `components/RepairSummary.jsx`.
 
 1. The client approves. A 0% deposit is settled at once (a ₱0 total is paid
    in full at once).
-2. The shop sends the deposit link (`POST /business/repairs/:id/payments/generate-link`
-   charges whatever is due now). The Xendit webhook marks that `payments`
-   row `PAID` and sets `deposit_paid_at`. Assignment and start need it.
-3. Once the repair is `IN_PROGRESS`, the same button sends the balance link,
-   or the owner/assigned member confirms cash (business rule 5).
+2. The client pays from their repair page (`POST /client/repairs/:id/pay`
+   makes or reuses the Xendit link for whatever is due now; the owner's
+   `POST /business/repairs/:id/payments/generate-link` does the same). The
+   Xendit webhook marks that `payments` row `PAID` and sets
+   `deposit_paid_at`. Assignment and start need it.
+3. Once the repair is `IN_PROGRESS`, the client pays the balance the same
+   way, or the owner/assigned member confirms cash (business rule 5).
+   "Ask the client to pay" (`POST /business/repairs/:id/payments/request`;
+   members: `POST /staff/repairs/:id/balance/request`, balance only) posts a
+   Payment due card in the repair chat, at most once every 6 hours.
 4. When the balance is paid, `payment_status = 'PAID'` and the quotation is
    `PAID`; only then can the repair be completed.
 
 The total charged is the quotation's `estimated_cost` (what the client
 approved), not a recount of current service prices. Every repair response
 includes the plan (`payment_plan` for the client, `paymentPlan` for the
-business and staff); `components/PaymentProgress.jsx` shows it. Payment
-links are sent by the owner only; the client pays from their repair page.
+business and staff); `components/PaymentProgress.jsx` shows it. Nobody
+waits on the owner to pay: the client makes the link. Members never create
+payment links (rule 8).
+
+**Expired links (fixed 2026-11-28).** Xendit invoices expire. A saved link
+is checked with Xendit before it's handed out: an expired one becomes
+`FAILED` and a fresh link is made; a paid one is never reused; if Xendit
+can't be reached the saved link is returned. The webhook's `EXPIRED`
+callback (verified with Xendit) also marks the row `FAILED`.
 
 Payouts (rule 6) must skip `gateway = 'CASH'` rows: that money went straight
 to the shop.
@@ -1490,7 +1523,8 @@ Never treat a successful return URL as definitive proof of payment.
 The webhook marks the matching `payments` row paid (never a `CASH` row, and
 only for the invoice id stored in `gateway_ref`), then calls
 `settleRequestPayments` to update `deposit_paid_at`, `payment_status` and the
-quotation (section 15 Step 6).
+quotation (section 15 Step 6). An `EXPIRED` callback marks the row `FAILED`
+(section 20, "Expired links").
 
 Check actual webhook behavior before expanding payment state handling.
 
@@ -1576,6 +1610,9 @@ client, owner or staff).
   * `PAYMENT_RECEIVED` (the Xendit webhook, only when it newly marks a row
     paid; and a confirmed cash balance): which part, amount, online or cash,
     what's still to pay.
+  * `PAYMENT_DUE` ("Ask the client to pay", owner or assigned member; at
+    most every 6 hours): which part, amount, cash allowed. The client's
+    button is "Pay ₱…".
   * `REPAIR_STARTED` (startRepairFor, owner or staff): technician (first
     name and role), ready-by date.
   * `REPAIR_COMPLETED` (completeRepairFor): completion date, warranty end
@@ -2354,6 +2391,7 @@ preferred_date       datetime NOT NULL
 notes                text NULL
 rejection_reason     text NULL
 client_approved      tinyint(1) NULL DEFAULT NULL
+client_approved_at   datetime NULL   (when the client approved; added 2026-11-28, section 15 Step 5)
 payment_status       enum('PENDING','PAID','FAILED') NOT NULL DEFAULT 'PENDING'   (PAID = paid in full)
 deposit_paid_at      datetime NULL   (deposit settled, so work may start: set by the webhook, or on
                      approval for a 0% deposit; added 2026-11-28, section 15 Step 6)

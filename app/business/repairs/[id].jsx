@@ -37,7 +37,6 @@ import {
   RepairSection as Section,
 } from "../../../components/RepairSummary";
 import api from "../../../lib/api";
-import { generatePaymentLink } from "../../../lib/payments";
 import { useShop } from "../../../lib/shop";
 import { useFetch } from "../../../lib/useFetch";
 import { parseDepositPercent } from "../../../lib/paymentTerms";
@@ -93,6 +92,9 @@ export default function BusinessRepairDetail() {
   // Declining a warranty claim (business rule 9): the claim and the reason.
   const [declineClaim, setDeclineClaim] = useState(null);
   const [declineReason, setDeclineReason] = useState("");
+  // Withdrawing an approved repair whose deposit is unpaid after 3 days.
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawReason, setWithdrawReason] = useState("");
   const [completionDate, setCompletionDate] = useState("");
   const [assessForm, setAssessForm] = useState({
     deviceCondition: "",
@@ -257,7 +259,14 @@ export default function BusinessRepairDetail() {
     !["IN_PROGRESS", "COMPLETED"].includes(normalizedStatus);
   const canComplete = normalizedStatus === "IN_PROGRESS" && paidInFull;
   const balanceOpen = normalizedStatus === "IN_PROGRESS" && !paidInFull && due?.kind === "BALANCE";
-  const canSendPaymentLink = !isCancelled && clientApproved && Boolean(due?.ready) && !due?.payment_link;
+  // The client pays from their repair page; the shop can remind them with a
+  // "Payment due" card in the chat (POST .../payments/request).
+  const canAskToPay = !isCancelled && !isRejected && clientApproved && Boolean(due?.ready) && Number(due?.amount) > 0;
+  // Deposit still unpaid 3 days after approval: the shop may withdraw.
+  const depositUnpaid = !isCancelled && !isRejected && clientApproved && !depositPaid && ["PENDING", "REVIEW"].includes(normalizedStatus);
+  const approvedAt = repair.clientApprovedAt ? new Date(String(repair.clientApprovedAt).replace(" ", "T")) : null;
+  const withdrawFrom = approvedAt ? new Date(approvedAt.getTime() + 3 * 86400000) : null;
+  const canWithdraw = depositUnpaid && (!withdrawFrom || withdrawFrom <= new Date());
   const canConfirmCash = balanceOpen && Boolean(due?.cash_allowed);
   const warrantyClaims = repair.warrantyClaims ?? [];
   const warrantyOf = repair.warrantyOf ?? null;
@@ -320,8 +329,9 @@ export default function BusinessRepairDetail() {
                 : normalizedStatus === "COMPLETED" ? "Repair completed. You can review the repair information below."
                 : canComplete ? "Finish the repair, then mark it completed when the work is done."
                 : balanceOpen ? (canConfirmCash
-                    ? "When the work is done, collect the balance: send the client the payment link, or confirm their cash payment below. Then mark the repair completed."
-                    : "When the work is done, send the client the balance payment link below. Mark the repair completed once it's paid.")
+                    ? "When the work is done, collect the balance: ask the client to pay it in the app, or confirm their cash payment below. Then mark the repair completed."
+                    : "When the work is done, ask the client to pay the balance below. They pay from their repair page; mark the repair completed once it's paid.")
+                : depositUnpaid ? "The client approved the quotation. Waiting for the deposit; the client pays it from their repair page."
                 : canAssess ? "Assess the device before preparing a quotation."
                 : canQuote ? "Prepare the quotation for the client to review."
                 : canSetCompletionDate ? "Add an estimated completion date to the quotation."
@@ -582,30 +592,27 @@ export default function BusinessRepairDetail() {
         <Section title="Payment">
           {plan ? <PaymentProgress plan={plan} viewer="shop" /> : null}
 
-          {isCancelled ? null : !clientApproved ? (
+          {isCancelled || isRejected ? null : !clientApproved ? (
             <Text className="mt-3 text-xs leading-5 text-gray-500">The client pays once they approve the quotation.</Text>
-          ) : due?.payment_link ? (
-            <View className="mt-3 rounded-xl bg-gray-50 p-3">
-              <Text className="text-xs font-semibold text-gray-700">
-                {due.kind === "BALANCE" ? "Balance link sent to the client" : due.kind === "DEPOSIT" ? "Deposit link sent to the client" : "Payment link sent to the client"}
-              </Text>
-              <Text selectable className="mt-1 text-xs text-primary">{due.payment_link}</Text>
-            </View>
-          ) : due?.kind === "BALANCE" && !due.ready ? (
-            <Text className="mt-3 text-xs leading-5 text-gray-500">You can ask for the balance once the repair has started.</Text>
+          ) : due && !due.ready ? (
+            <Text className="mt-3 text-xs leading-5 text-gray-500">The client can pay the balance once the repair has started.</Text>
+          ) : due ? (
+            <Text className="mt-3 text-xs leading-5 text-gray-500">
+              {`The client pays the ${due.kind === "BALANCE" ? "balance" : due.kind === "DEPOSIT" ? "deposit" : "amount"} of ${PESO}${Number(due.amount).toLocaleString()} from their repair page${due.cash_allowed ? ", or in cash to you" : ""}.`}
+            </Text>
           ) : null}
 
-          {canSendPaymentLink || canConfirmCash ? (
+          {canAskToPay || canConfirmCash || canWithdraw ? (
             <View className={`mt-4 ${isMobile ? "gap-2" : "flex-row flex-wrap gap-3"}`}>
-              {canSendPaymentLink ? (
+              {canAskToPay ? (
                 <View style={isMobile ? undefined : { minWidth: 220 }}>
                   <Button
-                    title={due.kind === "BALANCE" ? `Send balance link · ${PESO}${Number(due.amount).toLocaleString()}` : due.kind === "DEPOSIT" ? `Send deposit link · ${PESO}${Number(due.amount).toLocaleString()}` : "Generate payment link"}
+                    title={`Ask the client to pay · ${PESO}${Number(due.amount).toLocaleString()}`}
                     loading={busy}
                     onPress={() =>
                       act(
-                        () => generatePaymentLink(id),
-                        "Payment link created. The client can pay it from their repair page."
+                        () => api.post(`/business/repairs/${id}/payments/request`),
+                        "The client has been asked to pay. They see a Payment due card in the chat."
                       )
                     }
                   />
@@ -628,7 +635,17 @@ export default function BusinessRepairDetail() {
                   />
                 </View>
               ) : null}
+              {canWithdraw ? (
+                <View style={isMobile ? undefined : { minWidth: 180 }}>
+                  <Button title="Withdraw repair" variant="outline" disabled={busy} onPress={() => { setWithdrawReason(""); setWithdrawOpen(true); }} />
+                </View>
+              ) : null}
             </View>
+          ) : null}
+          {depositUnpaid && !canWithdraw && withdrawFrom ? (
+            <Text className="mt-3 text-xs leading-5 text-gray-500">
+              {`If the deposit is still unpaid on ${withdrawFrom.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}, you can withdraw this repair.`}
+            </Text>
           ) : null}
         </Section>
       ) : null}
@@ -677,6 +694,39 @@ export default function BusinessRepairDetail() {
       ) : null}
 
       <View className="h-8" />
+
+      {/* ---------- Withdraw an unpaid repair ---------- */}
+      <Modal
+        visible={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+        title="Withdraw repair"
+        footer={
+          <Button
+            title="Withdraw repair"
+            loading={busy}
+            disabled={withdrawReason.trim().length < 10}
+            onPress={async () => {
+              setWithdrawOpen(false);
+              await act(
+                () => api.post(`/business/repairs/${id}/withdraw`, { reason: withdrawReason.trim() }),
+                "Repair withdrawn. The client sees your reason."
+              );
+            }}
+          />
+        }
+      >
+        <Text className="mb-3 text-sm leading-5 text-gray-600">
+          {"The client approved the quotation but hasn't paid the deposit. Withdrawing closes the repair and any open payment link. Tell the client why."}
+        </Text>
+        <TextField
+          label="Reason"
+          maxLength={LIMITS.rejectionReason}
+          value={withdrawReason}
+          onChangeText={setWithdrawReason}
+          placeholder="e.g. The deposit wasn't paid within 3 days, so we've released the slot."
+          multiline
+        />
+      </Modal>
 
       {/* ---------- Decline a warranty claim ---------- */}
       <Modal

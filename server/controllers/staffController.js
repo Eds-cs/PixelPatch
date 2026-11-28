@@ -15,7 +15,7 @@
 import db from "../config/db.js";
 import { membershipFor } from "../utils/staff.js";
 import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
-import { loadPaymentState, depositSettled, confirmCashBalanceFor } from "../utils/paymentPlan.js";
+import { loadPaymentState, depositSettled, confirmCashBalanceFor, requestPaymentFor } from "../utils/paymentPlan.js";
 import { clientPhoneFor } from "./repairController.js";
 
 const query = (sql, params = []) => db.promise().query(sql, params).then(([rows]) => rows);
@@ -196,6 +196,7 @@ export const getStaffRepair = async (req, res) => {
     const paid = row.payment_status === "PAID";
     const { plan } = await loadPaymentState(requestId);
     const canConfirmCash = row.status === "IN_PROGRESS" && plan?.due?.kind === "BALANCE" && plan.due.cash_allowed;
+    const canAskForBalance = row.status === "IN_PROGRESS" && plan?.due?.kind === "BALANCE" && plan.due.ready;
     return res.json({
       repair: {
         id: row.id,
@@ -231,6 +232,7 @@ export const getStaffRepair = async (req, res) => {
         canStart: row.decisionStatus === "ACCEPTED" && depositSettled(row) && !["IN_PROGRESS", "COMPLETED"].includes(row.status),
         canComplete: row.status === "IN_PROGRESS" && paid,
         canConfirmCash,
+        canAskForBalance,
       },
     });
   } catch (err) {
@@ -254,6 +256,25 @@ const lifecycle = (fn, failure) => async (req, res) => {
 /* POST /api/staff/repairs/:id/start, /complete (only the assigned employee) */
 export const startStaffRepair = lifecycle(startRepairFor, "Couldn't start the repair.");
 export const completeStaffRepair = lifecycle(completeRepairFor, "Couldn't complete the repair.");
+
+/* POST /api/staff/repairs/:id/balance/request: the assigned member asks the
+   client to pay the balance (a Payment due card; no payment links). */
+export const requestStaffBalance = async (req, res) => {
+  const requestId = positiveId(req.params.id);
+  if (!requestId) return res.status(404).json({ message: "Repair not found." });
+  try {
+    const { status, body } = await requestPaymentFor({
+      requestId,
+      shopId: req.staff.shopId,
+      employeeId: req.staff.employeeId,
+      userId: req.user.id,
+    });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("requestStaffBalance:", err.code || err.message);
+    return res.status(500).json({ message: "Couldn't ask the client to pay." });
+  }
+};
 
 /* POST /api/staff/repairs/:id/balance/cash: the assigned member confirms the
    client paid the balance in cash (business rules 5 and 8). */

@@ -152,8 +152,19 @@ export const getBusinessDashboard = async (req, res) => {
     // --------------------------------------------------
     // 4. Response (FRONTEND CONTRACT)
     // --------------------------------------------------
+    // Warranty claims waiting for an answer (business rule 9: 2 days).
+    const warrantyClaims = await query(
+      `SELECT id, request_id, created_at, created_at + INTERVAL 2 DAY AS reply_due,
+              (created_at < NOW() - INTERVAL 2 DAY) AS overdue
+         FROM warranty_claims
+        WHERE shop_id = ? AND status = 'OPEN'
+        ORDER BY created_at ASC`,
+      [shopId]
+    );
+
     return res.json({
       range,
+      warrantyClaimsWaiting: warrantyClaims.map((c) => ({ ...c, overdue: Boolean(Number(c.overdue)) })),
       clientsThisMonth: clients[0]?.count || 0,
       requestsThisMonth: requests[0]?.count || 0,
       statusBreakdown: {

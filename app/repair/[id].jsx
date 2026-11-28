@@ -198,11 +198,15 @@ export default function RepairDetail() {
     }
   };
 
-  const payNow = async (paymentLink) => {
+  // POST /client/repairs/:id/pay returns the link for what's due now (the
+  // server replaces an expired one), so the client never waits for the shop.
+  const payNow = async () => {
     setPaying(true);
     setPaymentNote(null);
     try {
-      await openCheckout(paymentLink);
+      const { data: link } = await api.post(`/client/repairs/${id}/pay`);
+      if (!link?.payment_link) throw new Error("The payment page couldn't be opened.");
+      await openCheckout(link.payment_link);
 
       // On web the line above navigates away, so anything past here is native.
       // The webhook confirms payment, not the redirect — poll for the real state.
@@ -296,16 +300,23 @@ export default function RepairDetail() {
   const paid = String(repair.payment_status || "").toUpperCase() === "PAID";
   const depositPaid = Boolean(plan?.deposit_paid) || paid;
   const due = plan?.due ?? null;
-  const canPay = Boolean(due?.payment_link) && String(due?.status ?? "").toUpperCase() === "PENDING";
+  // Anything due now can be paid from here (the deposit after approving, the
+  // balance once work has started).
+  const canPay = Boolean(due?.ready) && Number(due?.amount) > 0;
+  // Approved but the deposit isn't paid: the client may still cancel
+  // (server/utils/paymentPlan.js cancelUnpaidRepair).
+  const canCancelUnpaid =
+    !isRejected &&
+    repair.client_approved !== null && repair.client_approved !== undefined && Number(repair.client_approved) === 1 &&
+    !depositPaid &&
+    ["PENDING", "REVIEW"].includes(String(repair.status ?? "").toUpperCase());
   const steps = plan && plan.deposit_percent < 100 ? DEPOSIT_STEPS : STEPS;
   const approved = repair.client_approved !== null && repair.client_approved !== undefined && Number(repair.client_approved) === 1;
   const nextUpdate = canReview
     ? repair.review ? "Your repair is complete. Thanks for leaving a review." : "Your repair is complete. Tell others how it went by leaving a review."
     : status === "IN_PROGRESS"
       ? due?.kind === "BALANCE"
-        ? canPay
-          ? `The shop is working on your device. Pay the balance of ${peso(due.amount)} below before the repair is completed.`
-          : `The shop is working on your device. The balance of ${peso(due.amount)} is due before the repair is completed${due.cash_allowed ? ": pay online or in cash to the shop" : ""}.`
+        ? `The shop is working on your device. Pay the balance of ${peso(due.amount)} before the repair is completed${due.cash_allowed ? ", online below or in cash to the shop" : ", below"}.`
         : "The shop is working on your device. Message them any time for an update."
       : String(repair.decision || "").toUpperCase() === "PENDING"
         ? "The shop will review your request and decide whether it can take the repair."
@@ -318,7 +329,7 @@ export default function RepairDetail() {
               : depositPaid
                 ? repair.assigned_employee ? "Payment confirmed and a technician is assigned. Work starts soon." : "Payment confirmed. The shop will assign a technician before work starts."
                 : approved
-                  ? canPay ? "Quotation approved. Pay below so the shop can start." : "Quotation approved. The shop will send the payment link next."
+                  ? canPay ? `Quotation approved. Pay the ${due.kind === "FULL" ? "amount" : "deposit"} of ${peso(due.amount)} below so the shop can start.` : "Quotation approved. The shop will start soon."
                   : "Check the quotation and details below for the latest update.";
   // How many steps of STEPS are done.
   const stepsDone = [
@@ -443,14 +454,11 @@ export default function RepairDetail() {
               ? "Online payments are held by PixelPatch until the repair is done and can be refunded through a dispute. Cash goes straight to the shop and can't be refunded through PixelPatch."
               : "Online payments are held by PixelPatch until the repair is done and can be refunded through a dispute."}
           </Text>
-          {due && !canPay ? (
-            <Text className="mt-3 text-sm leading-5 text-gray-600">
-              {due.kind === "BALANCE" && !due.ready
-                ? "You'll pay the balance once the shop has started the work."
-                : due.cash_allowed
-                  ? "Pay the shop in cash and they'll confirm it in the app, or wait for the shop's online payment link."
-                  : "The shop will send the payment link here."}
-            </Text>
+          {due && !due.ready ? (
+            <Text className="mt-3 text-sm leading-5 text-gray-600">{"You'll pay the balance once the shop has started the work."}</Text>
+          ) : null}
+          {canPay && due.cash_allowed ? (
+            <Text className="mt-3 text-sm leading-5 text-gray-600">{"You can also pay the balance in cash to the shop; they confirm it in the app."}</Text>
           ) : null}
           {paymentNote ? <Text className="mt-3 text-sm text-gray-600">{paymentNote}</Text> : null}
           {canPay ? (
@@ -458,7 +466,22 @@ export default function RepairDetail() {
               title={`${due.kind === "DEPOSIT" ? "Pay deposit" : due.kind === "BALANCE" ? "Pay balance" : "Pay"} ${peso(due.amount)}`}
               className="mt-4"
               loading={paying}
-              onPress={() => payNow(due.payment_link)}
+              onPress={payNow}
+            />
+          ) : null}
+          {canCancelUnpaid ? (
+            <Button
+              title="Cancel repair"
+              variant="ghost"
+              className="mt-2"
+              disabled={busy || paying}
+              onPress={() =>
+                confirm(
+                  "Cancel repair",
+                  "Cancel this repair before paying the deposit? Any open payment link is closed, and the shop won't start work.",
+                  () => act("cancel", "Repair cancelled.")
+                )
+              }
             />
           ) : null}
         </Card>

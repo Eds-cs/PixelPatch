@@ -3,7 +3,7 @@ import db from "../config/db.js";
 import { isValidDateOnly } from "../utils/dateValidation.js";
 import { quotationTerms } from "../utils/paymentTerms.js";
 import { startRepairFor, completeRepairFor } from "../utils/repairLifecycle.js";
-import { loadPaymentState, confirmCashBalanceFor } from "../utils/paymentPlan.js";
+import { loadPaymentState, confirmCashBalanceFor, requestPaymentFor, cancelUnpaidRepair } from "../utils/paymentPlan.js";
 import { validateWarranty } from "../utils/warranty.js";
 import { claimsForRequest } from "../utils/warrantyClaims.js";
 import { postRepairConfirmation, postRepairUpdate } from "../utils/repairCards.js";
@@ -181,6 +181,7 @@ export const getRepairById = async (req, res) => {
           sr.payment_status,
           sr.deposit_paid_at,
           sr.client_approved,
+          sr.client_approved_at,
 
           CONCAT(u.first_name, ' ', u.last_name) AS client,
           u.phone AS client_phone,
@@ -274,6 +275,7 @@ export const getRepairById = async (req, res) => {
       services: row.services ? row.services.split(", ") : [],
       paymentStatus: row.payment_status,
       depositPaidAt: row.deposit_paid_at,
+      clientApprovedAt: row.client_approved_at,
       // The open link for what is due now (deposit or balance), if any.
       paymentLink: paymentPlan?.due?.payment_link ?? null,
       paymentPlan,
@@ -1420,6 +1422,37 @@ export const confirmCashBalance = async (req, res) => {
   } catch (err) {
     console.error("confirmCashBalance:", err.code || err.message);
     return res.status(500).json({ message: "Couldn't record the cash payment" });
+  }
+};
+
+// POST /api/business/repairs/:id/payments/request
+// "Ask the client to pay": a Payment due card in the repair's chat.
+export const requestClientPayment = async (req, res) => {
+  const requestId = Number(req.params.id);
+  if (!Number.isSafeInteger(requestId) || requestId <= 0) return res.status(404).json({ message: "Repair not found" });
+  try {
+    const { status, body } = await requestPaymentFor({ requestId, shopId: req.shopId, userId: req.user.id });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("requestClientPayment:", err.code || err.message);
+    return res.status(500).json({ message: "Couldn't ask the client to pay" });
+  }
+};
+
+// POST /api/business/repairs/:id/withdraw { reason }
+// The deposit is still unpaid 3 days after approval: the shop may withdraw
+// (decision = REJECTED), so the repair doesn't stay open forever.
+export const withdrawUnpaidRepair = async (req, res) => {
+  const requestId = Number(req.params.id);
+  if (!Number.isSafeInteger(requestId) || requestId <= 0) return res.status(404).json({ message: "Repair not found" });
+  const reason = String(req.body?.reason ?? "").trim();
+  if (reason.length < 10) return res.status(400).json({ field: "reason", message: "Tell the client why (at least 10 characters)." });
+  try {
+    const { status, body } = await cancelUnpaidRepair({ requestId, by: "SHOP", shopId: req.shopId, userId: req.user.id, reason });
+    return res.status(status).json(body);
+  } catch (err) {
+    console.error("withdrawUnpaidRepair:", err.code || err.message);
+    return res.status(500).json({ message: "Couldn't withdraw the repair" });
   }
 };
 

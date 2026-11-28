@@ -11,6 +11,7 @@ import {
   startStaffRepair,
   completeStaffRepair,
   confirmStaffCashBalance,
+  requestStaffBalance,
 } from "../controllers/staffController.js";
 
 const router = express.Router();
@@ -25,5 +26,6 @@ router.get("/repairs/:id", staffRequired, getStaffRepair);
 router.post("/repairs/:id/start", staffRequired, startStaffRepair);
 router.post("/repairs/:id/complete", staffRequired, completeStaffRepair);
 router.post("/repairs/:id/balance/cash", staffRequired, confirmStaffCashBalance);
+router.post("/repairs/:id/balance/request", staffRequired, requestStaffBalance);
 
 export default router;
